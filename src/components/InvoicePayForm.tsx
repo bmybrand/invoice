@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type FormEvent } from 'react'
+import { useState, useEffect, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { loadStripe } from '@stripe/stripe-js'
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js'
@@ -377,7 +377,7 @@ export default function InvoicePayForm({
   initialPhone = '',
 }: InvoicePayFormProps) {
   const [clientSecret, setClientSecret] = useState<string | null>(null)
-  const [loadingPayment, setLoadingPayment] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
 
   const [fullName, setFullName] = useState('')
@@ -388,36 +388,25 @@ export default function InvoicePayForm({
   const [stateRegion, setStateRegion] = useState('')
   const [zipCode, setZipCode] = useState('')
 
-  async function handleContinueToPayment() {
-    if (
-      !fullName.trim() ||
-      !phoneNumber.trim() ||
-      !emailAddress.trim() ||
-      !streetAddress.trim() ||
-      !city.trim() ||
-      !stateRegion.trim() ||
-      !zipCode.trim()
-    ) {
-      setLoadError('Please fill in all contact and address fields.')
-      return
+  useEffect(() => {
+    async function fetchClientSecret() {
+      try {
+        const res = await fetch('/api/create-payment-intent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ invoiceId, amount: grandTotal }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? 'Failed to create payment')
+        setClientSecret(data.clientSecret)
+      } catch (err) {
+        setLoadError(err instanceof Error ? err.message : 'Failed to load payment form')
+      } finally {
+        setLoading(false)
+      }
     }
-    setLoadError(null)
-    setLoadingPayment(true)
-    try {
-      const res = await fetch('/api/create-payment-intent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invoiceId, amount: grandTotal }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to create payment')
-      setClientSecret(data.clientSecret)
-    } catch (err) {
-      setLoadError(err instanceof Error ? err.message : 'Failed to load payment form')
-    } finally {
-      setLoadingPayment(false)
-    }
-  }
+    fetchClientSecret()
+  }, [invoiceId, grandTotal])
 
   if (!stripePublishableKey) {
     return (
@@ -429,49 +418,20 @@ export default function InvoicePayForm({
     )
   }
 
-  if (!clientSecret) {
+  if (loading) {
     return (
       <div className="mx-auto max-w-4xl p-4 sm:p-6">
-        {invoiceTitle && (
-          <p className="mb-6 text-sm font-semibold text-slate-400">{invoiceTitle}</p>
-        )}
-        <div className="rounded-2xl border border-slate-700 bg-slate-800/80 p-6 sm:p-8">
-          <h1 className="mb-8 text-xl font-bold text-white">Your Information</h1>
-          <ContactFields
-            fullName={fullName}
-            setFullName={setFullName}
-            phoneNumber={phoneNumber}
-            setPhoneNumber={setPhoneNumber}
-            emailAddress={emailAddress}
-            setEmailAddress={setEmailAddress}
-            streetAddress={streetAddress}
-            setStreetAddress={setStreetAddress}
-            city={city}
-            setCity={setCity}
-            stateRegion={stateRegion}
-            setStateRegion={setStateRegion}
-            zipCode={zipCode}
-            setZipCode={setZipCode}
-          />
-          {loadError && (
-            <p className="mt-4 rounded-xl border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-              {loadError}
-            </p>
-          )}
-          <div className="mt-8 flex items-center justify-between gap-4 border-t border-slate-700 pt-6">
-            <p className="text-lg font-bold text-white">
-              Total: ${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </p>
-            <button
-              type="button"
-              onClick={handleContinueToPayment}
-              disabled={loadingPayment}
-              className="rounded-xl bg-orange-600 px-8 py-3 text-sm font-semibold text-white shadow-[0px_4px_20px_0px_rgba(249,115,22,0.2)] hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {loadingPayment ? 'Loading...' : 'Continue to Payment'}
-            </button>
-          </div>
-        </div>
+        <p className="text-sm text-slate-400">Loading payment form...</p>
+      </div>
+    )
+  }
+
+  if (loadError || !clientSecret) {
+    return (
+      <div className="mx-auto max-w-4xl p-4 sm:p-6">
+        <p className="rounded-xl border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+          {loadError ?? 'Failed to load payment form. Please try again.'}
+        </p>
       </div>
     )
   }

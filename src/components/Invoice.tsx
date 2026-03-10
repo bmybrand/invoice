@@ -1095,12 +1095,6 @@ export default function Invoice() {
                             </div>
                           ))}
                           <div className="border-t border-slate-100 px-4 py-3">
-                              <p className="text-sm font-bold text-slate-900">Payment Details</p>
-                              <div className="mt-2 rounded-lg border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
-                                <p><span className="font-semibold text-slate-800">Card payments:</span> Stripe</p>
-                              </div>
-                            </div>
-                            <div>
                             <button
                               type="button"
                               onClick={() => setAddServices((prev) => [...prev, { description: '', qty: 1, price: '' }])}
