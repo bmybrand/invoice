@@ -33,6 +33,7 @@ type InvoiceRow = {
   phone: string
   amount: string
   status: string
+  payable_amount: number | null
 }
 
 const INVOICE_GRID = 'minmax(48px,0.6fr) minmax(100px,1.2fr) minmax(100px,1.2fr) minmax(100px,1.2fr) minmax(140px,1.5fr) minmax(90px,1.15fr) minmax(100px,1.2fr) minmax(90px,1fr) minmax(90px,1fr) 150px'
@@ -162,17 +163,9 @@ function isValidPrice(value: string): boolean {
   return /^\d+(\.\d{1,2})?$/.test(value.trim())
 }
 
-function isPayableStatus(status: string): boolean {
-  return (status || '').toLowerCase().includes('payable')
-}
-
 function isAdvanceUnpaidStatus(status: string): boolean {
   const normalized = (status || '').toLowerCase()
   return normalized.includes('payable') || normalized.includes('pending')
-}
-
-function storageKeyForPayable(invoiceId: number): string {
-  return `invoice-payable-${invoiceId}`
 }
 
 function sanitizeCurrencyInput(value: string): string {
@@ -423,6 +416,7 @@ export default function Invoice() {
         phone: (row.phone as string) ?? '',
         amount: ((row.amount as string) ?? '').trim() || subtotal.toFixed(2),
         status: (row.status as string) ?? 'Pending',
+        payable_amount: row.payable_amount == null ? null : Number(row.payable_amount),
       }
     })
     setInvoices(rows)
@@ -582,7 +576,7 @@ export default function Invoice() {
     setAddError(null)
     setAddLoading(true)
 
-    const { data: insertedInvoice, error: insertError } = await supabase.from('invoices').insert({
+    const { error: insertError } = await supabase.from('invoices').insert({
       invoice_date: new Date().toISOString().slice(0, 10),
       invoice_creator_id: currentUserEmployeeId,
       brand_name: addBrand.trim(),
@@ -591,21 +585,13 @@ export default function Invoice() {
       phone: addPhone.trim(),
       amount: subTotal.toFixed(2),
       status: addStatus,
-    }).select('id').single()
+      payable_amount: payableAmount > 0 ? payableAmount.toFixed(2) : null,
+    })
 
     setAddLoading(false)
     if (insertError) {
       setAddError(insertError.message)
       return
-    }
-
-    if (typeof window !== 'undefined' && insertedInvoice?.id) {
-      const key = storageKeyForPayable(Number(insertedInvoice.id))
-      if (isAdvanceUnpaidStatus(addStatus) && payableAmount > 0) {
-        window.localStorage.setItem(key, payableAmount.toFixed(2))
-      } else {
-        window.localStorage.removeItem(key)
-      }
     }
 
     setShowAddModal(false)
@@ -625,11 +611,7 @@ export default function Invoice() {
     setEditServices(inv.service.length > 0 ? inv.service : [{ description: '', qty: 1, price: '' }])
     setEditPhone(inv.phone || '')
     setEditStatus(inv.status || 'Pending')
-    if (typeof window !== 'undefined') {
-      setEditPayableAmount(window.localStorage.getItem(storageKeyForPayable(inv.id)) ?? '')
-    } else {
-      setEditPayableAmount('')
-    }
+    setEditPayableAmount(inv.payable_amount == null ? '' : String(inv.payable_amount))
     setEditError(null)
   }
 
@@ -659,6 +641,7 @@ export default function Invoice() {
         phone: editPhone.trim(),
         amount: subTotal.toFixed(2),
         status: editStatus,
+        payable_amount: payableAmount > 0 ? payableAmount.toFixed(2) : null,
       })
       .eq('id', editingInvoice.id)
 
@@ -666,15 +649,6 @@ export default function Invoice() {
     if (error) {
       setEditError(error.message)
       return
-    }
-
-    if (typeof window !== 'undefined') {
-      const key = storageKeyForPayable(editingInvoice.id)
-      if (isAdvanceUnpaidStatus(editStatus) && payableAmount > 0) {
-        window.localStorage.setItem(key, payableAmount.toFixed(2))
-      } else {
-        window.localStorage.removeItem(key)
-      }
     }
 
     setEditingInvoice(null)

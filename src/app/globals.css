@@ -46,10 +46,7 @@ body {
   background: rgb(100 116 139);
 }
 
-/* Invoice print footer - must be in body, fixed at bottom of every printed page */
-#invoice-print-footer {
-  display: none;
-}
+/* Invoice print footer - in body, fixed at bottom of every printed page */
 @media print {
   #invoice-print-footer {
     display: block !important;
@@ -60,8 +57,7 @@ body {
     width: 100% !important;
     background: #fff !important;
     z-index: 2147483647 !important;
-    break-inside: avoid !important;
-    page-break-inside: avoid !important;
+    visibility: visible !important;
   }
 }
 
