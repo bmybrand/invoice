@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { InvoiceDocument } from '@/components/Invoice'
@@ -34,14 +33,9 @@ export default function InvoiceView({ invoiceId, publicView = false }: { invoice
   const [brands, setBrands] = useState<BrandOption[]>([])
   const [bankName, setBankName] = useState('')
   const [accountName, setAccountName] = useState('')
-  const [mounted, setMounted] = useState(false)
   const [accountNumber, setAccountNumber] = useState('')
   const [paying, setPaying] = useState(false)
   const [paymentError, setPaymentError] = useState<string | null>(null)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   useEffect(() => {
     async function fetchData() {
@@ -241,23 +235,6 @@ export default function InvoiceView({ invoiceId, publicView = false }: { invoice
           summaryActions={paymentForm}
         />
       </div>
-      {mounted &&
-        typeof document !== 'undefined' &&
-        document.body &&
-        createPortal(
-          <div id="invoice-print-footer" style={{ display: 'none' }}>
-            <div style={{ padding: '0 2.5rem 1.5rem' }}>
-              <p style={{ fontSize: '0.875rem', fontWeight: 700, color: '#0f172a' }}>Terms & Conditions</p>
-              <p style={{ marginTop: '0.25rem', fontSize: '0.75rem', lineHeight: 1.25, color: '#64748b' }}>
-                Please pay within 15 days of receiving this invoice. A late fee of 5% per month will be applied to overdue balances.
-              </p>
-            </div>
-            <div style={{ borderTop: '1px solid #e2e8f0', backgroundColor: '#f8fafc', padding: '1.5rem 2.5rem', fontSize: '0.875rem', color: '#64748b' }}>
-              +1 (555) 000-1234 | www.studioshodwe.com | 456 Design Blvd, Creative City, NY
-            </div>
-          </div>,
-          document.body
-        )}
       <style jsx global>{`
         @media print {
           @page {
@@ -341,19 +318,16 @@ export default function InvoiceView({ invoiceId, publicView = false }: { invoice
           }
 
           #invoice-print-root .invoice-bottom-block {
-            display: none !important;
-          }
-
-          #invoice-print-footer {
-            display: block !important;
             position: fixed !important;
             bottom: 0 !important;
             left: 0 !important;
             right: 0 !important;
             width: 100% !important;
+            display: block !important;
+            margin: 0 !important;
+            padding: 0 !important;
             background: #fff !important;
             z-index: 2147483647 !important;
-            visibility: visible !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
