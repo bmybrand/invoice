@@ -333,16 +333,6 @@ function PaymentFormInner({
             <PaymentElement
               options={{
                 layout: 'tabs',
-                appearance: {
-                  theme: 'night',
-                  variables: {
-                    colorPrimary: '#ea580c',
-                    colorBackground: '#0f172a',
-                    colorText: '#f8fafc',
-                    colorDanger: '#ef4444',
-                    borderRadius: '12px',
-                  },
-                },
               }}
             />
           </div>
