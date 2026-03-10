@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useMemo, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { InvoiceDocument } from '@/components/Invoice'
 
@@ -28,14 +28,13 @@ type InvoiceRow = {
 
 export default function InvoiceView({ invoiceId, publicView = false }: { invoiceId: number; publicView?: boolean }) {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const paymentParam = searchParams.get('payment')
+  const showPaymentCompleteBanner = paymentParam === 'complete' || paymentParam === 'success'
+  const showPaymentProcessingBanner = paymentParam === 'processing'
   const [loading, setLoading] = useState(true)
   const [invoice, setInvoice] = useState<InvoiceRow | null>(null)
   const [brands, setBrands] = useState<BrandOption[]>([])
-  const [bankName, setBankName] = useState('')
-  const [accountName, setAccountName] = useState('')
-  const [accountNumber, setAccountNumber] = useState('')
-  const [paying, setPaying] = useState(false)
-  const [paymentError, setPaymentError] = useState<string | null>(null)
 
   useEffect(() => {
     async function fetchData() {
@@ -89,34 +88,6 @@ export default function InvoiceView({ invoiceId, publicView = false }: { invoice
     return brands.find((b) => b.brand_name === invoice.brand_name) ?? null
   }, [brands, invoice])
 
-  async function handlePaymentSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    if (!invoice) return
-
-    if (!bankName.trim() || !accountName.trim() || !accountNumber.trim()) {
-      setPaymentError('Enter your bank name, account name, and account number.')
-      return
-    }
-
-    setPaying(true)
-    setPaymentError(null)
-
-    const { error } = await supabase.from('invoices').update({ status: 'Paid' }).eq('id', invoice.id)
-
-    setPaying(false)
-
-    if (error) {
-      console.error('Failed to mark invoice as paid', error)
-      setPaymentError('Payment could not be completed. Please try again.')
-      return
-    }
-
-    setInvoice((prev) => (prev ? { ...prev, status: 'Paid' } : prev))
-    setBankName('')
-    setAccountName('')
-    setAccountNumber('')
-  }
-
   if (loading) {
     return <div className="p-6 text-sm text-slate-400">Loading invoice...</div>
   }
@@ -140,73 +111,28 @@ export default function InvoiceView({ invoiceId, publicView = false }: { invoice
 
   const normalizedStatus = (invoice.status || '').toLowerCase()
   const isPaid = normalizedStatus.includes('paid') || normalizedStatus.includes('completed')
-  const isPayable = normalizedStatus.includes('payable') || normalizedStatus.includes('pending')
+  const isProcessing = normalizedStatus.includes('processing')
   const canDownloadPdf = isPaid
   const showPaidWatermark = isPaid
   const grandTotal = invoice.service.reduce((sum, line) => sum + (Number(line.qty) || 0) * Number((line.price || '').replace(/[^0-9.-]/g, '')), 0)
   const payableAmount = Math.min(Number(invoice.payable_amount ?? 0), grandTotal)
   const remainingAmount = Math.max(grandTotal - payableAmount, 0)
-  const showPayableDetails = payableAmount > 0
-
-  const paymentForm = isPaid ? (
-    <div className="no-print rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
-      Payment confirmed. You can now download the invoice PDF.
-    </div>
-  ) : (
-    <form onSubmit={handlePaymentSubmit} className="no-print space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
-      <div>
-        <p className="text-sm font-bold text-slate-900">Pay Invoice</p>
-        <p className="mt-1 text-xs text-slate-500">Enter your bank details to complete payment and unlock PDF download.</p>
-      </div>
-      <div>
-        <label htmlFor="pay-bank-name" className="block text-xs font-bold uppercase tracking-wide text-slate-500">
-          Bank Name
-        </label>
-        <input
-          id="pay-bank-name"
-          type="text"
-          value={bankName}
-          onChange={(e) => setBankName(e.target.value)}
-          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
-        />
-      </div>
-      <div>
-        <label htmlFor="pay-account-name" className="block text-xs font-bold uppercase tracking-wide text-slate-500">
-          Account Name
-        </label>
-        <input
-          id="pay-account-name"
-          type="text"
-          value={accountName}
-          onChange={(e) => setAccountName(e.target.value)}
-          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
-        />
-      </div>
-      <div>
-        <label htmlFor="pay-account-number" className="block text-xs font-bold uppercase tracking-wide text-slate-500">
-          Account Number
-        </label>
-        <input
-          id="pay-account-number"
-          type="text"
-          value={accountNumber}
-          onChange={(e) => setAccountNumber(e.target.value)}
-          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
-        />
-      </div>
-      {paymentError && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{paymentError}</p>}
-      <button
-        type="submit"
-        disabled={paying}
-        className="w-full rounded-xl bg-orange-600 px-4 py-3 text-sm font-semibold text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:bg-slate-400"
-      >
-        {paying ? 'Processing...' : 'Pay'}
-      </button>
-    </form>
-  )
+  const showPayableDetails = invoice.payable_amount != null
 
   return (
     <div id="invoice-view-root" className={publicView ? 'space-y-4 p-4 sm:p-6 print:p-0 print:m-0' : 'p-4 sm:p-6 space-y-4 print:p-0 print:m-0'}>
+      {showPaymentCompleteBanner && (
+        <div className="no-print mb-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+          <p className="text-sm font-semibold text-emerald-400">Payment complete</p>
+          <p className="mt-1 text-xs text-slate-400">Your invoice has been marked as paid.</p>
+        </div>
+      )}
+      {showPaymentProcessingBanner && (
+        <div className="no-print mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+          <p className="text-sm font-semibold text-amber-400">Your payment is being processed</p>
+          <p className="mt-1 text-xs text-slate-400">You will receive a confirmation once the payment is complete.</p>
+        </div>
+      )}
       {!publicView && (
         <button
           type="button"
@@ -226,13 +152,15 @@ export default function InvoiceView({ invoiceId, publicView = false }: { invoice
           rootId="invoice-print-root"
           includeDownloadButton
           showStatusBadge
+          onGrandTotalClick={!isPaid && !isProcessing ? () => router.push(`/invoice/pay?id=${invoice.id}`) : undefined}
+          showPaymentDetails={!publicView}
           totalNote={showPayableDetails ? (
             <div className="space-y-1 text-right text-xs font-semibold uppercase tracking-wide text-amber-600">
               <p>Payable Amount: ${payableAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
               <p>Remaining: ${remainingAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
             </div>
           ) : null}
-          summaryActions={paymentForm}
+          summaryActions={null}
         />
       </div>
       <style jsx global>{`
@@ -332,8 +260,7 @@ export default function InvoiceView({ invoiceId, publicView = false }: { invoice
             print-color-adjust: exact !important;
           }
 
-          #invoice-print-root .invoice-meta-grid,
-          #invoice-print-root .invoice-summary-grid {
+          #invoice-print-root .invoice-meta-grid {
             display: grid !important;
             grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
             align-items: start !important;
@@ -341,6 +268,16 @@ export default function InvoiceView({ invoiceId, publicView = false }: { invoice
 
           #invoice-print-root .invoice-meta-grid > :last-child {
             justify-self: end !important;
+          }
+
+          #invoice-print-root .invoice-summary-grid {
+            display: flex !important;
+            justify-content: flex-end !important;
+            align-items: start !important;
+          }
+
+          #invoice-print-root .invoice-summary-grid > *:not(.no-print) {
+            flex-shrink: 0 !important;
           }
 
           #invoice-print-root,

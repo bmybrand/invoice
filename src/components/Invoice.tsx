@@ -90,6 +90,7 @@ function ChevronDownIcon({ className = 'h-4 w-4' }: { className?: string }) {
 function getStatusStyle(status: string): string {
   const s = (status || '').toLowerCase()
   if (s.includes('paid') || s.includes('completed')) return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+  if (s.includes('processing')) return 'bg-blue-500/10 text-blue-400 border-blue-500/20'
   if (s.includes('pending') || s.includes('payable')) return 'bg-amber-500/10 text-amber-400 border-amber-500/20'
   if (s.includes('overdue') || s.includes('cancelled')) return 'bg-red-500/10 text-red-400 border-red-500/20'
   return 'bg-slate-500/10 text-slate-400 border-slate-500/20'
@@ -183,6 +184,8 @@ export function InvoiceDocument({
   showStatusBadge = true,
   summaryActions,
   totalNote,
+  onGrandTotalClick,
+  showPaymentDetails = false,
 }: {
   invoice: InvoiceRow
   brandMeta: BrandOption | null
@@ -194,6 +197,8 @@ export function InvoiceDocument({
   showStatusBadge?: boolean
   summaryActions?: ReactNode
   totalNote?: ReactNode
+  onGrandTotalClick?: () => void
+  showPaymentDetails?: boolean
 }) {
   const serviceLines = toServiceLines((invoice as unknown as { service?: unknown }).service)
   const subTotal = servicesSubtotal(serviceLines)
@@ -241,8 +246,6 @@ export function InvoiceDocument({
           <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Invoice To</p>
           <p className="mt-2 text-xl font-bold text-slate-900">{invoice.brand_name || 'Ketut Susilo'}</p>
           <div className="mt-3 space-y-1 text-sm text-slate-600">
-            <p>2118 Thornridge Cir. Syracuse,</p>
-            <p>Connecticut 35624, USA</p>
             <p>{invoice.email || 'ketut.susilo@example.com'}</p>
             <p>{invoice.phone || '+1 (555) 000-1234'}</p>
           </div>
@@ -292,23 +295,26 @@ export function InvoiceDocument({
         )}
       </div>
 
-      <div className="invoice-summary-grid relative z-10 grid grid-cols-1 gap-8 px-10 py-8 pb-12 md:grid-cols-2">
-        <div className="space-y-5">
-          <div>
+      <div className={`invoice-summary-grid relative z-10 grid grid-cols-1 gap-8 px-10 py-8 pb-12 ${showPaymentDetails ? 'md:grid-cols-2' : 'flex justify-end'}`}>
+        {showPaymentDetails && (
+          <div className="no-print">
             <p className="text-sm font-bold text-slate-900">Payment Details</p>
             <div className="invoice-payment-box mt-2 rounded-lg border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
-              <p><span className="font-semibold text-slate-800">Bank:</span> Global Trust Bank</p>
-              <p><span className="font-semibold text-slate-800">Account Name:</span> Studio Shodwe LLC</p>
-              <p><span className="font-semibold text-slate-800">Account No:</span> 9876 5432 1011 1213</p>
+              <p><span className="font-semibold text-slate-800">Card payments:</span> Stripe</p>
             </div>
           </div>
-        </div>
-
-        <div className="md:justify-self-end md:w-80">
+        )}
+        <div className={`w-full md:w-80 ${showPaymentDetails ? 'md:justify-self-end' : ''}`}>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between"><span className="text-slate-600">Sub Total</span><span className="font-medium text-slate-700">${subTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
             <div className="my-2 h-px bg-slate-200" />
-            <div className="invoice-grand-total flex justify-between rounded-xl bg-orange-600 p-4 text-white">
+            <div
+              className={`invoice-grand-total flex justify-between rounded-xl bg-orange-600 p-4 text-white ${onGrandTotalClick ? 'cursor-pointer hover:bg-orange-700 transition-colors no-print' : ''}`}
+              role={onGrandTotalClick ? 'button' : undefined}
+              tabIndex={onGrandTotalClick ? 0 : undefined}
+              onClick={onGrandTotalClick}
+              onKeyDown={onGrandTotalClick ? (e) => e.key === 'Enter' && onGrandTotalClick() : undefined}
+            >
               <span className="text-lg font-bold">Grand Total</span>
               <span className="text-2xl font-black">${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
@@ -1036,7 +1042,6 @@ export default function Invoice() {
                                 <label htmlFor="add-phone" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Phone</label>
                                 <input id="add-phone" type="tel" value={addPhone} onChange={(e) => setAddPhone(e.target.value)} placeholder="+1 (555) 000-1234" className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20" />
                               </div>
-                              <p className="text-sm text-slate-500">2118 Thornridge Cir. Syracuse, Connecticut 35624, USA</p>
                             </div>
                           </div>
 
@@ -1053,18 +1058,6 @@ export default function Invoice() {
                               <div className="flex justify-between border-b border-slate-100 pb-2 text-sm">
                                 <span className="text-slate-500">Due Date</span>
                                 <span className="font-bold text-slate-900">{addDaysToISODate(new Date().toISOString().slice(0, 10), 30)}</span>
-                              </div>
-                              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                                <div className="flex items-center justify-between gap-3">
-                                  <span>Status is currently {addStatus}.</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => setAddStatus('Pending')}
-                                    className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-amber-800 hover:bg-amber-100"
-                                  >
-                                    Make Unpaid
-                                  </button>
-                                </div>
                               </div>
                             </div>
                           </div>
@@ -1102,6 +1095,12 @@ export default function Invoice() {
                             </div>
                           ))}
                           <div className="border-t border-slate-100 px-4 py-3">
+                              <p className="text-sm font-bold text-slate-900">Payment Details</p>
+                              <div className="mt-2 rounded-lg border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
+                                <p><span className="font-semibold text-slate-800">Card payments:</span> Stripe</p>
+                              </div>
+                            </div>
+                            <div>
                             <button
                               type="button"
                               onClick={() => setAddServices((prev) => [...prev, { description: '', qty: 1, price: '' }])}
@@ -1117,9 +1116,7 @@ export default function Invoice() {
                             <div>
                               <p className="text-sm font-bold text-slate-900">Payment Details</p>
                               <div className="mt-2 rounded-lg border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
-                                <p><span className="font-semibold text-slate-800">Bank:</span> Global Trust Bank</p>
-                                <p><span className="font-semibold text-slate-800">Account Name:</span> Studio Shodwe LLC</p>
-                                <p><span className="font-semibold text-slate-800">Account No:</span> 9876 5432 1011 1213</p>
+                                <p><span className="font-semibold text-slate-800">Card payments:</span> Stripe</p>
                               </div>
                             </div>
                             <div>
@@ -1255,7 +1252,6 @@ export default function Invoice() {
                                 <label htmlFor="edit-phone" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Phone</label>
                                 <input id="edit-phone" type="tel" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="+1 (555) 000-1234" className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20" />
                               </div>
-                              <p className="text-sm text-slate-500">2118 Thornridge Cir. Syracuse, Connecticut 35624, USA</p>
                             </div>
                           </div>
 
@@ -1272,18 +1268,6 @@ export default function Invoice() {
                               <div className="flex justify-between border-b border-slate-100 pb-2 text-sm">
                                 <span className="text-slate-500">Due Date</span>
                                 <span className="font-bold text-slate-900">{addDaysToISODate(editingInvoice.invoice_date || new Date().toISOString().slice(0, 10), 30)}</span>
-                              </div>
-                              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                                <div className="flex items-center justify-between gap-3">
-                                  <span>Status is currently {editStatus}.</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => setEditStatus('Pending')}
-                                    className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-amber-800 hover:bg-amber-100"
-                                  >
-                                    Make Unpaid
-                                  </button>
-                                </div>
                               </div>
                             </div>
                           </div>
@@ -1336,9 +1320,7 @@ export default function Invoice() {
                             <div>
                               <p className="text-sm font-bold text-slate-900">Payment Details</p>
                               <div className="mt-2 rounded-lg border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
-                                <p><span className="font-semibold text-slate-800">Bank:</span> Global Trust Bank</p>
-                                <p><span className="font-semibold text-slate-800">Account Name:</span> Studio Shodwe LLC</p>
-                                <p><span className="font-semibold text-slate-800">Account No:</span> 9876 5432 1011 1213</p>
+                                <p><span className="font-semibold text-slate-800">Card payments:</span> Stripe</p>
                               </div>
                             </div>
                             <div>
