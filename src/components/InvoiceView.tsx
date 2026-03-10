@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -31,6 +31,17 @@ export default function InvoiceView({ invoiceId, publicView = false }: { invoice
   const [loading, setLoading] = useState(true)
   const [invoice, setInvoice] = useState<InvoiceRow | null>(null)
   const [brands, setBrands] = useState<BrandOption[]>([])
+  const [bankName, setBankName] = useState('')
+  const [accountName, setAccountName] = useState('')
+  const [accountNumber, setAccountNumber] = useState('')
+  const [paying, setPaying] = useState(false)
+  const [paymentError, setPaymentError] = useState<string | null>(null)
+  const [savedPayableAmount, setSavedPayableAmount] = useState(0)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     async function fetchData() {
@@ -78,10 +89,45 @@ export default function InvoiceView({ invoiceId, publicView = false }: { invoice
     fetchData()
   }, [invoiceId])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const stored = window.localStorage.getItem(`invoice-payable-${invoiceId}`)
+    const parsed = Number(stored ?? '0')
+    setSavedPayableAmount(Number.isFinite(parsed) ? parsed : 0)
+  }, [invoiceId])
+
   const brandMeta = useMemo(() => {
     if (!invoice) return null
     return brands.find((b) => b.brand_name === invoice.brand_name) ?? null
   }, [brands, invoice])
+
+  async function handlePaymentSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    if (!invoice) return
+
+    if (!bankName.trim() || !accountName.trim() || !accountNumber.trim()) {
+      setPaymentError('Enter your bank name, account name, and account number.')
+      return
+    }
+
+    setPaying(true)
+    setPaymentError(null)
+
+    const { error } = await supabase.from('invoices').update({ status: 'Paid' }).eq('id', invoice.id)
+
+    setPaying(false)
+
+    if (error) {
+      console.error('Failed to mark invoice as paid', error)
+      setPaymentError('Payment could not be completed. Please try again.')
+      return
+    }
+
+    setInvoice((prev) => (prev ? { ...prev, status: 'Paid' } : prev))
+    setBankName('')
+    setAccountName('')
+    setAccountNumber('')
+  }
 
   if (loading) {
     return <div className="p-6 text-sm text-slate-400">Loading invoice...</div>
@@ -104,8 +150,71 @@ export default function InvoiceView({ invoiceId, publicView = false }: { invoice
     )
   }
 
-  const canDownloadPdf = !(invoice.status || '').toLowerCase().includes('pending')
-  const showPaidWatermark = (invoice.status || '').toLowerCase().includes('paid') || (invoice.status || '').toLowerCase().includes('completed')
+  const normalizedStatus = (invoice.status || '').toLowerCase()
+  const isPaid = normalizedStatus.includes('paid') || normalizedStatus.includes('completed')
+  const isPayable = normalizedStatus.includes('payable') || normalizedStatus.includes('pending')
+  const canDownloadPdf = isPaid
+  const showPaidWatermark = isPaid
+  const grandTotal = invoice.service.reduce((sum, line) => sum + (Number(line.qty) || 0) * Number((line.price || '').replace(/[^0-9.-]/g, '')), 0)
+  const payableAmount = Math.min(savedPayableAmount, grandTotal)
+  const remainingAmount = Math.max(grandTotal - payableAmount, 0)
+
+  const paymentForm = isPaid ? (
+    <div className="no-print rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
+      Payment confirmed. You can now download the invoice PDF.
+    </div>
+  ) : (
+    <form onSubmit={handlePaymentSubmit} className="no-print space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+      <div>
+        <p className="text-sm font-bold text-slate-900">Pay Invoice</p>
+        <p className="mt-1 text-xs text-slate-500">Enter your bank details to complete payment and unlock PDF download.</p>
+      </div>
+      <div>
+        <label htmlFor="pay-bank-name" className="block text-xs font-bold uppercase tracking-wide text-slate-500">
+          Bank Name
+        </label>
+        <input
+          id="pay-bank-name"
+          type="text"
+          value={bankName}
+          onChange={(e) => setBankName(e.target.value)}
+          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+        />
+      </div>
+      <div>
+        <label htmlFor="pay-account-name" className="block text-xs font-bold uppercase tracking-wide text-slate-500">
+          Account Name
+        </label>
+        <input
+          id="pay-account-name"
+          type="text"
+          value={accountName}
+          onChange={(e) => setAccountName(e.target.value)}
+          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+        />
+      </div>
+      <div>
+        <label htmlFor="pay-account-number" className="block text-xs font-bold uppercase tracking-wide text-slate-500">
+          Account Number
+        </label>
+        <input
+          id="pay-account-number"
+          type="text"
+          value={accountNumber}
+          onChange={(e) => setAccountNumber(e.target.value)}
+          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+        />
+      </div>
+      {paymentError && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{paymentError}</p>}
+      <button
+        type="submit"
+        disabled={paying}
+        className="w-full rounded-xl bg-orange-600 px-4 py-3 text-sm font-semibold text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+      >
+        {paying ? 'Processing...' : 'Pay'}
+      </button>
+    </form>
+  )
 
   return (
     <div id="invoice-view-root" className={publicView ? 'space-y-4 p-4 sm:p-6 print:p-0 print:m-0' : 'p-4 sm:p-6 space-y-4 print:p-0 print:m-0'}>
@@ -127,21 +236,29 @@ export default function InvoiceView({ invoiceId, publicView = false }: { invoice
           onDownload={() => canDownloadPdf && window.print()}
           rootId="invoice-print-root"
           includeDownloadButton
+          showStatusBadge
+          totalNote={isPayable ? (
+            <div className="space-y-1 text-right text-xs font-semibold uppercase tracking-wide text-amber-600">
+              {payableAmount > 0 && <p>Payable Amount: ${payableAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>}
+              <p>Remaining: ${remainingAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            </div>
+          ) : null}
+          summaryActions={paymentForm}
         />
       </div>
-      {typeof document !== 'undefined' &&
+      {mounted &&
+        typeof document !== 'undefined' &&
+        document.body &&
         createPortal(
-          <div id="invoice-print-footer-portal" className="hidden">
-            <div className="invoice-print-footer-fixed">
-              <div className="px-10 pb-6">
-                <p className="text-sm font-bold text-slate-900">Terms & Conditions</p>
-                <p className="mt-1 text-xs leading-5 text-slate-500">
-                  Please pay within 15 days of receiving this invoice. A late fee of 5% per month will be applied to overdue balances.
-                </p>
-              </div>
-              <div className="border-t border-slate-200 bg-slate-50 px-10 py-6 text-sm text-slate-500">
-                +1 (555) 000-1234 | www.studioshodwe.com | 456 Design Blvd, Creative City, NY
-              </div>
+          <div id="invoice-print-footer">
+            <div className="px-10 pb-6">
+              <p className="text-sm font-bold text-slate-900">Terms & Conditions</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">
+                Please pay within 15 days of receiving this invoice. A late fee of 5% per month will be applied to overdue balances.
+              </p>
+            </div>
+            <div className="border-t border-slate-200 bg-slate-50 px-10 py-6 text-sm text-slate-500">
+              +1 (555) 000-1234 | www.studioshodwe.com | 456 Design Blvd, Creative City, NY
             </div>
           </div>,
           document.body
@@ -230,22 +347,6 @@ export default function InvoiceView({ invoiceId, publicView = false }: { invoice
 
           #invoice-print-root .invoice-bottom-block {
             display: none !important;
-          }
-
-          #invoice-print-footer-portal {
-            display: block !important;
-          }
-
-          .invoice-print-footer-fixed {
-            position: fixed !important;
-            bottom: 0 !important;
-            left: 0 !important;
-            right: 0 !important;
-            width: 100% !important;
-            background: #fff !important;
-            z-index: 99999 !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
           }
 
           #invoice-print-root .invoice-meta-grid,

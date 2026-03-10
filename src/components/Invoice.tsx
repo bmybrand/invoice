@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, type ReactNode } from 'react'
 import { Plus_Jakarta_Sans } from 'next/font/google'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -89,7 +89,7 @@ function ChevronDownIcon({ className = 'h-4 w-4' }: { className?: string }) {
 function getStatusStyle(status: string): string {
   const s = (status || '').toLowerCase()
   if (s.includes('paid') || s.includes('completed')) return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-  if (s.includes('pending')) return 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+  if (s.includes('pending') || s.includes('payable')) return 'bg-amber-500/10 text-amber-400 border-amber-500/20'
   if (s.includes('overdue') || s.includes('cancelled')) return 'bg-red-500/10 text-red-400 border-red-500/20'
   return 'bg-slate-500/10 text-slate-400 border-slate-500/20'
 }
@@ -162,6 +162,23 @@ function isValidPrice(value: string): boolean {
   return /^\d+(\.\d{1,2})?$/.test(value.trim())
 }
 
+function isPayableStatus(status: string): boolean {
+  return (status || '').toLowerCase().includes('payable')
+}
+
+function isAdvanceUnpaidStatus(status: string): boolean {
+  const normalized = (status || '').toLowerCase()
+  return normalized.includes('payable') || normalized.includes('pending')
+}
+
+function storageKeyForPayable(invoiceId: number): string {
+  return `invoice-payable-${invoiceId}`
+}
+
+function sanitizeCurrencyInput(value: string): string {
+  return sanitizePriceInput(value)
+}
+
 export function InvoiceDocument({
   invoice,
   brandMeta,
@@ -170,6 +187,9 @@ export function InvoiceDocument({
   onDownload,
   rootId,
   includeDownloadButton = true,
+  showStatusBadge = true,
+  summaryActions,
+  totalNote,
 }: {
   invoice: InvoiceRow
   brandMeta: BrandOption | null
@@ -178,6 +198,9 @@ export function InvoiceDocument({
   onDownload: () => void
   rootId?: string
   includeDownloadButton?: boolean
+  showStatusBadge?: boolean
+  summaryActions?: ReactNode
+  totalNote?: ReactNode
 }) {
   const serviceLines = toServiceLines((invoice as unknown as { service?: unknown }).service)
   const subTotal = servicesSubtotal(serviceLines)
@@ -246,11 +269,13 @@ export function InvoiceDocument({
               <span className="text-slate-500">Due Date</span>
               <span className="font-bold text-slate-900">{addDaysToISODate(invoice.invoice_date || new Date().toISOString().slice(0, 10), 30)}</span>
             </div>
-            <div className="pt-1">
-              <span className={`inline-block rounded-lg border px-3 py-1 text-xs font-semibold ${getStatusStyle(invoice.status)}`}>
-                {invoice.status || '-'}
-              </span>
-            </div>
+            {showStatusBadge && (
+              <div className="pt-1">
+                <span className={`inline-block rounded-lg border px-3 py-1 text-xs font-semibold ${getStatusStyle(invoice.status)}`}>
+                  {invoice.status || '-'}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -294,6 +319,8 @@ export function InvoiceDocument({
               <span className="text-lg font-bold">Grand Total</span>
               <span className="text-2xl font-black">${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
+            {totalNote}
+            {summaryActions}
           </div>
         </div>
       </div>
@@ -329,6 +356,7 @@ export default function Invoice() {
   const [addServices, setAddServices] = useState<ServiceLine[]>([{ description: '', qty: 1, price: '' }])
   const [addPhone, setAddPhone] = useState('')
   const [addStatus, setAddStatus] = useState('Pending')
+  const [addPayableAmount, setAddPayableAmount] = useState('')
   const [addLoading, setAddLoading] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
   const [editingInvoice, setEditingInvoice] = useState<InvoiceRow | null>(null)
@@ -337,6 +365,7 @@ export default function Invoice() {
   const [editServices, setEditServices] = useState<ServiceLine[]>([{ description: '', qty: 1, price: '' }])
   const [editPhone, setEditPhone] = useState('')
   const [editStatus, setEditStatus] = useState('Pending')
+  const [editPayableAmount, setEditPayableAmount] = useState('')
   const [editLoading, setEditLoading] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
   const [deletingInvoice, setDeletingInvoice] = useState<InvoiceRow | null>(null)
@@ -491,21 +520,47 @@ export default function Invoice() {
   }
 
   const addValidation = (() => {
-    if (!addBrand.trim() || !addEmail.trim() || !addPhone.trim() || !addStatus.trim()) {
-      return { valid: false, message: 'Fill all required fields: brand, email, phone, status.' }
+    if (!addBrand.trim() || !addEmail.trim() || !addPhone.trim()) {
+      return { valid: false, message: 'Fill all required fields: brand, email, phone.' }
     }
     if (!isValidEmail(addEmail.trim())) {
       return { valid: false, message: 'Enter a valid email address.' }
+    }
+    if (isAdvanceUnpaidStatus(addStatus)) {
+      if (!addPayableAmount.trim()) {
+        return { valid: false, message: 'Enter a payable amount.' }
+      }
+      const payable = parseAmountValue(addPayableAmount)
+      const total = servicesSubtotal(addServices)
+      if (payable <= 0) {
+        return { valid: false, message: 'Payable amount must be greater than 0.' }
+      }
+      if (payable > total) {
+        return { valid: false, message: 'Payable amount cannot be greater than the grand total.' }
+      }
     }
     return validateServiceLines(addServices)
   })()
 
   const editValidation = (() => {
-    if (!editBrand.trim() || !editEmail.trim() || !editPhone.trim() || !editStatus.trim()) {
-      return { valid: false, message: 'Fill all required fields: brand, email, phone, status.' }
+    if (!editBrand.trim() || !editEmail.trim() || !editPhone.trim()) {
+      return { valid: false, message: 'Fill all required fields: brand, email, phone.' }
     }
     if (!isValidEmail(editEmail.trim())) {
       return { valid: false, message: 'Enter a valid email address.' }
+    }
+    if (isAdvanceUnpaidStatus(editStatus)) {
+      if (!editPayableAmount.trim()) {
+        return { valid: false, message: 'Enter a payable amount.' }
+      }
+      const payable = parseAmountValue(editPayableAmount)
+      const total = servicesSubtotal(editServices)
+      if (payable <= 0) {
+        return { valid: false, message: 'Payable amount must be greater than 0.' }
+      }
+      if (payable > total) {
+        return { valid: false, message: 'Payable amount cannot be greater than the grand total.' }
+      }
     }
     return validateServiceLines(editServices)
   })()
@@ -523,10 +578,11 @@ export default function Invoice() {
       price: line.price.trim(),
     }))
     const subTotal = servicesSubtotal(cleanServices)
+    const payableAmount = isAdvanceUnpaidStatus(addStatus) ? parseAmountValue(addPayableAmount) : 0
     setAddError(null)
     setAddLoading(true)
 
-    const { error: insertError } = await supabase.from('invoices').insert({
+    const { data: insertedInvoice, error: insertError } = await supabase.from('invoices').insert({
       invoice_date: new Date().toISOString().slice(0, 10),
       invoice_creator_id: currentUserEmployeeId,
       brand_name: addBrand.trim(),
@@ -535,12 +591,21 @@ export default function Invoice() {
       phone: addPhone.trim(),
       amount: subTotal.toFixed(2),
       status: addStatus,
-    })
+    }).select('id').single()
 
     setAddLoading(false)
     if (insertError) {
       setAddError(insertError.message)
       return
+    }
+
+    if (typeof window !== 'undefined' && insertedInvoice?.id) {
+      const key = storageKeyForPayable(Number(insertedInvoice.id))
+      if (isAdvanceUnpaidStatus(addStatus) && payableAmount > 0) {
+        window.localStorage.setItem(key, payableAmount.toFixed(2))
+      } else {
+        window.localStorage.removeItem(key)
+      }
     }
 
     setShowAddModal(false)
@@ -549,6 +614,7 @@ export default function Invoice() {
     setAddServices([{ description: '', qty: 1, price: '' }])
     setAddPhone('')
     setAddStatus('Pending')
+    setAddPayableAmount('')
     await fetchInvoices()
   }
 
@@ -559,6 +625,11 @@ export default function Invoice() {
     setEditServices(inv.service.length > 0 ? inv.service : [{ description: '', qty: 1, price: '' }])
     setEditPhone(inv.phone || '')
     setEditStatus(inv.status || 'Pending')
+    if (typeof window !== 'undefined') {
+      setEditPayableAmount(window.localStorage.getItem(storageKeyForPayable(inv.id)) ?? '')
+    } else {
+      setEditPayableAmount('')
+    }
     setEditError(null)
   }
 
@@ -575,6 +646,7 @@ export default function Invoice() {
       price: line.price.trim(),
     }))
     const subTotal = servicesSubtotal(cleanServices)
+    const payableAmount = isAdvanceUnpaidStatus(editStatus) ? parseAmountValue(editPayableAmount) : 0
     setEditError(null)
     setEditLoading(true)
 
@@ -596,7 +668,17 @@ export default function Invoice() {
       return
     }
 
+    if (typeof window !== 'undefined') {
+      const key = storageKeyForPayable(editingInvoice.id)
+      if (isAdvanceUnpaidStatus(editStatus) && payableAmount > 0) {
+        window.localStorage.setItem(key, payableAmount.toFixed(2))
+      } else {
+        window.localStorage.removeItem(key)
+      }
+    }
+
     setEditingInvoice(null)
+    setEditPayableAmount('')
     await fetchInvoices()
   }
 
@@ -949,6 +1031,8 @@ export default function Invoice() {
                   {(() => {
                     const subTotal = servicesSubtotal(addServices)
                     const grandTotal = subTotal
+                    const payableAmount = Math.min(parseAmountValue(addPayableAmount), grandTotal)
+                    const remainingAmount = Math.max(grandTotal - payableAmount, 0)
                     return (
                       <>
                         <div className="grid grid-cols-1 gap-10 px-10 py-8 md:grid-cols-2">
@@ -996,14 +1080,17 @@ export default function Invoice() {
                                 <span className="text-slate-500">Due Date</span>
                                 <span className="font-bold text-slate-900">{addDaysToISODate(new Date().toISOString().slice(0, 10), 30)}</span>
                               </div>
-                              <div>
-                                <label htmlFor="add-status" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Status</label>
-                                <select id="add-status" value={addStatus} onChange={(e) => setAddStatus(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20">
-                                  <option value="Pending">Pending</option>
-                                  <option value="Paid">Paid</option>
-                                  <option value="Overdue">Overdue</option>
-                                  <option value="Cancelled">Cancelled</option>
-                                </select>
+                              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                                <div className="flex items-center justify-between gap-3">
+                                  <span>Status is currently {addStatus}.</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setAddStatus('Pending')}
+                                    className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-amber-800 hover:bg-amber-100"
+                                  >
+                                    Make Unpaid
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -1075,6 +1162,27 @@ export default function Invoice() {
                                 <span className="text-lg font-bold">Grand Total</span>
                                 <span className="text-2xl font-black">${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                               </div>
+                              {isAdvanceUnpaidStatus(addStatus) && (
+                                <>
+                                  <div>
+                                    <label htmlFor="add-payable-amount" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Payable Amount</label>
+                                    <input
+                                      id="add-payable-amount"
+                                      type="text"
+                                      value={addPayableAmount}
+                                      onChange={(e) => setAddPayableAmount(sanitizeCurrencyInput(e.target.value))}
+                                      placeholder="0.00"
+                                      inputMode="decimal"
+                                      pattern="^\d+(\.\d{1,2})?$"
+                                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                                    />
+                                  </div>
+                                  <div className="flex justify-between text-xs font-semibold uppercase tracking-wide text-amber-600">
+                                    <span>Remaining</span>
+                                    <span>${remainingAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                  </div>
+                                </>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1139,6 +1247,8 @@ export default function Invoice() {
                   {(() => {
                     const subTotal = servicesSubtotal(editServices)
                     const grandTotal = subTotal
+                    const payableAmount = Math.min(parseAmountValue(editPayableAmount), grandTotal)
+                    const remainingAmount = Math.max(grandTotal - payableAmount, 0)
                     return (
                       <>
                         <div className="grid grid-cols-1 gap-10 px-10 py-8 md:grid-cols-2">
@@ -1189,14 +1299,17 @@ export default function Invoice() {
                                 <span className="text-slate-500">Due Date</span>
                                 <span className="font-bold text-slate-900">{addDaysToISODate(editingInvoice.invoice_date || new Date().toISOString().slice(0, 10), 30)}</span>
                               </div>
-                              <div>
-                                <label htmlFor="edit-status" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Status</label>
-                                <select id="edit-status" value={editStatus} onChange={(e) => setEditStatus(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20">
-                                  <option value="Pending">Pending</option>
-                                  <option value="Paid">Paid</option>
-                                  <option value="Overdue">Overdue</option>
-                                  <option value="Cancelled">Cancelled</option>
-                                </select>
+                              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                                <div className="flex items-center justify-between gap-3">
+                                  <span>Status is currently {editStatus}.</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditStatus('Pending')}
+                                    className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-amber-800 hover:bg-amber-100"
+                                  >
+                                    Make Unpaid
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -1268,6 +1381,27 @@ export default function Invoice() {
                                 <span className="text-lg font-bold">Grand Total</span>
                                 <span className="text-2xl font-black">${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                               </div>
+                              {isAdvanceUnpaidStatus(editStatus) && (
+                                <>
+                                  <div>
+                                    <label htmlFor="edit-payable-amount" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Payable Amount</label>
+                                    <input
+                                      id="edit-payable-amount"
+                                      type="text"
+                                      value={editPayableAmount}
+                                      onChange={(e) => setEditPayableAmount(sanitizeCurrencyInput(e.target.value))}
+                                      placeholder="0.00"
+                                      inputMode="decimal"
+                                      pattern="^\d+(\.\d{1,2})?$"
+                                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                                    />
+                                  </div>
+                                  <div className="flex justify-between text-xs font-semibold uppercase tracking-wide text-amber-600">
+                                    <span>Remaining</span>
+                                    <span>${remainingAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                  </div>
+                                </>
+                              )}
                             </div>
                           </div>
                         </div>
