@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { InvoiceDocument } from '@/components/Invoice'
+import InvoicePayForm from '@/components/InvoicePayForm'
 
 type BrandOption = {
   id: number
@@ -36,6 +37,7 @@ export default function InvoiceView({ invoiceId, publicView = false }: { invoice
   const [loading, setLoading] = useState(true)
   const [invoice, setInvoice] = useState<InvoiceRow | null>(null)
   const [brands, setBrands] = useState<BrandOption[]>([])
+  const [paymentCompletedLocally, setPaymentCompletedLocally] = useState(false)
 
   useEffect(() => {
     async function fetchData() {
@@ -120,10 +122,11 @@ export default function InvoiceView({ invoiceId, publicView = false }: { invoice
   const payableAmount = Math.min(Number(invoice.payable_amount ?? 0), grandTotal)
   const remainingAmount = Math.max(grandTotal - payableAmount, 0)
   const showPayableDetails = invoice.payable_amount != null
+  const amountToPay = showPayableDetails && payableAmount > 0 ? payableAmount : grandTotal
 
   return (
     <div id="invoice-view-root" className={publicView ? 'space-y-4 p-4 sm:p-6 print:p-0 print:m-0' : 'p-4 sm:p-6 space-y-4 print:p-0 print:m-0'}>
-      {showPaymentCompleteBanner && (
+      {(showPaymentCompleteBanner || paymentCompletedLocally) && (
         <div className="no-print mb-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
           <p className="text-sm font-semibold text-emerald-400">Payment complete</p>
           <p className="mt-1 text-xs text-slate-400">Your invoice has been marked as paid.</p>
@@ -154,8 +157,20 @@ export default function InvoiceView({ invoiceId, publicView = false }: { invoice
           rootId="invoice-print-root"
           includeDownloadButton
           showStatusBadge
-          onGrandTotalClick={!isPaid && !isProcessing ? () => router.push(`/invoice/pay?id=${invoice.id}`) : undefined}
           showPaymentDetails={!publicView}
+          paymentFormContent={!publicView && !isPaid && !isProcessing ? (
+            <InvoicePayForm
+              invoiceId={invoice.id}
+              grandTotal={amountToPay}
+              initialEmail={invoice.email}
+              initialPhone={invoice.phone}
+              embedded
+              onPaymentSuccess={() => {
+                setPaymentCompletedLocally(true)
+                setInvoice((current) => (current ? { ...current, status: 'Paid' } : current))
+              }}
+            />
+          ) : null}
           totalNote={showPayableDetails ? (
             <div className="space-y-1 text-right text-xs font-semibold uppercase tracking-wide text-amber-600">
               <p>Payable Amount: ${payableAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
