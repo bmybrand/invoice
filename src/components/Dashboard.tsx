@@ -1,6 +1,8 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { supabase } from '@/lib/supabase'
 import {
   BarChart,
   Bar,
@@ -13,40 +15,189 @@ import {
   Cell,
 } from 'recharts'
 
-const topOperatives = [
-  { name: 'Jaxson Steele', pct: '98.4%', rank: 1, color: 'text-orange-500' },
-  { name: 'Luna Vane', pct: '94.2%', rank: 2, color: 'text-white' },
-  { name: 'Kai Chen', pct: '94.2%', rank: 3, color: 'text-slate-400', opacity: 'opacity-80' },
-  { name: 'Sarah Miller', pct: '94.2%', rank: 4, color: 'text-slate-500', opacity: 'opacity-60' },
-  { name: 'Aiden Ross', pct: '94.2%', rank: 5, color: 'text-slate-600', opacity: 'opacity-40' },
+type TopOperativeStyle = {
+  color: string
+  opacity?: string
+}
+
+const topOperativeStyles: TopOperativeStyle[] = [
+  { color: 'text-orange-500' },
+  { color: 'text-white' },
+  { color: 'text-slate-400', opacity: 'opacity-80' },
+  { color: 'text-slate-500', opacity: 'opacity-60' },
+  { color: 'text-slate-600', opacity: 'opacity-40' },
 ]
 
 const dailyRevenueData = [
-  { day: 'MON', value: 42, highlight: false },
-  { day: 'TUE', value: 68, highlight: false },
-  { day: 'WED', value: 55, highlight: false },
-  { day: 'THU', value: 88, highlight: true },
-  { day: 'FRI', value: 62, highlight: false },
-  { day: 'SAT', value: 75, highlight: false },
-  { day: 'SUN', value: 48, highlight: false },
+  { day: 'MON', value: 0, highlight: false },
+  { day: 'TUE', value: 0, highlight: false },
+  { day: 'WED', value: 0, highlight: false },
+  { day: 'THU', value: 0, highlight: true },
+  { day: 'FRI', value: 0, highlight: false },
+  { day: 'SAT', value: 0, highlight: false },
+  { day: 'SUN', value: 0, highlight: false },
 ]
 
 const growthVelocityData = [
-  { month: 'JAN', value: 32 },
-  { month: 'FEB', value: 38 },
-  { month: 'MAR', value: 45 },
-  { month: 'APR', value: 52 },
-  { month: 'MAY', value: 58 },
-  { month: 'JUN', value: 65 },
-  { month: 'JUL', value: 72 },
-  { month: 'AUG', value: 78 },
-  { month: 'SEP', value: 85 },
-  { month: 'OCT', value: 90 },
-  { month: 'NOV', value: 94 },
-  { month: 'DEC', value: 98 },
+  { month: 'JAN', value: 0 },
+  { month: 'FEB', value: 0 },
+  { month: 'MAR', value: 0 },
+  { month: 'APR', value: 0 },
+  { month: 'MAY', value: 0 },
+  { month: 'JUN', value: 0 },
+  { month: 'JUL', value: 0 },
+  { month: 'AUG', value: 0 },
+  { month: 'SEP', value: 0 },
+  { month: 'OCT', value: 0 },
+  { month: 'NOV', value: 0 },
+  { month: 'DEC', value: 0 },
 ]
 
+type InvoiceServiceLine = {
+  qty?: number
+  price?: string | number
+}
+
+type DashboardMetric = {
+  changeLabel: string
+  valueLabel: string
+}
+
 export function Dashboard() {
+  const [topOperatives, setTopOperatives] = useState<Array<{
+    id: number
+    name: string
+    amount: string
+    rank: number
+    color: string
+    opacity?: string
+  }>>([])
+  const [metrics, setMetrics] = useState<{
+    today: DashboardMetric
+    month: DashboardMetric
+    upsale: DashboardMetric
+  }>({
+    today: { changeLabel: '0%', valueLabel: '$ 0.00' },
+    month: { changeLabel: '0%', valueLabel: '$ 0.00' },
+    upsale: { changeLabel: '0%', valueLabel: '$ 0.00' },
+  })
+
+  useEffect(() => {
+    async function loadDashboardData() {
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('id, status, amount, service, invoice_date, invoice_type, invoice_creator_id, employees!invoice_creator_id(employee_name)')
+
+      if (error) {
+        console.error('Failed to fetch dashboard invoices', error)
+        setTopOperatives([])
+        setMetrics({
+          today: { changeLabel: '0%', valueLabel: '$ 0.00' },
+          month: { changeLabel: '0%', valueLabel: '$ 0.00' },
+          upsale: { changeLabel: '0%', valueLabel: '$ 0.00' },
+        })
+        return
+      }
+
+      const invoices = (data as Array<Record<string, unknown>> | null) ?? []
+      const todayIso = new Date().toISOString().slice(0, 10)
+      const currentMonth = todayIso.slice(0, 7)
+      const currentYear = todayIso.slice(0, 4)
+      const todayDate = new Date(`${todayIso}T00:00:00`)
+      const lastMonthDate = new Date(todayDate)
+      lastMonthDate.setMonth(lastMonthDate.getMonth() - 1)
+      const lastMonth = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, '0')}`
+      const lastYear = String(Number(currentYear) - 1)
+
+      const getInvoiceAmount = (row: Record<string, unknown>) => {
+        const directAmount = Number(String(row.amount ?? '').replace(/[^0-9.-]/g, ''))
+        const serviceLines = Array.isArray(row.service) ? (row.service as InvoiceServiceLine[]) : []
+        const derivedAmount = serviceLines.reduce((sum, line) => {
+          const qty = Number(line.qty ?? 0) || 0
+          const price = Number(String(line.price ?? '').replace(/[^0-9.-]/g, '')) || 0
+          return sum + qty * price
+        }, 0)
+        return directAmount > 0 ? directAmount : derivedAmount
+      }
+
+      const paidInvoices = invoices.filter((row) => {
+        const normalizedStatus = String(row.status ?? '').toLowerCase()
+        return normalizedStatus.includes('paid') || normalizedStatus.includes('completed')
+      })
+
+      const totalsByCreator = new Map<number, { id: number; name: string; total: number }>()
+      for (const row of paidInvoices) {
+        const creatorId = Number(row.invoice_creator_id ?? 0)
+        if (!creatorId) continue
+        const employee = row.employees as { employee_name?: string } | { employee_name?: string }[] | null
+        const employeeRecord = Array.isArray(employee) ? employee[0] : employee
+        const creatorName = employeeRecord?.employee_name?.trim() || '--'
+        const invoiceAmount = getInvoiceAmount(row)
+        const existing = totalsByCreator.get(creatorId)
+        if (existing) {
+          existing.total += invoiceAmount
+        } else {
+          totalsByCreator.set(creatorId, { id: creatorId, name: creatorName, total: invoiceAmount })
+        }
+      }
+
+      const rankedCreators = Array.from(totalsByCreator.values())
+        .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name))
+        .slice(0, 5)
+      setTopOperatives(
+        rankedCreators.map((creator, index) => ({
+          id: creator.id,
+          name: creator.name,
+          amount: `$${creator.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          rank: index + 1,
+          color: topOperativeStyles[index]?.color ?? 'text-slate-400',
+          opacity: topOperativeStyles[index]?.opacity,
+        }))
+      )
+
+      const sumAmounts = (rows: Array<Record<string, unknown>>) =>
+        rows.reduce((sum, row) => sum + getInvoiceAmount(row), 0)
+
+      const currentDayPaid = paidInvoices.filter((row) => String(row.invoice_date ?? '').slice(0, 10) === todayIso)
+      const currentMonthPaid = paidInvoices.filter((row) => String(row.invoice_date ?? '').slice(0, 7) === currentMonth)
+      const lastMonthPaid = paidInvoices.filter((row) => String(row.invoice_date ?? '').slice(0, 7) === lastMonth)
+      const currentMonthUpsales = currentMonthPaid.filter(
+        (row) => String(row.invoice_type ?? '').toLowerCase() === 'upsale'
+      )
+      const lastYearPaid = paidInvoices.filter((row) => String(row.invoice_date ?? '').slice(0, 4) === lastYear)
+
+      const formatCurrency = (value: number) =>
+        `$ ${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      const formatChange = (current: number, previous: number) => {
+        if (previous <= 0) return current > 0 ? '100%' : '0%'
+        return `${Math.round(((current - previous) / previous) * 100)}%`
+      }
+
+      const todayTotal = sumAmounts(currentDayPaid)
+      const monthTotal = sumAmounts(currentMonthPaid)
+      const lastMonthTotal = sumAmounts(lastMonthPaid)
+      const upsaleTotal = sumAmounts(currentMonthUpsales)
+      const lastYearTotal = sumAmounts(lastYearPaid)
+
+      setMetrics({
+        today: {
+          changeLabel: formatChange(todayTotal, lastMonthTotal),
+          valueLabel: formatCurrency(todayTotal),
+        },
+        month: {
+          changeLabel: formatChange(monthTotal, lastYearTotal),
+          valueLabel: formatCurrency(monthTotal),
+        },
+        upsale: {
+          changeLabel: monthTotal > 0 ? `${Math.round((upsaleTotal / monthTotal) * 100)}%` : '0%',
+          valueLabel: formatCurrency(upsaleTotal),
+        },
+      })
+    }
+
+    loadDashboardData()
+  }, [])
+
   return (
     <div className="flex flex-col gap-4 sm:gap-6">
         <div className="flex justify-between items-start gap-2">
@@ -72,12 +223,12 @@ export function Dashboard() {
                     <svg className="h-5 w-5 sm:h-6 sm:w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
                   </div>
                   <div className="text-right">
-                    <p className="text-[10px] font-black leading-4 text-green-400 sm:text-xs">+12.5%</p>
+                    <p className="text-[10px] font-black leading-4 text-green-400 sm:text-xs">{metrics.today.changeLabel}</p>
                     <p className="text-[9px] font-normal uppercase leading-3 text-slate-500 sm:text-[10px] sm:leading-4">vs last month</p>
                   </div>
                 </div>
                 <p className="mt-3 text-[10px] font-black uppercase leading-4 tracking-[2.4px] text-slate-400 sm:mt-4 sm:text-xs">Payments - Today</p>
-                <p className="mt-0.5 text-xl font-black leading-8 text-white sm:mt-1 sm:text-2xl md:text-3xl md:leading-9">$ 4,280.00</p>
+                <p className="mt-0.5 text-xl font-black leading-8 text-white sm:mt-1 sm:text-2xl md:text-3xl md:leading-9">{metrics.today.valueLabel}</p>
               </div>
               <div className="relative min-h-[140px] min-w-0 w-full flex-1 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900 to-gray-900 p-4 sm:min-h-[180px] sm:rounded-3xl sm:p-6 lg:min-w-0">
                 <div className="flex justify-between items-start">
@@ -85,12 +236,12 @@ export function Dashboard() {
                     <svg className="h-5 w-5 sm:h-6 sm:w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" /></svg>
                   </div>
                   <div className="text-right">
-                    <p className="text-[10px] font-black leading-4 text-blue-400 sm:text-xs">+8.2%</p>
+                    <p className="text-[10px] font-black leading-4 text-blue-400 sm:text-xs">{metrics.month.changeLabel}</p>
                     <p className="text-[9px] font-normal uppercase leading-3 text-slate-500 sm:text-[10px] sm:leading-4">vs last year</p>
                   </div>
                 </div>
                 <p className="mt-3 text-[10px] font-black uppercase leading-4 tracking-[2.4px] text-slate-400 sm:mt-4 sm:text-xs">Payments - Month</p>
-                <p className="mt-0.5 text-xl font-black leading-8 text-white sm:mt-1 sm:text-2xl md:text-3xl md:leading-9">$ 92,450.00</p>
+                <p className="mt-0.5 text-xl font-black leading-8 text-white sm:mt-1 sm:text-2xl md:text-3xl md:leading-9">{metrics.month.valueLabel}</p>
               </div>
               <div className="relative min-h-[140px] min-w-0 w-full flex-1 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900 to-gray-900 p-4 sm:min-h-[180px] sm:rounded-3xl sm:p-6 lg:min-w-0">
                 <div className="flex justify-between items-start">
@@ -98,12 +249,12 @@ export function Dashboard() {
                     <svg className="h-5 w-5 sm:h-6 sm:w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41" /></svg>
                   </div>
                   <div className="text-right">
-                    <p className="text-[10px] font-black leading-4 text-purple-400 sm:text-xs">+24.0%</p>
+                    <p className="text-[10px] font-black leading-4 text-purple-400 sm:text-xs">{metrics.upsale.changeLabel}</p>
                     <p className="text-[9px] font-normal uppercase leading-3 text-slate-500 sm:text-[10px] sm:leading-4">Velocity</p>
                   </div>
                 </div>
                 <p className="mt-3 text-[10px] font-black uppercase leading-4 tracking-[2.4px] text-slate-400 sm:mt-4 sm:text-xs">Upsale - Month</p>
-                <p className="mt-0.5 text-xl font-black leading-8 text-white sm:mt-1 sm:text-2xl md:text-3xl md:leading-9">$ 18,300.00</p>
+                <p className="mt-0.5 text-xl font-black leading-8 text-white sm:mt-1 sm:text-2xl md:text-3xl md:leading-9">{metrics.upsale.valueLabel}</p>
               </div>
             </div>
 
@@ -116,10 +267,10 @@ export function Dashboard() {
                 <div className="relative flex flex-col gap-2 sm:gap-4">
                   <div className="flex items-center gap-2">
                     <div className="h-px w-6 bg-orange-500 sm:w-8" />
-                    <p className="text-[10px] font-black uppercase leading-4 tracking-[3.6px] text-orange-500 sm:text-xs">Annual Dominance Target 2026</p>
+                    <p className="text-[10px] font-black uppercase leading-4 tracking-[3.6px] text-orange-500 sm:text-xs">Annual Dominance Target 0</p>
                   </div>
-                  <p className="break-words text-2xl font-black leading-tight text-white sm:text-3xl md:text-4xl md:leading-tight lg:text-6xl xl:text-7xl xl:leading-[72px] 2xl:text-7xl">$ 1,240,000.00</p>
-                  <p className="max-w-[576px] pt-1 text-xs font-medium leading-6 text-slate-400 sm:pt-2 sm:text-sm md:text-base md:leading-7 lg:text-lg">You&apos;ve reached 84% of your annual revenue target. The brand is accelerating at record speeds.</p>
+                  <p className="break-words text-2xl font-black leading-tight text-white sm:text-3xl md:text-4xl md:leading-tight lg:text-6xl xl:text-7xl xl:leading-[72px] 2xl:text-7xl">$ 0.00</p>
+                  <p className="max-w-[576px] pt-1 text-xs font-medium leading-6 text-slate-400 sm:pt-2 sm:text-sm md:text-base md:leading-7 lg:text-lg">You&apos;ve reached 0% of your annual revenue target. The brand is accelerating at record speeds.</p>
                   <div className="flex flex-wrap items-start gap-2 pt-2 sm:gap-4 sm:pt-4">
                     <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 backdrop-blur-[6px] sm:gap-3 sm:rounded-2xl sm:px-6 sm:py-3">
                       <div className="flex h-4 w-4 items-center justify-center text-orange-500 sm:h-5 sm:w-5">
@@ -139,8 +290,8 @@ export function Dashboard() {
                         </svg>
                       </div>
                       <div>
-                        <p className="text-[9px] font-black uppercase leading-4 text-slate-500 sm:text-[10px]">Q3 Growth</p>
-                        <p className="text-xs font-bold uppercase leading-4 tracking-wide text-white sm:text-sm sm:leading-5">+42% Peak</p>
+                        <p className="text-[9px] font-black uppercase leading-4 text-slate-500 sm:text-[10px]">Q0 Growth</p>
+                        <p className="text-xs font-bold uppercase leading-4 tracking-wide text-white sm:text-sm sm:leading-5">0% Peak</p>
                       </div>
                     </div>
                     <Link href="#" className="ml-auto rounded-xl bg-orange-500 px-4 py-2 text-[10px] font-black uppercase leading-4 tracking-wider text-white shadow-[0px_0px_20px_0px_rgba(249,115,22,0.15)] hover:bg-orange-600 sm:rounded-2xl sm:px-8 sm:py-3 sm:text-xs">
@@ -163,8 +314,8 @@ export function Dashboard() {
                 <div className="relative min-h-0 flex-1 min-w-0">
                   <div className="min-h-0 h-full overflow-y-auto scrollbar-thin pr-0.5">
                     <div className="flex flex-col gap-2 sm:gap-4">
-                      {topOperatives.map((op, i) => (
-                        <div key={op.name} className={`flex justify-between items-center rounded-lg border border-white/5 bg-white/5 px-2 py-2 sm:rounded-xl sm:px-3 sm:py-3 ${op.opacity || ''}`}>
+                      {topOperatives.map((op) => (
+                        <div key={op.id} className={`flex justify-between items-center rounded-lg border border-white/5 bg-white/5 px-2 py-2 sm:rounded-xl sm:px-3 sm:py-3 ${op.opacity || ''}`}>
                           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
                             <div className="relative shrink-0">
                               <img src="https://placehold.co/40x40" alt="" className="h-8 w-8 rounded-lg shadow-[0px_0px_0px_1px_rgba(255,255,255,0.10)] sm:h-10 sm:w-10 sm:rounded-xl" />
@@ -172,7 +323,7 @@ export function Dashboard() {
                             </div>
                             <p className="truncate text-xs font-bold leading-4 text-white sm:text-sm sm:leading-5">{op.name}</p>
                           </div>
-                          <p className={`shrink-0 text-xs font-black leading-4 sm:text-sm sm:leading-5 ${op.rank === 1 ? 'text-orange-500' : op.color}`}>{op.pct}</p>
+                          <p className={`shrink-0 text-xs font-black leading-4 sm:text-sm sm:leading-5 ${op.rank === 1 ? 'text-orange-500' : op.color}`}>{op.amount}</p>
                         </div>
                       ))}
                     </div>

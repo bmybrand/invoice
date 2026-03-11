@@ -24,6 +24,7 @@ type InvoiceRow = {
   amount: string
   status: string
   payable_amount: number | null
+  invoice_type: string
 }
 
 export default function InvoiceView({ invoiceId, publicView = false }: { invoiceId: number; publicView?: boolean }) {
@@ -76,6 +77,7 @@ export default function InvoiceView({ invoiceId, publicView = false }: { invoice
         amount: (invoiceData.amount as string) ?? '',
         status: (invoiceData.status as string) ?? 'Pending',
         payable_amount: invoiceData.payable_amount == null ? null : Number(invoiceData.payable_amount),
+        invoice_type: (invoiceData.invoice_type as string) ?? 'Standard',
       })
       setLoading(false)
     }

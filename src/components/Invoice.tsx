@@ -34,9 +34,15 @@ type InvoiceRow = {
   amount: string
   status: string
   payable_amount: number | null
+  invoice_type: string
 }
 
-const INVOICE_GRID = 'minmax(48px,0.6fr) minmax(100px,1.2fr) minmax(100px,1.2fr) minmax(100px,1.2fr) minmax(140px,1.5fr) minmax(90px,1.15fr) minmax(100px,1.2fr) minmax(90px,1fr) minmax(90px,1fr) 150px'
+type ActionMenuState = {
+  id: number
+  top: number
+  left: number
+}
+const INVOICE_GRID = 'minmax(48px,0.6fr) minmax(100px,1.2fr) minmax(100px,1.2fr) minmax(100px,1.2fr) minmax(140px,1.5fr) minmax(90px,1.15fr) minmax(100px,1.2fr) minmax(90px,1fr) minmax(90px,1fr) 72px'
 
 function SearchIcon({ className = 'h-4 w-4' }: { className?: string }) {
   return (
@@ -83,6 +89,14 @@ function ChevronDownIcon({ className = 'h-4 w-4' }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+    </svg>
+  )
+}
+
+function EllipsisVerticalIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.75h.008v.008H12V6.75zm0 5.25h.008v.008H12V12zm0 5.25h.008v.008H12v-.008z" />
     </svg>
   )
 }
@@ -173,6 +187,8 @@ function sanitizeCurrencyInput(value: string): string {
   return sanitizePriceInput(value)
 }
 
+const INVOICE_TYPE_OPTIONS = ['Standard', 'Upsale'] as const
+
 export function InvoiceDocument({
   invoice,
   brandMeta,
@@ -203,6 +219,7 @@ export function InvoiceDocument({
   const serviceLines = toServiceLines((invoice as unknown as { service?: unknown }).service)
   const subTotal = servicesSubtotal(serviceLines)
   const grandTotal = subTotal
+  const invoiceType = invoice.invoice_type || 'Standard'
 
   return (
     <div id={rootId} className="relative flex min-h-[calc(100vh-8rem)] flex-col overflow-visible bg-white shadow-xl print:min-h-0 print:overflow-visible">
@@ -301,6 +318,7 @@ export function InvoiceDocument({
             <p className="text-sm font-bold text-slate-900">Payment Details</p>
             <div className="invoice-payment-box mt-2 rounded-lg border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
               <p><span className="font-semibold text-slate-800">Card payments:</span> Stripe</p>
+              <p className="mt-1"><span className="font-semibold text-slate-800">Invoice type:</span> {invoiceType}</p>
             </div>
           </div>
         )}
@@ -356,6 +374,7 @@ export default function Invoice() {
   const [addPhone, setAddPhone] = useState('')
   const [addStatus, setAddStatus] = useState('Pending')
   const [addPayableAmount, setAddPayableAmount] = useState('')
+  const [addInvoiceType, setAddInvoiceType] = useState<string>(INVOICE_TYPE_OPTIONS[0])
   const [addLoading, setAddLoading] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
   const [editingInvoice, setEditingInvoice] = useState<InvoiceRow | null>(null)
@@ -365,11 +384,13 @@ export default function Invoice() {
   const [editPhone, setEditPhone] = useState('')
   const [editStatus, setEditStatus] = useState('Pending')
   const [editPayableAmount, setEditPayableAmount] = useState('')
+  const [editInvoiceType, setEditInvoiceType] = useState<string>(INVOICE_TYPE_OPTIONS[0])
   const [editLoading, setEditLoading] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
   const [deletingInvoice, setDeletingInvoice] = useState<InvoiceRow | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [currentUserEmployeeId, setCurrentUserEmployeeId] = useState<number | null>(null)
+  const [openActionMenu, setOpenActionMenu] = useState<ActionMenuState | null>(null)
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
@@ -423,6 +444,7 @@ export default function Invoice() {
         amount: ((row.amount as string) ?? '').trim() || subtotal.toFixed(2),
         status: (row.status as string) ?? 'Pending',
         payable_amount: row.payable_amount == null ? null : Number(row.payable_amount),
+        invoice_type: (row.invoice_type as string) ?? INVOICE_TYPE_OPTIONS[0],
       }
     })
     setInvoices(rows)
@@ -510,6 +532,33 @@ export default function Invoice() {
     if (currentPage > totalPages) setCurrentPage(1)
   }, [currentPage, totalPages])
 
+  useEffect(() => {
+    if (!openActionMenu) return
+    const closeMenu = () => setOpenActionMenu(null)
+    window.addEventListener('resize', closeMenu)
+    window.addEventListener('scroll', closeMenu, true)
+    return () => {
+      window.removeEventListener('resize', closeMenu)
+      window.removeEventListener('scroll', closeMenu, true)
+    }
+  }, [openActionMenu])
+
+  function toggleActionMenu(id: number, target: HTMLElement) {
+    if (openActionMenu?.id === id) {
+      setOpenActionMenu(null)
+      return
+    }
+    const rect = target.getBoundingClientRect()
+    const menuWidth = 148
+    const menuHeight = 132
+    const left = Math.min(window.innerWidth - menuWidth - 8, Math.max(8, rect.right - menuWidth))
+    const top =
+      rect.bottom + 8 + menuHeight > window.innerHeight - 8
+        ? Math.max(8, rect.top - menuHeight - 8)
+        : rect.bottom + 8
+    setOpenActionMenu({ id, top, left })
+  }
+
   function validateServiceLines(lines: ServiceLine[]): { valid: boolean; message: string } {
     if (lines.length === 0) return { valid: false, message: 'At least one service is required.' }
     const hasIncomplete = lines.some((line) => !line.description.trim() || !line.price.trim() || (Number(line.qty) || 0) <= 0)
@@ -592,6 +641,7 @@ export default function Invoice() {
       amount: subTotal.toFixed(2),
       status: addStatus,
       payable_amount: payableAmount > 0 ? payableAmount.toFixed(2) : null,
+      invoice_type: addInvoiceType,
     })
 
     setAddLoading(false)
@@ -607,6 +657,7 @@ export default function Invoice() {
     setAddPhone('')
     setAddStatus('Pending')
     setAddPayableAmount('')
+    setAddInvoiceType(INVOICE_TYPE_OPTIONS[0])
     await fetchInvoices()
   }
 
@@ -618,6 +669,7 @@ export default function Invoice() {
     setEditPhone(inv.phone || '')
     setEditStatus(inv.status || 'Pending')
     setEditPayableAmount(inv.payable_amount == null ? '' : String(inv.payable_amount))
+    setEditInvoiceType(inv.invoice_type || INVOICE_TYPE_OPTIONS[0])
     setEditError(null)
   }
 
@@ -648,6 +700,7 @@ export default function Invoice() {
         amount: subTotal.toFixed(2),
         status: editStatus,
         payable_amount: payableAmount > 0 ? payableAmount.toFixed(2) : null,
+        invoice_type: editInvoiceType,
       })
       .eq('id', editingInvoice.id)
 
@@ -800,34 +853,34 @@ export default function Invoice() {
           <div className="w-full" style={{ minWidth: '1180px' }}>
             {/* Table header */}
             <div className="w-full grid bg-slate-900/50 border-b border-slate-700" style={{ gridTemplateColumns: INVOICE_GRID }}>
-              <div className="px-4 sm:px-6 py-4 min-w-0">
+              <div className="flex min-w-0 items-center px-4 sm:px-6 py-4">
                 <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Invoice ID</span>
               </div>
-              <div className="px-4 sm:px-6 py-4 min-w-0">
+              <div className="flex min-w-0 items-center px-4 sm:px-6 py-4">
                 <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Invoice Date</span>
               </div>
-              <div className="px-4 sm:px-6 py-4 min-w-0">
+              <div className="flex min-w-0 items-center px-4 sm:px-6 py-4">
                 <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Invoice Creator</span>
               </div>
-              <div className="px-4 sm:px-6 py-4 min-w-0">
+              <div className="flex min-w-0 items-center px-4 sm:px-6 py-4">
                 <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Brand Name</span>
               </div>
-              <div className="px-4 sm:px-6 py-4 min-w-0">
+              <div className="flex min-w-0 items-center px-4 sm:px-6 py-4">
                 <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Email</span>
               </div>
-              <div className="px-4 sm:px-6 py-4 min-w-0">
+              <div className="flex min-w-0 items-center px-4 sm:px-6 py-4">
                 <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Service</span>
               </div>
-              <div className="px-4 sm:px-6 py-4 min-w-0">
+              <div className="flex min-w-0 items-center px-4 sm:px-6 py-4">
                 <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Phone</span>
               </div>
-              <div className="px-4 sm:px-6 py-4 min-w-0">
+              <div className="flex min-w-0 items-center px-4 sm:px-6 py-4">
                 <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Amount</span>
               </div>
-              <div className="px-4 sm:px-6 py-4 min-w-0">
+              <div className="flex min-w-0 items-center px-4 sm:px-6 py-4">
                 <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Status</span>
               </div>
-              <div className="px-4 sm:px-6 py-4 text-right">
+              <div className="flex items-center justify-end px-4 sm:px-6 py-4 text-right">
                 <span className="text-slate-400 text-xs font-bold uppercase tracking-wide">Action</span>
               </div>
             </div>
@@ -889,34 +942,63 @@ export default function Invoice() {
                       {inv.status || '--'}
                     </span>
                   </div>
-                  <div className="px-4 sm:px-6 py-4 flex justify-end gap-1">
+                  <div className="px-4 sm:px-6 py-4 flex justify-end">
                     <button
                       type="button"
-                      onClick={() => router.push(`/invoice?id=${inv.id}`)}
-                      className="p-2 rounded-lg text-slate-400 hover:bg-slate-700/50 hover:text-blue-400 transition"
-                      aria-label="View"
+                      onClick={(e) => toggleActionMenu(inv.id, e.currentTarget)}
+                      className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-slate-300"
+                      aria-label="Actions"
+                      aria-haspopup="menu"
+                      aria-expanded={openActionMenu?.id === inv.id}
                     >
-                      <InfoIcon />
+                      <EllipsisVerticalIcon />
                     </button>
-                    {canEditInvoice(inv) && (
-                      <button
-                        type="button"
-                        onClick={() => openEditModal(inv)}
-                        className="p-2 rounded-lg text-slate-400 hover:bg-slate-700/50 hover:text-slate-300 transition"
-                        aria-label="Edit"
-                      >
-                        <PencilIcon />
-                      </button>
-                    )}
-                    {canDeleteInvoice(inv) && (
-                      <button
-                        type="button"
-                        onClick={() => setDeletingInvoice(inv)}
-                        className="p-2 rounded-lg text-slate-400 hover:bg-slate-700/50 hover:text-red-400 transition"
-                        aria-label="Delete"
-                      >
-                        <TrashIcon />
-                      </button>
+                    {openActionMenu?.id === inv.id && (
+                      <>
+                        <div className="fixed inset-0 z-40" aria-hidden onClick={() => setOpenActionMenu(null)} />
+                        <div
+                          className="fixed z-50 min-w-[148px] overflow-hidden rounded-xl border border-slate-700 bg-slate-900 shadow-xl"
+                          style={{ top: openActionMenu.top, left: openActionMenu.left }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOpenActionMenu(null)
+                              router.push(`/invoice?id=${inv.id}`)
+                            }}
+                            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-blue-400 transition hover:bg-slate-800"
+                          >
+                            <InfoIcon className="h-4 w-4" />
+                            View
+                          </button>
+                          {canEditInvoice(inv) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOpenActionMenu(null)
+                                openEditModal(inv)
+                              }}
+                              className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-slate-300 transition hover:bg-slate-800"
+                            >
+                              <PencilIcon className="h-4 w-4" />
+                              Edit
+                            </button>
+                          )}
+                          {canDeleteInvoice(inv) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOpenActionMenu(null)
+                                setDeletingInvoice(inv)
+                              }}
+                              className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-red-400 transition hover:bg-slate-800"
+                            >
+                              <TrashIcon className="h-4 w-4" />
+                              Delete
+                            </button>
+                          )}
+                        </div>
+                      </>
                     )}
                   </div>
                 </div>
@@ -1111,6 +1193,19 @@ export default function Invoice() {
                               <p className="text-sm font-bold text-slate-900">Payment Details</p>
                               <div className="mt-2 rounded-lg border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
                                 <p><span className="font-semibold text-slate-800">Card payments:</span> Stripe</p>
+                                <div className="mt-3">
+                                  <label htmlFor="add-invoice-type" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Invoice Type</label>
+                                  <select
+                                    id="add-invoice-type"
+                                    value={addInvoiceType}
+                                    onChange={(e) => setAddInvoiceType(e.target.value)}
+                                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                                  >
+                                    {INVOICE_TYPE_OPTIONS.map((option) => (
+                                      <option key={option} value={option}>{option}</option>
+                                    ))}
+                                  </select>
+                                </div>
                               </div>
                             </div>
                             <div>
@@ -1315,6 +1410,19 @@ export default function Invoice() {
                               <p className="text-sm font-bold text-slate-900">Payment Details</p>
                               <div className="mt-2 rounded-lg border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
                                 <p><span className="font-semibold text-slate-800">Card payments:</span> Stripe</p>
+                                <div className="mt-3">
+                                  <label htmlFor="edit-invoice-type" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Invoice Type</label>
+                                  <select
+                                    id="edit-invoice-type"
+                                    value={editInvoiceType}
+                                    onChange={(e) => setEditInvoiceType(e.target.value)}
+                                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                                  >
+                                    {INVOICE_TYPE_OPTIONS.map((option) => (
+                                      <option key={option} value={option}>{option}</option>
+                                    ))}
+                                  </select>
+                                </div>
                               </div>
                             </div>
                             <div>
