@@ -1,6 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 function EnvelopeIcon() {
@@ -20,6 +22,7 @@ function LockIcon() {
 }
 
 export function LoginForm() {
+  const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -35,14 +38,33 @@ export function LoginForm() {
       password,
     })
 
-    setLoading(false)
-
     if (signInError) {
+      setLoading(false)
       setError(signInError.message)
       return
     }
 
-    window.location.href = '/dashboard'
+    let sessionReady = false
+
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const { data } = await supabase.auth.getSession()
+      if (data.session) {
+        sessionReady = true
+        break
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 150))
+    }
+
+    setLoading(false)
+
+    if (!sessionReady) {
+      setError('Sign-in completed, but the session is still syncing. Please try again.')
+      return
+    }
+
+    router.replace('/dashboard')
+    router.refresh()
   }
 
   return (
@@ -51,9 +73,9 @@ export function LoginForm() {
         {/* Left column - form */}
         <div className="flex w-full flex-col justify-center bg-slate-800/80 px-5 py-8 sm:w-1/2 sm:px-12 sm:py-12 md:px-16 lg:px-20 lg:py-16 xl:px-24 xl:py-20">
         <div className="mx-auto w-full max-w-md sm:max-w-lg lg:max-w-xl">
-          <a href="/" className="text-2xl font-bold tracking-tight sm:text-3xl lg:text-4xl">
+          <Link href="/" className="text-2xl font-bold tracking-tight sm:text-3xl lg:text-4xl">
             <span className="text-white">Invoice</span> <span className="text-orange-500">CRM</span>
-          </a>
+          </Link>
 
           <h1 className="mt-6 text-3xl font-bold text-white sm:mt-8 sm:text-4xl lg:text-5xl">Welcome Back</h1>
           <p className="mt-2 text-sm text-slate-400 sm:mt-3 sm:text-base lg:text-lg">

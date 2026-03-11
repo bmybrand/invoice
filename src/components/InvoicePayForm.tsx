@@ -192,6 +192,10 @@ function PaymentFormInner({
   const [paying, setPaying] = useState(false)
   const [paymentError, setPaymentError] = useState<string | null>(null)
   const [paymentSubmitted, setPaymentSubmitted] = useState(false)
+  const [paymentSubmittedTitle, setPaymentSubmittedTitle] = useState('Your payment is being processed')
+  const [paymentSubmittedMessage, setPaymentSubmittedMessage] = useState(
+    'You will receive a confirmation once the payment is complete. You can close this page or return to view the invoice.'
+  )
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -213,30 +217,7 @@ function PaymentFormInner({
     setPaying(true)
     setPaymentError(null)
 
-    const { error: insertError } = await supabase.from('payment_submissions').insert({
-      invoice_id: invoiceId,
-      full_name: fullName.trim(),
-      phone: phoneNumber.trim(),
-      email: emailAddress.trim(),
-      street_address: streetAddress.trim(),
-      city: city.trim(),
-      state_region: stateRegion.trim(),
-      zip_code: zipCode.trim(),
-      name_on_card: null,
-      card_last4: null,
-      card_expiry_month: null,
-      card_expiry_year: null,
-      amount_paid: grandTotal,
-    })
-
-    if (insertError) {
-      setPaying(false)
-      console.error('Failed to save payment data', insertError)
-      setPaymentError('Could not save payment details. Please try again.')
-      return
-    }
-
-    const { error: confirmError } = await stripe.confirmPayment({
+    const { error: confirmError, paymentIntent } = await stripe.confirmPayment({
       elements,
       redirect: 'if_required',
       confirmParams: {
@@ -270,18 +251,39 @@ function PaymentFormInner({
       return
     }
 
-    const res = await fetch(`/api/invoices/${invoiceId}/mark-paid`, { method: 'POST' })
-    if (!res.ok) {
-      const data = (await res.json().catch(() => ({}))) as { error?: string }
-      const msg = data?.error ?? `Request failed (${res.status})`
-      console.error('Failed to update invoice status', res.status, msg)
-      setPaymentError(
-        msg.startsWith('Server not configured') || msg.includes('Processing') || msg.includes('migration')
-          ? msg
-          : 'Payment submitted but status could not be updated. Please contact support.'
-      )
+    const { error: insertError } = await supabase.from('payment_submissions').insert({
+      invoice_id: invoiceId,
+      full_name: fullName.trim(),
+      phone: phoneNumber.trim(),
+      email: emailAddress.trim(),
+      street_address: streetAddress.trim(),
+      city: city.trim(),
+      state_region: stateRegion.trim(),
+      zip_code: zipCode.trim(),
+      name_on_card: null,
+      card_last4: null,
+      card_expiry_month: null,
+      card_expiry_year: null,
+      amount_paid: grandTotal,
+    })
+
+    if (insertError) {
+      console.error('Failed to save payment data', insertError)
+      setPaymentError('Payment succeeded, but we could not save the payment details. Please contact support.')
       setPaying(false)
       return
+    }
+
+    const paymentStatus = paymentIntent?.status ?? 'processing'
+
+    if (paymentStatus === 'succeeded') {
+      setPaymentSubmittedTitle('Payment submitted successfully')
+      setPaymentSubmittedMessage('Your payment has been confirmed. You can close this page or return to view the invoice.')
+    } else {
+      setPaymentSubmittedTitle('Your payment is being processed')
+      setPaymentSubmittedMessage(
+        'You will receive a confirmation once the payment is complete. You can close this page or return to view the invoice.'
+      )
     }
 
     setPaying(false)
@@ -291,10 +293,8 @@ function PaymentFormInner({
   if (paymentSubmitted) {
     return (
       <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-8 text-center">
-        <h2 className="text-xl font-bold text-emerald-400">Your payment is being processed</h2>
-        <p className="mt-2 text-sm text-slate-400">
-          You will receive a confirmation once the payment is complete. You can close this page or return to view the invoice.
-        </p>
+        <h2 className="text-xl font-bold text-emerald-400">{paymentSubmittedTitle}</h2>
+        <p className="mt-2 text-sm text-slate-400">{paymentSubmittedMessage}</p>
         <button
           type="button"
           onClick={() => router.push(`/invoice?id=${invoiceId}`)}

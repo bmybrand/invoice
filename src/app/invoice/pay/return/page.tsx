@@ -1,5 +1,7 @@
 import { redirect } from 'next/navigation'
-import { createClient } from '@supabase/supabase-js'
+import Stripe from 'stripe'
+
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY
 
 export default async function InvoicePayReturnPage({
   searchParams,
@@ -13,12 +15,21 @@ export default async function InvoicePayReturnPage({
     redirect('/')
   }
 
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!
-  )
+  if (!stripeSecretKey) {
+    redirect(`/invoice?id=${invoiceId}&payment=processing`)
+  }
 
-  await supabase.from('invoices').update({ status: 'Paid' }).eq('id', invoiceId)
+  const paymentIntentId = params?.payment_intent
+  if (!paymentIntentId) {
+    redirect(`/invoice?id=${invoiceId}&payment=processing`)
+  }
 
-  redirect(`/invoice?id=${invoiceId}&payment=success`)
+  const stripe = new Stripe(stripeSecretKey)
+  const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId)
+
+  if (paymentIntent.status === 'succeeded') {
+    redirect(`/invoice?id=${invoiceId}&payment=success`)
+  }
+
+  redirect(`/invoice?id=${invoiceId}&payment=processing`)
 }

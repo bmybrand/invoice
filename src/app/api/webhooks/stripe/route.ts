@@ -4,16 +4,21 @@ import { createClient } from '@supabase/supabase-js'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!)
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!
-)
+const supabase = serviceRoleKey
+  ? createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey)
+  : null
 
 export async function POST(req: Request) {
   if (!webhookSecret) {
     console.error('STRIPE_WEBHOOK_SECRET is not set')
     return NextResponse.json({ error: 'Webhook not configured' }, { status: 500 })
+  }
+
+  if (!supabase) {
+    console.error('SUPABASE_SERVICE_ROLE_KEY is not set')
+    return NextResponse.json({ error: 'Webhook database client is not configured' }, { status: 500 })
   }
 
   const body = await req.text()
@@ -23,7 +28,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Missing stripe-signature' }, { status: 400 })
   }
 
-  let event: Stripe.Event;
+  let event: Stripe.Event
 
   try {
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret)
