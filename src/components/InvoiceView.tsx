@@ -204,6 +204,8 @@ export default function InvoiceView({ invoiceId, publicView = false }: { invoice
 
           if (clonedRoot instanceof clonedDocument.defaultView!.HTMLElement) {
             clonedRoot.style.boxShadow = 'none'
+            clonedRoot.style.border = 'none'
+            clonedRoot.style.borderWidth = '0'
             clonedRoot.style.borderRadius = '0'
             clonedRoot.style.margin = '0'
             clonedRoot.style.width = `${root.scrollWidth}px`
@@ -275,7 +277,7 @@ export default function InvoiceView({ invoiceId, publicView = false }: { invoice
           Back to Invoices
         </button>
       )}
-      <div className="mx-auto max-w-[1120px] print:max-w-none print:m-0">
+      <div className="mx-auto max-w-[1120px] overflow-hidden rounded-sm border border-[#2e3b52] print:max-w-none print:m-0 print:border-0">
         <InvoiceDocument
           invoice={invoice as never}
           brandMeta={brandMeta as never}
