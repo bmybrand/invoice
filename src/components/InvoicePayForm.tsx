@@ -3,14 +3,42 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { loadStripe } from '@stripe/stripe-js'
-import { CardElement, Elements, useElements, useStripe } from '@stripe/react-stripe-js'
+import {
+  CardCvcElement,
+  CardExpiryElement,
+  CardNumberElement,
+  Elements,
+  useElements,
+  useStripe,
+} from '@stripe/react-stripe-js'
 import { supabase } from '@/lib/supabase'
 
 const stripePublishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 const stripePromise = stripePublishableKey ? loadStripe(stripePublishableKey) : null
 
 const inputClass =
-  'mt-1 w-full rounded-lg border border-slate-700 bg-slate-950/90 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20'
+  'mt-2 h-12 w-full rounded-[10px] border border-[#252d41] bg-[#262b40] px-4 text-sm font-medium text-white placeholder:text-[#6f7ca0] focus:border-[#ff6400] focus:outline-none focus:ring-2 focus:ring-[#ff6400]/20'
+
+const textareaClass =
+  'mt-2 w-full rounded-[10px] border border-[#252d41] bg-[#262b40] px-4 py-3 text-sm font-medium text-white placeholder:text-[#6f7ca0] focus:border-[#ff6400] focus:outline-none focus:ring-2 focus:ring-[#ff6400]/20'
+
+const sectionClass =
+  'rounded-[18px] border border-[#252d41] bg-[#0f172b] p-4 sm:p-5'
+
+const stripeBaseStyle = {
+  color: '#ffffff',
+  fontSize: '16px',
+  fontFamily: 'system-ui, sans-serif',
+  fontWeight: '500',
+  '::placeholder': {
+    color: '#6f7ca0',
+  },
+}
+
+const stripeInvalidStyle = {
+  color: '#fca5a5',
+  iconColor: '#fca5a5',
+}
 
 const COUNTRY_OPTIONS = [
   { code: 'US', label: 'United States' },
@@ -26,6 +54,39 @@ const COUNTRY_OPTIONS = [
 
 function normalizeCountryCode(value: string): string {
   return value.trim().toUpperCase()
+}
+
+function UserInfoIcon() {
+  return (
+    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6.75a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.5 20.118a7.5 7.5 0 0115 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.5-1.632z" />
+    </svg>
+  )
+}
+
+function PaymentDetailsIcon() {
+  return (
+    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 7.5h16.5m-15-2.25h13.5A1.5 1.5 0 0120.25 6.75v10.5a1.5 1.5 0 01-1.5 1.5H5.25a1.5 1.5 0 01-1.5-1.5V6.75a1.5 1.5 0 011.5-1.5z" />
+    </svg>
+  )
+}
+
+function CardGlyphIcon() {
+  return (
+    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 8.25h16.5m-14.25 3h3m-4.5-4.5h13.5A1.5 1.5 0 0120.25 8.25v7.5a1.5 1.5 0 01-1.5 1.5H5.25a1.5 1.5 0 01-1.5-1.5v-7.5a1.5 1.5 0 011.5-1.5z" />
+    </svg>
+  )
+}
+
+function PaymentMetaPill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[12px] border border-[#252d41] bg-[#262b40] px-4 py-3 text-center">
+      <p className="text-[11px] font-black uppercase tracking-[0.22em] text-white/85">{label}</p>
+      <p className="mt-1 text-sm font-semibold text-white">{value}</p>
+    </div>
+  )
 }
 
 function ContactFields({
@@ -60,21 +121,19 @@ function ContactFields({
   setZipCode: (value: string) => void
 }) {
   return (
-    <section className="rounded-xl bg-transparent p-2 sm:p-3">
+    <section className={sectionClass}>
       <div className="mb-5 flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400">
-          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6.75a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.5 20.118a7.5 7.5 0 0115 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.5-1.632z" />
-          </svg>
+        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#2d2235] text-[#ff8a00]">
+          <UserInfoIcon />
         </div>
         <div>
-          <p className="text-sm font-semibold text-white">User Information</p>
-          <p className="text-xs text-slate-300">Billing and contact details for this payment.</p>
+          <p className="text-[15px] font-bold text-white">User Information</p>
+          <p className="text-sm text-white/85">Billing and contact details for this payment.</p>
         </div>
       </div>
       <div className="space-y-4">
       <div>
-        <label htmlFor="pay-full-name" className="block text-xs font-semibold text-slate-200">
+        <label htmlFor="pay-full-name" className="block text-[13px] font-semibold text-white">
           Your Name
         </label>
         <input
@@ -87,7 +146,7 @@ function ContactFields({
         />
       </div>
       <div>
-        <label htmlFor="pay-phone" className="block text-xs font-semibold text-slate-200">
+        <label htmlFor="pay-phone" className="block text-[13px] font-semibold text-white">
           Your Phone
         </label>
         <input
@@ -100,7 +159,7 @@ function ContactFields({
         />
       </div>
       <div>
-        <label htmlFor="pay-email" className="block text-xs font-semibold text-slate-200">
+        <label htmlFor="pay-email" className="block text-[13px] font-semibold text-white">
           Your Email
         </label>
         <input
@@ -113,7 +172,7 @@ function ContactFields({
         />
       </div>
       <div>
-        <label htmlFor="pay-address" className="block text-xs font-semibold text-slate-200">
+        <label htmlFor="pay-address" className="block text-[13px] font-semibold text-white">
           Your Address
         </label>
         <textarea
@@ -121,12 +180,12 @@ function ContactFields({
           value={streetAddress}
           onChange={(e) => setStreetAddress(e.target.value)}
           rows={3}
-          className={inputClass}
+          className={textareaClass}
           placeholder="Street number and name..."
         />
       </div>
       <div>
-        <label htmlFor="pay-city" className="block text-xs font-semibold text-slate-200">
+        <label htmlFor="pay-city" className="block text-[13px] font-semibold text-white">
           City
         </label>
         <input
@@ -140,7 +199,7 @@ function ContactFields({
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label htmlFor="pay-state" className="block text-xs font-semibold text-slate-200">
+          <label htmlFor="pay-state" className="block text-[13px] font-semibold text-white">
             State
           </label>
           <input
@@ -153,7 +212,7 @@ function ContactFields({
           />
         </div>
         <div>
-          <label htmlFor="pay-zip" className="block text-xs font-semibold text-slate-200">
+          <label htmlFor="pay-zip" className="block text-[13px] font-semibold text-white">
             Zip Code
           </label>
           <input
@@ -286,7 +345,7 @@ function PaymentFormInner({
 
     if (!stripe || !elements) return
 
-    const cardElement = elements.getElement(CardElement)
+    const cardElement = elements.getElement(CardNumberElement)
     if (!cardElement) {
       setPaymentError('Card form is not ready yet. Please try again.')
       return
@@ -420,16 +479,16 @@ function PaymentFormInner({
 
   if (paymentSubmitted) {
     return (
-      <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-8 text-center">
+      <div className="rounded-[18px] border border-emerald-500/30 bg-[#0f172b] p-8 text-center shadow-[0_24px_60px_rgba(4,10,31,0.45)]">
         <h2 className="text-xl font-bold text-emerald-400">{paymentSubmittedTitle}</h2>
-        <p className="mt-2 text-sm text-slate-400">{paymentSubmittedMessage}</p>
+        <p className="mt-2 text-sm text-slate-300">{paymentSubmittedMessage}</p>
       </div>
     )
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-8">
-      <div className="grid gap-8 lg:grid-cols-2">
+    <form onSubmit={handleSubmit} className="space-y-7">
+      <div className="grid items-stretch gap-8 lg:grid-cols-2">
         <div>
           <ContactFields
             fullName={fullName}
@@ -448,93 +507,117 @@ function PaymentFormInner({
             setZipCode={setZipCode}
           />
         </div>
-        <section className="rounded-xl bg-transparent p-2 sm:p-3">
+        <section className={`${sectionClass} h-full`}>
           <div className="mb-5 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-500/10 text-sky-400">
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M3.75 6h16.5A1.5 1.5 0 0121.75 7.5v9A1.5 1.5 0 0120.25 18h-16.5a1.5 1.5 0 01-1.5-1.5v-9A1.5 1.5 0 013.75 6z" />
-              </svg>
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#072949] text-[#00b7ff]">
+              <PaymentDetailsIcon />
             </div>
             <div>
-              <p className="text-sm font-semibold text-white">Payment Details</p>
-              <p className="text-xs text-slate-300">Secure card payment powered by Stripe.</p>
+              <p className="text-[15px] font-bold text-white">Payment Details</p>
+              <p className="text-sm text-white/85">Secure card payment powered by Stripe.</p>
             </div>
           </div>
-          <div className="rounded-xl bg-transparent p-1">
+          <div className="pt-2">
             <div className="mb-4 flex items-start justify-between gap-4">
               <div>
-                <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-300">Card</p>
-                <p className="mt-1 text-lg font-bold text-white">Debit or Credit Card</p>
+                <p className="text-[12px] font-black uppercase tracking-[0.28em] text-white/90">Card</p>
+                <p className="mt-2 text-[18px] font-bold text-white">Debit or Credit Card</p>
               </div>
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-200">Secure</span>
+              <span className="pt-1 text-[12px] font-black uppercase tracking-[0.14em] text-white">Secure</span>
             </div>
-            <div className="rounded-lg border border-slate-700 bg-slate-950/90 px-4 py-4">
-              <CardElement
-                options={{
-                  hidePostalCode: true,
-                  style: {
-                    base: {
-                      color: '#f8fafc',
-                      fontSize: '16px',
-                      fontFamily: 'system-ui, sans-serif',
-                      '::placeholder': {
-                        color: '#64748b',
-                      },
-                    },
-                    invalid: {
-                      color: '#f87171',
-                    },
-                  },
-                }}
-              />
+            <div className="rounded-[10px] border border-[#252d41] bg-[#262b40] px-4 py-3.5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="flex min-w-0 flex-1 items-center gap-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-[#202948] text-[#5f7094]">
+                    <CardGlyphIcon />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <CardNumberElement
+                      options={{
+                        style: {
+                          base: {
+                            ...stripeBaseStyle,
+                            iconColor: '#6f7ca0',
+                          },
+                          invalid: stripeInvalidStyle,
+                        },
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3 sm:w-[190px] sm:flex-none">
+                  <div className="sm:border-l sm:border-[#3a4a70] sm:pl-3">
+                    <CardExpiryElement
+                      options={{
+                        style: {
+                          base: stripeBaseStyle,
+                          invalid: stripeInvalidStyle,
+                        },
+                      }}
+                    />
+                  </div>
+                  <div className="sm:border-l sm:border-[#3a4a70] sm:pl-3">
+                    <CardCvcElement
+                      options={{
+                        style: {
+                          base: stripeBaseStyle,
+                          invalid: stripeInvalidStyle,
+                        },
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
             <div className="mt-4">
-              <label htmlFor="pay-country" className="block text-xs font-semibold text-slate-200">
+              <label htmlFor="pay-country" className="block text-[13px] font-semibold text-white">
                 Country
               </label>
-              <select
-                id="pay-country"
-                value={country}
-                onChange={(e) => setCountry(normalizeCountryCode(e.target.value))}
-                className={inputClass}
-              >
-                {COUNTRY_OPTIONS.map((option) => (
-                  <option key={option.code} value={option.code}>
-                    {option.label} ({option.code})
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <select
+                  id="pay-country"
+                  value={country}
+                  onChange={(e) => setCountry(normalizeCountryCode(e.target.value))}
+                  className={`${inputClass} appearance-none pr-10`}
+                >
+                  {COUNTRY_OPTIONS.map((option) => (
+                    <option key={option.code} value={option.code}>
+                      {option.label} ({option.code})
+                    </option>
+                  ))}
+                </select>
+                <svg
+                  className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/80"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
+                </svg>
+              </div>
             </div>
-            <div className="mt-5 grid grid-cols-3 gap-3 text-center">
-              <div className="rounded-lg border border-slate-700 bg-slate-950/90 px-3 py-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-300">Network</p>
-                <p className="mt-1 text-xs font-semibold text-white">Visa / MC</p>
-              </div>
-              <div className="rounded-lg border border-slate-700 bg-slate-950/90 px-3 py-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-300">Protection</p>
-                <p className="mt-1 text-xs font-semibold text-white">3D Secure</p>
-              </div>
-              <div className="rounded-lg border border-slate-700 bg-slate-950/90 px-3 py-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-300">Gateway</p>
-                <p className="mt-1 text-xs font-semibold text-white">Stripe</p>
-              </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              <PaymentMetaPill label="Network" value="Visa / MC" />
+              <PaymentMetaPill label="Protection" value="3D Secure" />
+              <PaymentMetaPill label="Gateway" value="Stripe" />
             </div>
           </div>
         </section>
       </div>
       {paymentError && (
-        <p className="rounded-xl border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+        <p className="rounded-[12px] border border-red-500/40 bg-red-950/40 px-4 py-3 text-sm text-red-200">
           {paymentError}
         </p>
       )}
-      <div className="flex items-center justify-between gap-4 border-t border-slate-700 pt-6">
-        <p className="text-lg font-bold text-white">
+      <div className="flex items-center justify-between gap-4 border-t border-[#22375a] pt-6">
+        <p className="text-[20px] font-bold text-white sm:text-[22px]">
           Total: ${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </p>
         <button
           type="submit"
           disabled={paying || !stripe || !elements}
-          className="rounded-lg bg-orange-600 px-8 py-3 text-sm font-semibold text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="min-w-[124px] rounded-[12px] bg-[#ff5d00] px-8 py-3 text-sm font-semibold text-white transition hover:bg-[#ff7a1f] disabled:cursor-not-allowed disabled:opacity-50"
         >
           {paying ? 'Processing...' : 'Pay Now'}
         </button>
@@ -563,7 +646,7 @@ export default function InvoicePayForm({
 
   if (!stripePublishableKey) {
     return (
-      <div className={embedded ? 'w-full' : 'mx-auto max-w-4xl p-4 sm:p-6'}>
+      <div className={embedded ? 'w-full' : 'mx-auto max-w-[1120px] p-4 sm:p-6'}>
         <p className="rounded-xl border border-amber-500/50 bg-amber-500/10 px-4 py-3 text-sm text-amber-400">
           Payment form is not configured. Add NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY to .env.local
         </p>
@@ -572,10 +655,10 @@ export default function InvoicePayForm({
   }
 
   return (
-    <div className={embedded ? 'w-full' : 'mx-auto max-w-4xl p-4 sm:p-6'}>
-      {invoiceTitle && <p className="mb-6 text-sm font-semibold text-slate-400">{invoiceTitle}</p>}
-      <div className={`rounded-xl border border-slate-700 bg-slate-800/80 ${embedded ? 'p-5 sm:p-6' : 'p-6 sm:p-8'}`}>
-        <h1 className="mb-8 text-xl font-bold text-white">{embedded ? 'Pay Invoice' : 'Your Information'}</h1>
+    <div className={embedded ? 'w-full' : 'mx-auto max-w-[1120px] p-4 sm:p-6'}>
+      {invoiceTitle ? <p className="sr-only">{invoiceTitle}</p> : null}
+      <div className={`rounded-[20px] border border-[#1a2d4c] bg-[#0f172b] shadow-[0_24px_60px_rgba(4,10,31,0.45)] ${embedded ? 'p-6 sm:p-7' : 'p-6 sm:p-8'}`}>
+        <h1 className="mb-8 text-[18px] font-bold text-white sm:text-[20px]">Pay Invoice</h1>
         <Elements
           stripe={stripePromise!}
           options={{

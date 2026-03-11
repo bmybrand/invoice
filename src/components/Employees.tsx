@@ -108,6 +108,14 @@ function ChevronRightIcon({ className = 'h-4 w-4' }: { className?: string }) {
   )
 }
 
+function CloseIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+    </svg>
+  )
+}
+
 export default function Employees() {
   const { displayRole } = useDashboardProfile()
   const [employees, setEmployees] = useState<EmployeeRow[]>([])
@@ -600,8 +608,17 @@ export default function Employees() {
 
       {/* Delete confirm modal */}
       {deletingEmployee && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={() => !deleteLoading && setDeletingEmployee(null)}>
-          <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+          <div className="relative w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => !deleteLoading && setDeletingEmployee(null)}
+              disabled={deleteLoading}
+              aria-label="Close modal"
+              className="absolute right-4 top-4 rounded-full border border-slate-600 p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <CloseIcon />
+            </button>
             <h2 className="text-lg font-bold text-white">Delete Employee</h2>
             <p className="mt-1 text-sm text-slate-400">
               Delete <span className="font-semibold text-white">{deletingEmployee.employee_name}</span>? This cannot be undone.
@@ -629,8 +646,17 @@ export default function Employees() {
 
       {/* Edit employee modal */}
       {editingEmployee && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={() => !editLoading && setEditingEmployee(null)}>
-          <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+          <div className="relative w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => !editLoading && setEditingEmployee(null)}
+              disabled={editLoading}
+              aria-label="Close modal"
+              className="absolute right-4 top-4 rounded-full border border-slate-600 p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <CloseIcon />
+            </button>
             <h2 className="text-lg font-bold text-white">Edit Employee</h2>
             <p className="mt-1 text-sm text-slate-400">Update employee details.</p>
             <form onSubmit={handleEditSubmit} className="mt-4 flex flex-col gap-4">
@@ -739,8 +765,17 @@ export default function Employees() {
 
       {/* Add user modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={() => !addLoading && setShowAddModal(false)}>
-          <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+          <div className="relative w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => !addLoading && setShowAddModal(false)}
+              disabled={addLoading}
+              aria-label="Close modal"
+              className="absolute right-4 top-4 rounded-full border border-slate-600 p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <CloseIcon />
+            </button>
             <h2 className="text-lg font-bold text-white">Add New Employee</h2>
             <p className="mt-1 text-sm text-slate-400">Create a user or admin. Super Admin is set separately (one only).</p>
             <form onSubmit={handleAddSubmit} className="mt-4 flex flex-col gap-4">

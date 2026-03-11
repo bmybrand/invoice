@@ -101,6 +101,14 @@ function EllipsisVerticalIcon({ className = 'h-4 w-4' }: { className?: string })
   )
 }
 
+function CloseIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+    </svg>
+  )
+}
+
 function getStatusStyle(status: string): string {
   const s = (status || '').toLowerCase()
   if (s.includes('paid') || s.includes('completed')) return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
@@ -309,19 +317,17 @@ export function InvoiceDocument({
       </div>
 
       <div className="invoice-services-wrap relative z-10 mx-10 overflow-hidden rounded-xl border border-slate-200">
-        <div className="invoice-services-head invoice-services-head-print grid grid-cols-[72px_1fr_90px_130px_130px] bg-slate-50 px-4 py-4 text-xs font-bold uppercase tracking-wide text-slate-700">
-          <span>No</span><span>Description</span><span>Qty</span><span>Price</span><span className="text-right">Total</span>
+        <div className="invoice-services-head invoice-services-head-print grid grid-cols-[72px_1fr_160px] bg-slate-50 px-4 py-4 text-xs font-bold uppercase tracking-wide text-slate-700">
+          <span>No</span><span>Description</span><span className="text-right">Price</span>
         </div>
         {serviceLines.length === 0 ? (
           <div className="border-t border-slate-100 px-4 py-4 text-sm text-slate-500">No services added.</div>
         ) : (
           serviceLines.map((line, idx) => (
-            <div key={`view-service-${idx}`} className="invoice-services-row grid grid-cols-[72px_1fr_90px_130px_130px] border-t border-slate-100 px-4 py-4 text-sm">
+            <div key={`view-service-${idx}`} className="invoice-services-row grid grid-cols-[72px_1fr_160px] border-t border-slate-100 px-4 py-4 text-sm">
               <span className="text-slate-700">{String(idx + 1).padStart(2, '0')}</span>
               <span className="text-slate-800">{line.description || 'Service'}</span>
-              <span className="text-slate-700">{line.qty}</span>
-              <span className="text-slate-700">{line.price || '$0.00'}</span>
-              <span className="text-right font-bold text-slate-900">${serviceLineTotal(line).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              <span className="text-right text-slate-700">{line.price || '$0.00'}</span>
             </div>
           ))
         )}
@@ -1055,8 +1061,17 @@ export default function Invoice() {
 
       {/* Delete confirm modal */}
       {deletingInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={() => !deleteLoading && setDeletingInvoice(null)}>
-          <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+          <div className="relative w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => !deleteLoading && setDeletingInvoice(null)}
+              disabled={deleteLoading}
+              aria-label="Close modal"
+              className="absolute right-4 top-4 rounded-full border border-slate-600 p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <CloseIcon />
+            </button>
             <h2 className="text-lg font-bold text-white">Delete Invoice</h2>
             <p className="mt-1 text-sm text-slate-400">
               Delete invoice <span className="font-semibold text-white">#{formatInvoiceCode(deletingInvoice.id)}</span>? This cannot be undone.
@@ -1084,11 +1099,21 @@ export default function Invoice() {
 
       {/* Add invoice modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={() => !addLoading && setShowAddModal(false)}>
-          <div className="w-full max-w-5xl max-h-[92vh] overflow-y-auto rounded-2xl bg-neutral-100 p-6 shadow-2xl text-slate-800" onClick={(e) => e.stopPropagation()}>
-            {(() => {
-              return (
-                <form onSubmit={handleAddSubmit} className="rounded-xl bg-white shadow-2xl outline outline-1 outline-slate-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+          <div className="relative w-full max-w-5xl" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => !addLoading && setShowAddModal(false)}
+              disabled={addLoading}
+              aria-label="Close modal"
+              className="absolute right-4 top-4 z-20 rounded-full border border-slate-300 bg-white/90 p-2 text-slate-600 transition hover:bg-white hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <CloseIcon />
+            </button>
+            <div className="max-h-[92vh] overflow-y-auto rounded-2xl bg-neutral-100 p-6 shadow-2xl text-slate-800">
+              {(() => {
+                return (
+                  <form onSubmit={handleAddSubmit} className="rounded-xl bg-white shadow-2xl outline outline-1 outline-slate-200">
                   {(() => {
                     const addBrandMeta = getInvoiceBrandMeta(addBrand)
                     return (
@@ -1166,11 +1191,11 @@ export default function Invoice() {
                         </div>
 
                         <div className="mx-10 overflow-hidden rounded-xl border border-slate-200">
-                          <div className="grid grid-cols-[72px_1fr_140px_140px] bg-slate-50 px-4 py-4 text-xs font-bold uppercase tracking-wide text-slate-700">
-                            <span>No</span><span>Description</span><span>Price</span><span className="text-right">Total</span>
+                          <div className="grid grid-cols-[72px_minmax(0,1fr)_220px_auto] gap-4 bg-slate-50 px-4 py-4 text-xs font-bold uppercase tracking-wide text-slate-700">
+                            <span>No</span><span>Description</span><span>Price</span><span />
                           </div>
                           {addServices.map((line, idx) => (
-                            <div key={`add-service-${idx}`} className="grid grid-cols-[72px_1fr_140px_140px] border-t border-slate-100 px-4 py-4 text-sm">
+                            <div key={`add-service-${idx}`} className="grid grid-cols-[72px_minmax(0,1fr)_220px_auto] items-center gap-4 border-t border-slate-100 px-4 py-4 text-sm">
                               <span>{String(idx + 1).padStart(2, '0')}</span>
                               <input
                                 type="text"
@@ -1189,7 +1214,6 @@ export default function Invoice() {
                                 className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                               />
                               <div className="flex items-center justify-end gap-2">
-                                <span className="font-bold">${serviceLineTotal(line).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                 {addServices.length > 1 && (
                                   <button type="button" onClick={() => setAddServices((prev) => prev.filter((_, i) => i !== idx))} className="rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50">Remove</button>
                                 )}
@@ -1289,20 +1313,31 @@ export default function Invoice() {
                       {addLoading ? 'Adding...' : 'Add Invoice'}
                     </button>
                   </div>
-                </form>
-              )
-            })()}
+                  </form>
+                )
+              })()}
+            </div>
           </div>
         </div>
       )}
 
       {/* Edit invoice modal */}
       {editingInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={() => !editLoading && setEditingInvoice(null)}>
-          <div className="w-full max-w-5xl max-h-[92vh] overflow-y-auto rounded-2xl bg-neutral-100 p-6 shadow-2xl text-slate-800" onClick={(e) => e.stopPropagation()}>
-            {(() => {
-              return (
-                <form onSubmit={handleEditSubmit} className="rounded-xl bg-white shadow-2xl outline outline-1 outline-slate-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+          <div className="relative w-full max-w-5xl" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => !editLoading && setEditingInvoice(null)}
+              disabled={editLoading}
+              aria-label="Close modal"
+              className="absolute right-4 top-4 z-20 rounded-full border border-slate-300 bg-white/90 p-2 text-slate-600 transition hover:bg-white hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <CloseIcon />
+            </button>
+            <div className="max-h-[92vh] overflow-y-auto rounded-2xl bg-neutral-100 p-6 shadow-2xl text-slate-800">
+              {(() => {
+                return (
+                  <form onSubmit={handleEditSubmit} className="rounded-xl bg-white shadow-2xl outline outline-1 outline-slate-200">
                   {(() => {
                     const editBrandMeta = getInvoiceBrandMeta(editBrand)
                     return (
@@ -1383,11 +1418,11 @@ export default function Invoice() {
                         </div>
 
                         <div className="mx-10 overflow-hidden rounded-xl border border-slate-200">
-                          <div className="grid grid-cols-[72px_1fr_140px_140px] bg-slate-50 px-4 py-4 text-xs font-bold uppercase tracking-wide text-slate-700">
-                            <span>No</span><span>Description</span><span>Price</span><span className="text-right">Total</span>
+                          <div className="grid grid-cols-[72px_minmax(0,1fr)_220px_auto] gap-4 bg-slate-50 px-4 py-4 text-xs font-bold uppercase tracking-wide text-slate-700">
+                            <span>No</span><span>Description</span><span>Price</span><span />
                           </div>
                           {editServices.map((line, idx) => (
-                            <div key={`edit-service-${idx}`} className="grid grid-cols-[72px_1fr_140px_140px] border-t border-slate-100 px-4 py-4 text-sm">
+                            <div key={`edit-service-${idx}`} className="grid grid-cols-[72px_minmax(0,1fr)_220px_auto] items-center gap-4 border-t border-slate-100 px-4 py-4 text-sm">
                               <span>{String(idx + 1).padStart(2, '0')}</span>
                               <input
                                 type="text"
@@ -1406,7 +1441,6 @@ export default function Invoice() {
                                 className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                               />
                               <div className="flex items-center justify-end gap-2">
-                                <span className="font-bold">${serviceLineTotal(line).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                 {editServices.length > 1 && (
                                   <button type="button" onClick={() => setEditServices((prev) => prev.filter((_, i) => i !== idx))} className="rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50">Remove</button>
                                 )}
@@ -1503,9 +1537,10 @@ export default function Invoice() {
                       {editLoading ? 'Saving...' : 'Save'}
                     </button>
                   </div>
-                </form>
-              )
-            })()}
+                  </form>
+                )
+              })()}
+            </div>
           </div>
         </div>
       )}

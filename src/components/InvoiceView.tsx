@@ -165,6 +165,7 @@ export default function InvoiceView({ invoiceId, publicView = false }: { invoice
         onclone: (clonedDocument) => {
           const clonedRoot = clonedDocument.getElementById('invoice-print-root')
           if (!clonedRoot) return
+          const a4MinHeight = Math.ceil((root.scrollWidth * 297) / 210)
 
           const transparentPixel = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
           clonedRoot.querySelectorAll('img[src^="http"]').forEach((img) => {
@@ -200,6 +201,16 @@ export default function InvoiceView({ invoiceId, publicView = false }: { invoice
             clonedEl.setAttribute('style', styleText)
             clonedEl.removeAttribute('class')
           })
+
+          if (clonedRoot instanceof clonedDocument.defaultView!.HTMLElement) {
+            clonedRoot.style.boxShadow = 'none'
+            clonedRoot.style.borderRadius = '0'
+            clonedRoot.style.margin = '0'
+            clonedRoot.style.width = `${root.scrollWidth}px`
+            clonedRoot.style.minHeight = `${Math.max(root.scrollHeight, a4MinHeight)}px`
+            clonedRoot.style.display = 'flex'
+            clonedRoot.style.flexDirection = 'column'
+          }
 
           if (summaryGrid instanceof HTMLElement) {
             summaryGrid.style.cssText = (summaryGrid.style.cssText || '') + '; display:block !important; width:100% !important;'

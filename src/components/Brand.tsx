@@ -64,6 +64,14 @@ function ChevronRightIcon({ className = 'h-4 w-4' }: { className?: string }) {
   )
 }
 
+function CloseIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+    </svg>
+  )
+}
+
 export default function Brand() {
   const { displayRole } = useDashboardProfile()
   const [brands, setBrands] = useState<BrandRow[]>([])
@@ -395,22 +403,39 @@ export default function Brand() {
       {expandedImageUrl && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80"
-          onClick={() => setExpandedImageUrl(null)}
-          aria-label="Click to close"
         >
-          <img
-            src={expandedImageUrl}
-            alt=""
-            className="max-w-[90vw] max-h-[90vh] rounded-lg shadow-2xl object-contain"
-            onClick={(e) => e.stopPropagation()}
-          />
+          <div className="relative" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setExpandedImageUrl(null)}
+              aria-label="Close modal"
+              className="absolute right-3 top-3 z-10 rounded-full border border-white/25 bg-black/60 p-2 text-white transition hover:bg-black/80"
+            >
+              <CloseIcon />
+            </button>
+            <img
+              src={expandedImageUrl}
+              alt=""
+              className="max-w-[90vw] max-h-[90vh] rounded-lg shadow-2xl object-contain"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
         </div>
       )}
 
       {/* Add brand modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={() => !addLoading && setShowAddModal(false)}>
-          <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+          <div className="relative w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => !addLoading && setShowAddModal(false)}
+              disabled={addLoading}
+              aria-label="Close modal"
+              className="absolute right-4 top-4 rounded-full border border-slate-600 p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <CloseIcon />
+            </button>
             <h2 className="text-lg font-bold text-white">Add New Brand</h2>
             <p className="mt-1 text-sm text-slate-400">Add a new brand to your portfolio.</p>
             <form onSubmit={handleAddSubmit} className="mt-4 flex flex-col gap-4">
@@ -485,8 +510,17 @@ export default function Brand() {
 
       {/* Delete confirm modal */}
       {deletingBrand && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={() => !deleteLoading && setDeletingBrand(null)}>
-          <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+          <div className="relative w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => !deleteLoading && setDeletingBrand(null)}
+              disabled={deleteLoading}
+              aria-label="Close modal"
+              className="absolute right-4 top-4 rounded-full border border-slate-600 p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <CloseIcon />
+            </button>
             <h2 className="text-lg font-bold text-white">Delete Brand</h2>
             <p className="mt-1 text-sm text-slate-400">
               Delete <span className="font-semibold text-white">{deletingBrand.brand_name}</span>? This cannot be undone.
@@ -514,8 +548,17 @@ export default function Brand() {
 
       {/* Edit brand modal */}
       {editingBrand && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={() => !editLoading && setEditingBrand(null)}>
-          <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+          <div className="relative w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => !editLoading && setEditingBrand(null)}
+              disabled={editLoading}
+              aria-label="Close modal"
+              className="absolute right-4 top-4 rounded-full border border-slate-600 p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <CloseIcon />
+            </button>
             <h2 className="text-lg font-bold text-white">Edit Brand</h2>
             <p className="mt-1 text-sm text-slate-400">Update brand details.</p>
             <form onSubmit={handleEditSubmit} className="mt-4 flex flex-col gap-4">
