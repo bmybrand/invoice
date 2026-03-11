@@ -195,6 +195,7 @@ export function InvoiceDocument({
   canDownloadPdf,
   showPaidWatermark,
   onDownload,
+  onPrint,
   rootId,
   includeDownloadButton = true,
   showStatusBadge = true,
@@ -209,6 +210,7 @@ export function InvoiceDocument({
   canDownloadPdf: boolean
   showPaidWatermark: boolean
   onDownload: () => void
+  onPrint?: () => void
   rootId?: string
   includeDownloadButton?: boolean
   showStatusBadge?: boolean
@@ -224,8 +226,7 @@ export function InvoiceDocument({
   const invoiceType = invoice.invoice_type || 'Standard'
 
   return (
-    <div id={rootId} className="relative flex min-h-[calc(100vh-8rem)] flex-col overflow-visible rounded-[28px] border border-slate-200 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.14)] print:min-h-0 print:overflow-visible">
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-56 bg-[radial-gradient(circle_at_top_right,rgba(249,115,22,0.14),transparent_45%),radial-gradient(circle_at_top_left,rgba(15,23,42,0.06),transparent_35%)]" />
+    <div id={rootId} className="relative flex min-h-[1120px] flex-col overflow-visible bg-white shadow-xl md:min-h-[1280px] print:min-h-0 print:overflow-visible">
       {showPaidWatermark && (
         <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
           <span className="-rotate-[24deg] select-none text-[180px] font-black uppercase leading-none tracking-[0.12em] text-emerald-500/8">
@@ -234,61 +235,70 @@ export function InvoiceDocument({
         </div>
       )}
       <div className="flex flex-1 flex-col">
-      <div className="invoice-header invoice-print-header relative flex items-center justify-between overflow-hidden rounded-t-[28px] bg-[linear-gradient(135deg,#0f172a_0%,#111827_55%,#1e293b_100%)] px-10 py-10">
-        <div className="absolute inset-y-0 right-0 w-64 bg-[radial-gradient(circle_at_center,rgba(249,115,22,0.18),transparent_60%)]" />
-        <div className="relative flex items-center gap-4">
-          <div className="flex h-20 w-48 items-center justify-start rounded-2xl border border-white/10 bg-white/5 px-4 backdrop-blur-sm">
+      <div className="invoice-header invoice-print-header flex items-center justify-between bg-slate-900 px-10 py-8">
+        <div className="flex items-center gap-4">
+          <div className="h-16 w-44 flex items-center justify-start">
             {brandMeta?.logo_url ? (
               <img src={brandMeta.logo_url} alt={invoice.brand_name} className="max-h-16 w-auto object-contain" />
             ) : (
-              <div className="h-8 w-8 rounded-lg border border-white/60 bg-white/10" />
+              <div className="h-6 w-6 border border-white/60 rounded-sm" />
             )}
           </div>
         </div>
-        <div className="relative text-right">
-          <p className="text-[11px] font-black uppercase tracking-[0.4em] text-orange-400/80">Billing Statement</p>
-          <p className="mt-2 text-5xl font-black uppercase tracking-[0.12em] text-white">Invoice</p>
+        <div className="text-right">
+          <p className="text-5xl font-black uppercase tracking-wide text-orange-600">Invoice</p>
           {includeDownloadButton && (
-            <button
-              type="button"
-              onClick={onDownload}
-              disabled={!canDownloadPdf}
-              className="no-print print-hide-download print:hidden mt-4 inline-flex items-center gap-2 rounded-xl border border-orange-400/30 bg-orange-500 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-white shadow-[0_14px_30px_rgba(249,115,22,0.35)] hover:bg-orange-600 disabled:cursor-not-allowed disabled:border-slate-600 disabled:bg-slate-600 disabled:text-slate-300 disabled:shadow-none"
-              title={canDownloadPdf ? 'Download invoice PDF' : 'Download is available after payment'}
-            >
-              <span className="inline-block h-2 w-2 rounded-sm bg-white" />
-              Download PDF
-            </button>
+            <div className="no-print print-hide-download print:hidden mt-3 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={onDownload}
+                disabled={!canDownloadPdf}
+                className="inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-xs font-bold text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-300"
+                title={canDownloadPdf ? 'Download invoice PDF' : 'Download is available after payment'}
+              >
+                <span className="inline-block h-2 w-2 rounded-sm bg-white" />
+                Download PDF
+              </button>
+              <button
+                type="button"
+                onClick={onPrint}
+                disabled={!canDownloadPdf}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-xs font-bold text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-800 disabled:text-slate-400"
+                title={canDownloadPdf ? 'Print invoice' : 'Print is available after payment'}
+              >
+                Print
+              </button>
+            </div>
           )}
         </div>
       </div>
 
-      <div className="invoice-meta-grid relative z-10 grid grid-cols-1 gap-8 px-10 py-8 md:grid-cols-2">
-        <div className="rounded-3xl border border-slate-200 bg-white/90 p-6 shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
+      <div className="invoice-meta-grid relative z-10 grid grid-cols-1 gap-10 px-10 py-8 md:grid-cols-2">
+        <div>
           <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Invoice To</p>
-          <p className="mt-3 text-2xl font-black text-slate-900">{invoice.brand_name || 'Ketut Susilo'}</p>
-          <div className="mt-4 space-y-2 text-sm text-slate-600">
+          <p className="mt-2 text-xl font-bold text-slate-900">{invoice.brand_name || 'Ketut Susilo'}</p>
+          <div className="mt-3 space-y-1 text-sm text-slate-600">
             <p>{invoice.email || 'ketut.susilo@example.com'}</p>
             <p>{invoice.phone || '+1 (555) 000-1234'}</p>
           </div>
         </div>
 
         <div className="md:justify-self-end">
-          <div className="w-full max-w-sm rounded-3xl border border-slate-200 bg-slate-50/90 p-6 shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
-            <div className="flex justify-between border-b border-slate-200 pb-3 text-sm">
+          <div className="w-full max-w-xs space-y-3">
+            <div className="flex justify-between border-b border-slate-100 pb-2 text-sm">
               <span className="text-slate-500">Invoice Number</span>
               <span className="font-bold text-slate-900">#{formatInvoiceCode(invoice.id)}</span>
             </div>
-            <div className="mt-3 flex justify-between border-b border-slate-200 pb-3 text-sm">
+            <div className="flex justify-between border-b border-slate-100 pb-2 text-sm">
               <span className="text-slate-500">Issue Date</span>
               <span className="font-bold text-slate-900">{invoice.invoice_date || new Date().toISOString().slice(0, 10)}</span>
             </div>
-            <div className="mt-3 flex justify-between border-b border-slate-200 pb-3 text-sm">
+            <div className="flex justify-between border-b border-slate-100 pb-2 text-sm">
               <span className="text-slate-500">Due Date</span>
               <span className="font-bold text-slate-900">{addDaysToISODate(invoice.invoice_date || new Date().toISOString().slice(0, 10), 30)}</span>
             </div>
             {showStatusBadge && (
-              <div className="pt-4">
+              <div className="pt-1">
                 <span className={`inline-block rounded-lg border px-3 py-1 text-xs font-semibold ${getStatusStyle(invoice.status)}`}>
                   {invoice.status || '-'}
                 </span>
@@ -298,17 +308,17 @@ export function InvoiceDocument({
         </div>
       </div>
 
-      <div className="invoice-services-wrap relative z-10 mx-10 overflow-hidden rounded-[24px] border border-slate-200 shadow-[0_18px_40px_rgba(15,23,42,0.05)]">
-        <div className="invoice-services-head invoice-services-head-print grid grid-cols-[72px_1fr_90px_130px_130px] bg-[linear-gradient(180deg,#f8fafc_0%,#f1f5f9_100%)] px-5 py-4 text-xs font-black uppercase tracking-[0.18em] text-slate-600">
+      <div className="invoice-services-wrap relative z-10 mx-10 overflow-hidden rounded-xl border border-slate-200">
+        <div className="invoice-services-head invoice-services-head-print grid grid-cols-[72px_1fr_90px_130px_130px] bg-slate-50 px-4 py-4 text-xs font-bold uppercase tracking-wide text-slate-700">
           <span>No</span><span>Description</span><span>Qty</span><span>Price</span><span className="text-right">Total</span>
         </div>
         {serviceLines.length === 0 ? (
-          <div className="border-t border-slate-100 px-5 py-5 text-sm text-slate-500">No services added.</div>
+          <div className="border-t border-slate-100 px-4 py-4 text-sm text-slate-500">No services added.</div>
         ) : (
           serviceLines.map((line, idx) => (
-            <div key={`view-service-${idx}`} className={`invoice-services-row grid grid-cols-[72px_1fr_90px_130px_130px] border-t border-slate-100 px-5 py-4 text-sm ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'}`}>
-              <span className="font-bold text-slate-500">{String(idx + 1).padStart(2, '0')}</span>
-              <span className="font-medium text-slate-800">{line.description || 'Service'}</span>
+            <div key={`view-service-${idx}`} className="invoice-services-row grid grid-cols-[72px_1fr_90px_130px_130px] border-t border-slate-100 px-4 py-4 text-sm">
+              <span className="text-slate-700">{String(idx + 1).padStart(2, '0')}</span>
+              <span className="text-slate-800">{line.description || 'Service'}</span>
               <span className="text-slate-700">{line.qty}</span>
               <span className="text-slate-700">{line.price || '$0.00'}</span>
               <span className="text-right font-bold text-slate-900">${serviceLineTotal(line).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
@@ -320,25 +330,25 @@ export function InvoiceDocument({
       <div className={`invoice-summary-grid relative z-10 grid grid-cols-1 gap-8 px-10 py-8 pb-12 ${showPaymentDetails ? 'md:grid-cols-2' : 'flex justify-end'}`}>
         {showPaymentDetails && (
           <div className="no-print">
-            <p className="text-sm font-bold uppercase tracking-[0.18em] text-slate-400">Payment Details</p>
-            <div className="invoice-payment-box mt-3 rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,#fff7ed_0%,#ffffff_100%)] p-5 text-sm text-slate-600 shadow-[0_14px_34px_rgba(249,115,22,0.08)]">
+            <p className="text-sm font-bold text-slate-900">Payment Details</p>
+            <div className="invoice-payment-box mt-2 rounded-lg border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
               <p><span className="font-semibold text-slate-800">Card payments:</span> Stripe</p>
-              <p className="mt-2"><span className="font-semibold text-slate-800">Invoice type:</span> {invoiceType}</p>
+              <p className="mt-1"><span className="font-semibold text-slate-800">Invoice type:</span> {invoiceType}</p>
             </div>
           </div>
         )}
-        <div className={`w-full md:w-80 ${showPaymentDetails ? 'md:justify-self-end' : ''}`}>
-          <div className="space-y-3 rounded-[24px] border border-slate-200 bg-white p-5 text-sm shadow-[0_16px_40px_rgba(15,23,42,0.06)]">
-            <div className="flex justify-between"><span className="font-medium text-slate-600">Sub Total</span><span className="font-bold text-slate-800">${subTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-            <div className="h-px bg-slate-200" />
+        <div className={`invoice-totals-block w-full md:w-80 ${showPaymentDetails ? 'md:justify-self-end' : ''}`}>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between"><span className="text-slate-600">Sub Total</span><span className="font-medium text-slate-700">${subTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+            <div className="my-2 h-px bg-slate-200" />
             <div
-              className={`invoice-grand-total flex justify-between rounded-[20px] bg-[linear-gradient(135deg,#f97316_0%,#ea580c_100%)] p-5 text-white shadow-[0_18px_36px_rgba(249,115,22,0.3)] ${onGrandTotalClick ? 'cursor-pointer transition-colors hover:from-orange-600 hover:to-orange-700 no-print' : ''}`}
+              className={`invoice-grand-total flex justify-between rounded-xl bg-orange-600 p-4 text-white ${onGrandTotalClick ? 'cursor-pointer hover:bg-orange-700 transition-colors no-print' : ''}`}
               role={onGrandTotalClick ? 'button' : undefined}
               tabIndex={onGrandTotalClick ? 0 : undefined}
               onClick={onGrandTotalClick}
               onKeyDown={onGrandTotalClick ? (e) => e.key === 'Enter' && onGrandTotalClick() : undefined}
             >
-              <span className="text-lg font-bold uppercase tracking-wide">Grand Total</span>
+              <span className="text-lg font-bold">Grand Total</span>
               <span className="text-2xl font-black">${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
             {totalNote}
@@ -355,12 +365,10 @@ export function InvoiceDocument({
 
       <div className="invoice-bottom-block mt-auto shrink-0">
         <div className="relative z-10 px-10 pb-6">
-          <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-6 py-5">
-            <p className="text-sm font-bold uppercase tracking-[0.16em] text-slate-700">Terms & Conditions</p>
-            <p className="mt-2 text-xs leading-6 text-slate-500">Please pay within 15 days of receiving this invoice. A late fee of 5% per month will be applied to overdue balances.</p>
-          </div>
+          <p className="text-sm font-bold text-slate-900">Terms & Conditions</p>
+          <p className="mt-1 text-xs leading-5 text-slate-500">Please pay within 15 days of receiving this invoice. A late fee of 5% per month will be applied to overdue balances.</p>
         </div>
-        <div className="invoice-footer-contact relative z-10 rounded-b-[28px] border-t border-slate-200 bg-[linear-gradient(180deg,#f8fafc_0%,#f1f5f9_100%)] px-10 py-6 text-sm text-slate-500">
+        <div className="invoice-footer-contact relative z-10 border-t border-slate-200 bg-slate-50 px-10 py-6 text-sm text-slate-500">
           +1 (555) 000-1234 | www.studioshodwe.com | 456 Design Blvd, Creative City, NY
         </div>
       </div>
@@ -1077,28 +1085,26 @@ export default function Invoice() {
       {/* Add invoice modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={() => !addLoading && setShowAddModal(false)}>
-          <div className="w-full max-w-6xl max-h-[94vh] overflow-y-auto rounded-[28px] bg-[#dbe3ef] p-4 shadow-2xl text-slate-800 sm:p-6" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-5xl max-h-[92vh] overflow-y-auto rounded-2xl bg-neutral-100 p-6 shadow-2xl text-slate-800" onClick={(e) => e.stopPropagation()}>
             {(() => {
               return (
-                <form onSubmit={handleAddSubmit} className="rounded-[28px] border border-slate-200 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.14)]">
+                <form onSubmit={handleAddSubmit} className="rounded-xl bg-white shadow-2xl outline outline-1 outline-slate-200">
                   {(() => {
                     const addBrandMeta = getInvoiceBrandMeta(addBrand)
                     return (
-                  <div className="invoice-header invoice-print-header relative flex items-center justify-between overflow-hidden rounded-t-[28px] bg-[linear-gradient(135deg,#0f172a_0%,#111827_55%,#1e293b_100%)] px-10 py-10">
-                    <div className="absolute inset-y-0 right-0 w-64 bg-[radial-gradient(circle_at_center,rgba(249,115,22,0.18),transparent_60%)]" />
-                    <div className="relative flex items-center gap-4">
-                      <div className="flex h-20 w-48 items-center justify-start rounded-2xl border border-white/10 bg-white/5 px-4 backdrop-blur-sm">
+                  <div className="relative z-10 flex items-center justify-between rounded-t-xl bg-slate-900 px-10 py-8">
+                    <div className="flex items-center gap-4">
+                      <div className="h-16 w-44 flex items-center justify-start">
                         {addBrandMeta?.logo_url ? (
                           <img src={addBrandMeta.logo_url} alt={addBrand} className="max-h-16 w-auto object-contain" />
                         ) : (
-                          <div className="h-8 w-8 rounded-lg border border-white/60 bg-white/10" />
+                          <div className="h-6 w-6 border border-white/60 rounded-sm" />
                         )}
                       </div>
                     </div>
-                    <div className="relative text-right">
-                      <p className="text-[11px] font-black uppercase tracking-[0.4em] text-orange-400/80">Billing Statement</p>
-                      <p className="mt-2 text-5xl font-black uppercase tracking-[0.12em] text-white">Invoice</p>
-                      <p className="mt-3 text-xs font-bold uppercase tracking-[0.24em] text-slate-300">Draft Mode</p>
+                    <div className="text-right">
+                      <p className="text-5xl font-black uppercase tracking-wide text-orange-600">Invoice</p>
+                      <p className="mt-2 text-xs font-bold uppercase tracking-wider text-slate-300">Draft Mode</p>
                     </div>
                   </div>
                     )
@@ -1111,8 +1117,8 @@ export default function Invoice() {
                     const remainingAmount = Math.max(grandTotal - payableAmount, 0)
                     return (
                       <>
-                        <div className="grid grid-cols-1 gap-8 px-10 py-8 md:grid-cols-2">
-                          <div className="rounded-3xl border border-slate-200 bg-white/90 p-6 shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
+                        <div className="grid grid-cols-1 gap-10 px-10 py-8 md:grid-cols-2">
+                          <div>
                             <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Invoice To</p>
                             <div className="mt-3 space-y-3">
                               <div>
@@ -1142,16 +1148,16 @@ export default function Invoice() {
                           </div>
 
                           <div className="md:justify-self-end">
-                            <div className="w-full max-w-sm rounded-3xl border border-slate-200 bg-slate-50/90 p-6 shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
-                              <div className="flex justify-between border-b border-slate-200 pb-3 text-sm">
+                            <div className="w-full max-w-xs space-y-3">
+                              <div className="flex justify-between border-b border-slate-100 pb-2 text-sm">
                                 <span className="text-slate-500">Invoice Number</span>
                                 <span className="font-bold text-slate-900">#AUTO</span>
                               </div>
-                              <div className="mt-3 flex justify-between border-b border-slate-200 pb-3 text-sm">
+                              <div className="flex justify-between border-b border-slate-100 pb-2 text-sm">
                                 <span className="text-slate-500">Issue Date</span>
                                 <span className="font-bold text-slate-900">{new Date().toISOString().slice(0, 10)}</span>
                               </div>
-                              <div className="mt-3 flex justify-between border-b border-slate-200 pb-3 text-sm">
+                              <div className="flex justify-between border-b border-slate-100 pb-2 text-sm">
                                 <span className="text-slate-500">Due Date</span>
                                 <span className="font-bold text-slate-900">{addDaysToISODate(new Date().toISOString().slice(0, 10), 30)}</span>
                               </div>
@@ -1159,13 +1165,13 @@ export default function Invoice() {
                           </div>
                         </div>
 
-                        <div className="mx-10 overflow-hidden rounded-[24px] border border-slate-200 shadow-[0_18px_40px_rgba(15,23,42,0.05)]">
-                          <div className="grid grid-cols-[72px_1fr_140px_140px] bg-[linear-gradient(180deg,#f8fafc_0%,#f1f5f9_100%)] px-4 py-4 text-xs font-black uppercase tracking-[0.18em] text-slate-600">
+                        <div className="mx-10 overflow-hidden rounded-xl border border-slate-200">
+                          <div className="grid grid-cols-[72px_1fr_140px_140px] bg-slate-50 px-4 py-4 text-xs font-bold uppercase tracking-wide text-slate-700">
                             <span>No</span><span>Description</span><span>Price</span><span className="text-right">Total</span>
                           </div>
                           {addServices.map((line, idx) => (
-                            <div key={`add-service-${idx}`} className={`grid grid-cols-[72px_1fr_140px_140px] border-t border-slate-100 px-4 py-4 text-sm ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'}`}>
-                              <span className="font-bold text-slate-500">{String(idx + 1).padStart(2, '0')}</span>
+                            <div key={`add-service-${idx}`} className="grid grid-cols-[72px_1fr_140px_140px] border-t border-slate-100 px-4 py-4 text-sm">
+                              <span>{String(idx + 1).padStart(2, '0')}</span>
                               <input
                                 type="text"
                                 value={line.description}
@@ -1204,8 +1210,8 @@ export default function Invoice() {
                         <div className="grid grid-cols-1 gap-8 px-10 py-8 md:grid-cols-2">
                           <div className="space-y-5">
                             <div>
-                              <p className="text-sm font-bold uppercase tracking-[0.18em] text-slate-400">Payment Details</p>
-                              <div className="mt-3 rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,#fff7ed_0%,#ffffff_100%)] p-5 text-sm text-slate-600 shadow-[0_14px_34px_rgba(249,115,22,0.08)]">
+                              <p className="text-sm font-bold text-slate-900">Payment Details</p>
+                              <div className="mt-2 rounded-lg border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
                                 <p><span className="font-semibold text-slate-800">Card payments:</span> Stripe</p>
                                 <div className="mt-3">
                                   <label htmlFor="add-invoice-type" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Invoice Type</label>
@@ -1223,19 +1229,17 @@ export default function Invoice() {
                               </div>
                             </div>
                             <div>
-                              <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-6 py-5">
-                                <p className="text-sm font-bold uppercase tracking-[0.16em] text-slate-700">Terms & Conditions</p>
-                                <p className="mt-2 text-xs leading-6 text-slate-500">Please pay within 15 days of receiving this invoice. A late fee of 5% per month will be applied to overdue balances.</p>
-                              </div>
+                              <p className="text-sm font-bold text-slate-900">Terms & Conditions</p>
+                              <p className="mt-1 text-xs leading-5 text-slate-500">Please pay within 15 days of receiving this invoice. A late fee of 5% per month will be applied to overdue balances.</p>
                             </div>
                           </div>
 
                           <div className="md:justify-self-end md:w-80">
-                            <div className="space-y-3 rounded-[24px] border border-slate-200 bg-white p-5 text-sm shadow-[0_16px_40px_rgba(15,23,42,0.06)]">
-                              <div className="flex justify-between"><span className="font-medium text-slate-600">Sub Total</span><span className="font-bold text-slate-800">${subTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-                              <div className="h-px bg-slate-200" />
-                              <div className="flex justify-between rounded-[20px] bg-[linear-gradient(135deg,#f97316_0%,#ea580c_100%)] p-5 text-white shadow-[0_18px_36px_rgba(249,115,22,0.3)]">
-                                <span className="text-lg font-bold uppercase tracking-wide">Grand Total</span>
+                            <div className="space-y-2 text-sm">
+                              <div className="flex justify-between"><span className="text-slate-600">Sub Total</span><span className="font-medium text-slate-700">${subTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                              <div className="my-2 h-px bg-slate-200" />
+                              <div className="flex justify-between rounded-xl bg-orange-600 p-4 text-white">
+                                <span className="text-lg font-bold">Grand Total</span>
                                 <span className="text-2xl font-black">${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                               </div>
                               {isAdvanceUnpaidStatus(addStatus) && (
@@ -1263,7 +1267,7 @@ export default function Invoice() {
                           </div>
                         </div>
 
-                        <div className="rounded-b-[28px] border-t border-slate-200 bg-[linear-gradient(180deg,#f8fafc_0%,#f1f5f9_100%)] px-10 py-6 text-sm text-slate-500">
+                        <div className="border-t border-slate-200 bg-slate-50 px-10 py-6 text-sm text-slate-500">
                           +1 (555) 000-1234 | www.studioshodwe.com | 456 Design Blvd, Creative City, NY
                         </div>
                       </>
@@ -1276,11 +1280,11 @@ export default function Invoice() {
                   {addError && <p className="mx-10 mt-4 rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-700">{addError}</p>}
 
                   <div className="flex gap-3 px-10 py-6">
-                    <button type="button" onClick={() => !addLoading && setShowAddModal(false)} className="flex-1 rounded-2xl border border-slate-300 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-100">Cancel</button>
+                    <button type="button" onClick={() => !addLoading && setShowAddModal(false)} className="flex-1 rounded-xl border border-slate-300 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-100">Cancel</button>
                     <button
                       type="submit"
                       disabled={addLoading || currentUserEmployeeId === null || !addValidation.valid}
-                      className="flex-1 rounded-2xl bg-[linear-gradient(135deg,#f97316_0%,#ea580c_100%)] px-4 py-3 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(249,115,22,0.28)] hover:from-orange-600 hover:to-orange-700 disabled:opacity-50"
+                      className="flex-1 rounded-xl bg-orange-600 px-4 py-3 text-sm font-semibold text-white hover:bg-orange-700 disabled:opacity-50"
                     >
                       {addLoading ? 'Adding...' : 'Add Invoice'}
                     </button>
@@ -1295,28 +1299,26 @@ export default function Invoice() {
       {/* Edit invoice modal */}
       {editingInvoice && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={() => !editLoading && setEditingInvoice(null)}>
-          <div className="w-full max-w-6xl max-h-[94vh] overflow-y-auto rounded-[28px] bg-[#dbe3ef] p-4 shadow-2xl text-slate-800 sm:p-6" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-5xl max-h-[92vh] overflow-y-auto rounded-2xl bg-neutral-100 p-6 shadow-2xl text-slate-800" onClick={(e) => e.stopPropagation()}>
             {(() => {
               return (
-                <form onSubmit={handleEditSubmit} className="rounded-[28px] border border-slate-200 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.14)]">
+                <form onSubmit={handleEditSubmit} className="rounded-xl bg-white shadow-2xl outline outline-1 outline-slate-200">
                   {(() => {
                     const editBrandMeta = getInvoiceBrandMeta(editBrand)
                     return (
-                  <div className="invoice-header invoice-print-header relative flex items-center justify-between overflow-hidden rounded-t-[28px] bg-[linear-gradient(135deg,#0f172a_0%,#111827_55%,#1e293b_100%)] px-10 py-10">
-                    <div className="absolute inset-y-0 right-0 w-64 bg-[radial-gradient(circle_at_center,rgba(249,115,22,0.18),transparent_60%)]" />
-                    <div className="relative flex items-center gap-4">
-                      <div className="flex h-20 w-48 items-center justify-start rounded-2xl border border-white/10 bg-white/5 px-4 backdrop-blur-sm">
+                  <div className="flex items-center justify-between rounded-t-xl bg-slate-900 px-10 py-8">
+                    <div className="flex items-center gap-4">
+                      <div className="h-16 w-44 flex items-center justify-start">
                         {editBrandMeta?.logo_url ? (
                           <img src={editBrandMeta.logo_url} alt={editBrand} className="max-h-16 w-auto object-contain" />
                         ) : (
-                          <div className="h-8 w-8 rounded-lg border border-white/60 bg-white/10" />
+                          <div className="h-6 w-6 border border-white/60 rounded-sm" />
                         )}
                       </div>
                     </div>
-                    <div className="relative text-right">
-                      <p className="text-[11px] font-black uppercase tracking-[0.4em] text-orange-400/80">Billing Statement</p>
-                      <p className="mt-2 text-5xl font-black uppercase tracking-[0.12em] text-white">Invoice</p>
-                      <p className="mt-3 text-xs font-bold uppercase tracking-[0.24em] text-slate-300">Edit Mode</p>
+                    <div className="text-right">
+                      <p className="text-5xl font-black uppercase tracking-wide text-orange-600">Invoice</p>
+                      <p className="mt-2 text-xs font-bold uppercase tracking-wider text-slate-300">Edit Mode</p>
                     </div>
                   </div>
                     )
@@ -1329,8 +1331,8 @@ export default function Invoice() {
                     const remainingAmount = Math.max(grandTotal - payableAmount, 0)
                     return (
                       <>
-                        <div className="grid grid-cols-1 gap-8 px-10 py-8 md:grid-cols-2">
-                          <div className="rounded-3xl border border-slate-200 bg-white/90 p-6 shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
+                        <div className="grid grid-cols-1 gap-10 px-10 py-8 md:grid-cols-2">
+                          <div>
                             <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Invoice To</p>
                             <div className="mt-3 space-y-3">
                               <div>
@@ -1363,16 +1365,16 @@ export default function Invoice() {
                           </div>
 
                           <div className="md:justify-self-end">
-                            <div className="w-full max-w-sm rounded-3xl border border-slate-200 bg-slate-50/90 p-6 shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
-                              <div className="flex justify-between border-b border-slate-200 pb-3 text-sm">
+                            <div className="w-full max-w-xs space-y-3">
+                              <div className="flex justify-between border-b border-slate-100 pb-2 text-sm">
                                 <span className="text-slate-500">Invoice Number</span>
                                 <span className="font-bold text-slate-900">#{formatInvoiceCode(editingInvoice.id)}</span>
                               </div>
-                              <div className="mt-3 flex justify-between border-b border-slate-200 pb-3 text-sm">
+                              <div className="flex justify-between border-b border-slate-100 pb-2 text-sm">
                                 <span className="text-slate-500">Issue Date</span>
                                 <span className="font-bold text-slate-900">{editingInvoice.invoice_date || new Date().toISOString().slice(0, 10)}</span>
                               </div>
-                              <div className="mt-3 flex justify-between border-b border-slate-200 pb-3 text-sm">
+                              <div className="flex justify-between border-b border-slate-100 pb-2 text-sm">
                                 <span className="text-slate-500">Due Date</span>
                                 <span className="font-bold text-slate-900">{addDaysToISODate(editingInvoice.invoice_date || new Date().toISOString().slice(0, 10), 30)}</span>
                               </div>
@@ -1380,13 +1382,13 @@ export default function Invoice() {
                           </div>
                         </div>
 
-                        <div className="mx-10 overflow-hidden rounded-[24px] border border-slate-200 shadow-[0_18px_40px_rgba(15,23,42,0.05)]">
-                          <div className="grid grid-cols-[72px_1fr_140px_140px] bg-[linear-gradient(180deg,#f8fafc_0%,#f1f5f9_100%)] px-4 py-4 text-xs font-black uppercase tracking-[0.18em] text-slate-600">
+                        <div className="mx-10 overflow-hidden rounded-xl border border-slate-200">
+                          <div className="grid grid-cols-[72px_1fr_140px_140px] bg-slate-50 px-4 py-4 text-xs font-bold uppercase tracking-wide text-slate-700">
                             <span>No</span><span>Description</span><span>Price</span><span className="text-right">Total</span>
                           </div>
                           {editServices.map((line, idx) => (
-                            <div key={`edit-service-${idx}`} className={`grid grid-cols-[72px_1fr_140px_140px] border-t border-slate-100 px-4 py-4 text-sm ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'}`}>
-                              <span className="font-bold text-slate-500">{String(idx + 1).padStart(2, '0')}</span>
+                            <div key={`edit-service-${idx}`} className="grid grid-cols-[72px_1fr_140px_140px] border-t border-slate-100 px-4 py-4 text-sm">
+                              <span>{String(idx + 1).padStart(2, '0')}</span>
                               <input
                                 type="text"
                                 value={line.description}
@@ -1425,8 +1427,8 @@ export default function Invoice() {
                         <div className="grid grid-cols-1 gap-8 px-10 py-8 md:grid-cols-2">
                           <div className="space-y-5">
                             <div>
-                              <p className="text-sm font-bold uppercase tracking-[0.18em] text-slate-400">Payment Details</p>
-                              <div className="mt-3 rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,#fff7ed_0%,#ffffff_100%)] p-5 text-sm text-slate-600 shadow-[0_14px_34px_rgba(249,115,22,0.08)]">
+                              <p className="text-sm font-bold text-slate-900">Payment Details</p>
+                              <div className="mt-2 rounded-lg border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
                                 <p><span className="font-semibold text-slate-800">Card payments:</span> Stripe</p>
                                 <div className="mt-3">
                                   <label htmlFor="edit-invoice-type" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Invoice Type</label>
@@ -1444,19 +1446,17 @@ export default function Invoice() {
                               </div>
                             </div>
                             <div>
-                              <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-6 py-5">
-                                <p className="text-sm font-bold uppercase tracking-[0.16em] text-slate-700">Terms & Conditions</p>
-                                <p className="mt-2 text-xs leading-6 text-slate-500">Please pay within 15 days of receiving this invoice. A late fee of 5% per month will be applied to overdue balances.</p>
-                              </div>
+                              <p className="text-sm font-bold text-slate-900">Terms & Conditions</p>
+                              <p className="mt-1 text-xs leading-5 text-slate-500">Please pay within 15 days of receiving this invoice. A late fee of 5% per month will be applied to overdue balances.</p>
                             </div>
                           </div>
 
                           <div className="md:justify-self-end md:w-80">
-                            <div className="space-y-3 rounded-[24px] border border-slate-200 bg-white p-5 text-sm shadow-[0_16px_40px_rgba(15,23,42,0.06)]">
-                              <div className="flex justify-between"><span className="font-medium text-slate-600">Sub Total</span><span className="font-bold text-slate-800">${subTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-                              <div className="h-px bg-slate-200" />
-                              <div className="flex justify-between rounded-[20px] bg-[linear-gradient(135deg,#f97316_0%,#ea580c_100%)] p-5 text-white shadow-[0_18px_36px_rgba(249,115,22,0.3)]">
-                                <span className="text-lg font-bold uppercase tracking-wide">Grand Total</span>
+                            <div className="space-y-2 text-sm">
+                              <div className="flex justify-between"><span className="text-slate-600">Sub Total</span><span className="font-medium text-slate-700">${subTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                              <div className="my-2 h-px bg-slate-200" />
+                              <div className="flex justify-between rounded-xl bg-orange-600 p-4 text-white">
+                                <span className="text-lg font-bold">Grand Total</span>
                                 <span className="text-2xl font-black">${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                               </div>
                               {isAdvanceUnpaidStatus(editStatus) && (
@@ -1484,7 +1484,7 @@ export default function Invoice() {
                           </div>
                         </div>
 
-                        <div className="rounded-b-[28px] border-t border-slate-200 bg-[linear-gradient(180deg,#f8fafc_0%,#f1f5f9_100%)] px-10 py-6 text-sm text-slate-500">
+                        <div className="border-t border-slate-200 bg-slate-50 px-10 py-6 text-sm text-slate-500">
                           +1 (555) 000-1234 | www.studioshodwe.com | 456 Design Blvd, Creative City, NY
                         </div>
                       </>
@@ -1494,11 +1494,11 @@ export default function Invoice() {
                   {editError && <p className="mx-10 mt-4 rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-700">{editError}</p>}
 
                   <div className="flex gap-3 px-10 py-6">
-                    <button type="button" onClick={() => !editLoading && setEditingInvoice(null)} className="flex-1 rounded-2xl border border-slate-300 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-100">Cancel</button>
+                    <button type="button" onClick={() => !editLoading && setEditingInvoice(null)} className="flex-1 rounded-xl border border-slate-300 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-100">Cancel</button>
                     <button
                       type="submit"
                       disabled={editLoading || !editValidation.valid}
-                      className="flex-1 rounded-2xl bg-[linear-gradient(135deg,#f97316_0%,#ea580c_100%)] px-4 py-3 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(249,115,22,0.28)] hover:from-orange-600 hover:to-orange-700 disabled:opacity-50"
+                      className="flex-1 rounded-xl bg-orange-600 px-4 py-3 text-sm font-semibold text-white hover:bg-orange-700 disabled:opacity-50"
                     >
                       {editLoading ? 'Saving...' : 'Save'}
                     </button>

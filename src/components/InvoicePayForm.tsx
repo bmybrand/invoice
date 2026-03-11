@@ -10,7 +10,7 @@ const stripePublishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 const stripePromise = stripePublishableKey ? loadStripe(stripePublishableKey) : null
 
 const inputClass =
-  'mt-1 w-full rounded-2xl border border-slate-700 bg-slate-950/90 px-4 py-3 text-sm text-white placeholder:text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20'
+  'mt-1 w-full rounded-lg border border-slate-700 bg-slate-950/90 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20'
 
 const COUNTRY_OPTIONS = [
   { code: 'US', label: 'United States' },
@@ -60,8 +60,8 @@ function ContactFields({
   setZipCode: (value: string) => void
 }) {
   return (
-    <div className="rounded-[28px] border border-slate-700/80 bg-[linear-gradient(180deg,rgba(15,23,42,0.96)_0%,rgba(2,6,23,0.96)_100%)] p-5 shadow-[0_22px_50px_rgba(2,6,23,0.28)] sm:p-6">
-      <div className="mb-5 flex items-center gap-3 border-b border-slate-800 pb-4">
+    <section className="rounded-xl bg-transparent p-2 sm:p-3">
+      <div className="mb-5 flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400">
           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6.75a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.5 20.118a7.5 7.5 0 0115 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.5-1.632z" />
@@ -69,12 +69,12 @@ function ContactFields({
         </div>
         <div>
           <p className="text-sm font-semibold text-white">User Information</p>
-          <p className="text-xs text-slate-500">Billing and contact details for this payment.</p>
+          <p className="text-xs text-slate-300">Billing and contact details for this payment.</p>
         </div>
       </div>
       <div className="space-y-4">
       <div>
-        <label htmlFor="pay-full-name" className="block text-xs font-semibold text-slate-400">
+        <label htmlFor="pay-full-name" className="block text-xs font-semibold text-slate-200">
           Your Name
         </label>
         <input
@@ -87,7 +87,7 @@ function ContactFields({
         />
       </div>
       <div>
-        <label htmlFor="pay-phone" className="block text-xs font-semibold text-slate-400">
+        <label htmlFor="pay-phone" className="block text-xs font-semibold text-slate-200">
           Your Phone
         </label>
         <input
@@ -100,7 +100,7 @@ function ContactFields({
         />
       </div>
       <div>
-        <label htmlFor="pay-email" className="block text-xs font-semibold text-slate-400">
+        <label htmlFor="pay-email" className="block text-xs font-semibold text-slate-200">
           Your Email
         </label>
         <input
@@ -113,7 +113,7 @@ function ContactFields({
         />
       </div>
       <div>
-        <label htmlFor="pay-address" className="block text-xs font-semibold text-slate-400">
+        <label htmlFor="pay-address" className="block text-xs font-semibold text-slate-200">
           Your Address
         </label>
         <textarea
@@ -126,7 +126,7 @@ function ContactFields({
         />
       </div>
       <div>
-        <label htmlFor="pay-city" className="block text-xs font-semibold text-slate-400">
+        <label htmlFor="pay-city" className="block text-xs font-semibold text-slate-200">
           City
         </label>
         <input
@@ -140,7 +140,7 @@ function ContactFields({
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label htmlFor="pay-state" className="block text-xs font-semibold text-slate-400">
+          <label htmlFor="pay-state" className="block text-xs font-semibold text-slate-200">
             State
           </label>
           <input
@@ -153,7 +153,7 @@ function ContactFields({
           />
         </div>
         <div>
-          <label htmlFor="pay-zip" className="block text-xs font-semibold text-slate-400">
+          <label htmlFor="pay-zip" className="block text-xs font-semibold text-slate-200">
             Zip Code
           </label>
           <input
@@ -167,7 +167,7 @@ function ContactFields({
         </div>
       </div>
       </div>
-    </div>
+    </section>
   )
 }
 
@@ -420,7 +420,7 @@ function PaymentFormInner({
 
   if (paymentSubmitted) {
     return (
-      <div className="rounded-[28px] border border-emerald-500/30 bg-[linear-gradient(180deg,rgba(6,95,70,0.22)_0%,rgba(6,78,59,0.12)_100%)] p-8 text-center shadow-[0_22px_60px_rgba(6,78,59,0.22)]">
+      <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-8 text-center">
         <h2 className="text-xl font-bold text-emerald-400">{paymentSubmittedTitle}</h2>
         <p className="mt-2 text-sm text-slate-400">{paymentSubmittedMessage}</p>
       </div>
@@ -448,8 +448,8 @@ function PaymentFormInner({
             setZipCode={setZipCode}
           />
         </div>
-        <div className="rounded-[28px] border border-slate-700/80 bg-[linear-gradient(180deg,rgba(15,23,42,0.96)_0%,rgba(2,6,23,0.96)_100%)] p-5 shadow-[0_22px_50px_rgba(2,6,23,0.28)] sm:p-6">
-          <div className="mb-5 flex items-center gap-3 border-b border-slate-800 pb-4">
+        <section className="rounded-xl bg-transparent p-2 sm:p-3">
+          <div className="mb-5 flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-500/10 text-sky-400">
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M3.75 6h16.5A1.5 1.5 0 0121.75 7.5v9A1.5 1.5 0 0120.25 18h-16.5a1.5 1.5 0 01-1.5-1.5v-9A1.5 1.5 0 013.75 6z" />
@@ -457,21 +457,18 @@ function PaymentFormInner({
             </div>
             <div>
               <p className="text-sm font-semibold text-white">Payment Details</p>
-              <p className="text-xs text-slate-500">Secure card payment powered by Stripe.</p>
+              <p className="text-xs text-slate-300">Secure card payment powered by Stripe.</p>
             </div>
           </div>
-          <div className="rounded-[24px] border border-slate-700 bg-[linear-gradient(135deg,rgba(30,41,59,0.98)_0%,rgba(15,23,42,0.98)_50%,rgba(2,6,23,0.98)_100%)] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-            <div className="mb-5 flex items-start justify-between gap-4">
+          <div className="rounded-xl bg-transparent p-1">
+            <div className="mb-4 flex items-start justify-between gap-4">
               <div>
-                <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">Card</p>
+                <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-300">Card</p>
                 <p className="mt-1 text-lg font-bold text-white">Debit or Credit Card</p>
               </div>
-              <div className="flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/80" />
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Secure</span>
-              </div>
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-200">Secure</span>
             </div>
-            <div className="rounded-2xl border border-slate-600 bg-slate-950/80 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+            <div className="rounded-lg border border-slate-700 bg-slate-950/90 px-4 py-4">
               <CardElement
                 options={{
                   hidePostalCode: true,
@@ -492,7 +489,7 @@ function PaymentFormInner({
               />
             </div>
             <div className="mt-4">
-              <label htmlFor="pay-country" className="block text-xs font-semibold text-slate-400">
+              <label htmlFor="pay-country" className="block text-xs font-semibold text-slate-200">
                 Country
               </label>
               <select
@@ -509,21 +506,21 @@ function PaymentFormInner({
               </select>
             </div>
             <div className="mt-5 grid grid-cols-3 gap-3 text-center">
-              <div className="rounded-2xl border border-slate-700 bg-slate-900/70 px-3 py-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Network</p>
-                <p className="mt-1 text-xs font-semibold text-slate-300">Visa / MC</p>
+              <div className="rounded-lg border border-slate-700 bg-slate-950/90 px-3 py-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-300">Network</p>
+                <p className="mt-1 text-xs font-semibold text-white">Visa / MC</p>
               </div>
-              <div className="rounded-2xl border border-slate-700 bg-slate-900/70 px-3 py-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Protection</p>
-                <p className="mt-1 text-xs font-semibold text-slate-300">3D Secure</p>
+              <div className="rounded-lg border border-slate-700 bg-slate-950/90 px-3 py-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-300">Protection</p>
+                <p className="mt-1 text-xs font-semibold text-white">3D Secure</p>
               </div>
-              <div className="rounded-2xl border border-slate-700 bg-slate-900/70 px-3 py-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Gateway</p>
-                <p className="mt-1 text-xs font-semibold text-slate-300">Stripe</p>
+              <div className="rounded-lg border border-slate-700 bg-slate-950/90 px-3 py-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-300">Gateway</p>
+                <p className="mt-1 text-xs font-semibold text-white">Stripe</p>
               </div>
             </div>
           </div>
-        </div>
+        </section>
       </div>
       {paymentError && (
         <p className="rounded-xl border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-400">
@@ -537,7 +534,7 @@ function PaymentFormInner({
         <button
           type="submit"
           disabled={paying || !stripe || !elements}
-          className="rounded-2xl bg-[linear-gradient(135deg,#f97316_0%,#ea580c_100%)] px-8 py-3 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(249,115,22,0.28)] hover:from-orange-600 hover:to-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg bg-orange-600 px-8 py-3 text-sm font-semibold text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {paying ? 'Processing...' : 'Pay Now'}
         </button>
@@ -577,8 +574,7 @@ export default function InvoicePayForm({
   return (
     <div className={embedded ? 'w-full' : 'mx-auto max-w-4xl p-4 sm:p-6'}>
       {invoiceTitle && <p className="mb-6 text-sm font-semibold text-slate-400">{invoiceTitle}</p>}
-      <div className={`relative overflow-hidden rounded-[32px] border border-slate-700 bg-[radial-gradient(circle_at_top_right,rgba(249,115,22,0.10),transparent_28%),linear-gradient(180deg,rgba(30,41,59,0.92)_0%,rgba(15,23,42,0.96)_100%)] shadow-[0_30px_70px_rgba(2,6,23,0.36)] ${embedded ? 'p-5 sm:p-6' : 'p-6 sm:p-8'}`}>
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[linear-gradient(180deg,rgba(255,255,255,0.03),transparent)]" />
+      <div className={`rounded-xl border border-slate-700 bg-slate-800/80 ${embedded ? 'p-5 sm:p-6' : 'p-6 sm:p-8'}`}>
         <h1 className="mb-8 text-xl font-bold text-white">{embedded ? 'Pay Invoice' : 'Your Information'}</h1>
         <Elements
           stripe={stripePromise!}

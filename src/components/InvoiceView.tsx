@@ -38,6 +38,7 @@ export default function InvoiceView({ invoiceId, publicView = false }: { invoice
   const [invoice, setInvoice] = useState<InvoiceRow | null>(null)
   const [brands, setBrands] = useState<BrandOption[]>([])
   const [paymentCompletedLocally, setPaymentCompletedLocally] = useState(false)
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
 
   useEffect(() => {
     async function fetchData() {
@@ -124,6 +125,122 @@ export default function InvoiceView({ invoiceId, publicView = false }: { invoice
   const showPayableDetails = invoice.payable_amount != null
   const amountToPay = showPayableDetails && payableAmount > 0 ? payableAmount : grandTotal
 
+  async function handleDownloadPdf() {
+    if (!canDownloadPdf || downloadingPdf || !invoice) return
+
+    const root = document.getElementById('invoice-print-root')
+    if (!root) return
+
+    setDownloadingPdf(true)
+
+    try {
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import('html2canvas-pro'),
+        import('jspdf'),
+      ])
+
+      const imageMap = new Map<string, string>()
+      const imgs = root.querySelectorAll<HTMLImageElement>('img[src^="http"]')
+      await Promise.all(
+        Array.from(imgs).map(async (img) => {
+          const src = img.getAttribute('src') || ''
+          if (!src || src.startsWith(window.location.origin)) return
+          try {
+            const res = await fetch(`/api/proxy-image?url=${encodeURIComponent(src)}`)
+            if (res.ok) {
+              const { dataUrl } = await res.json()
+              if (dataUrl) imageMap.set(src, dataUrl)
+            }
+          } catch {
+            /* ignore */
+          }
+        })
+      )
+
+      const canvas = await html2canvas(root, {
+        scale: 2,
+        backgroundColor: '#ffffff',
+        useCORS: true,
+        windowWidth: root.scrollWidth,
+        onclone: (clonedDocument) => {
+          const clonedRoot = clonedDocument.getElementById('invoice-print-root')
+          if (!clonedRoot) return
+
+          const transparentPixel = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+          clonedRoot.querySelectorAll('img[src^="http"]').forEach((img) => {
+            const src = img.getAttribute('src') || ''
+            if (!src.startsWith('http')) return
+            const dataUrl = imageMap.get(src)
+            if (dataUrl) {
+              img.setAttribute('src', dataUrl)
+            } else if (!src.startsWith(window.location.origin)) {
+              img.setAttribute('src', transparentPixel)
+            }
+          })
+
+          const summaryGrid = clonedRoot.querySelector('.invoice-summary-grid')
+          const totalsBlock = clonedRoot.querySelector('.invoice-totals-block')
+
+          const sourceElements = [root, ...Array.from(root.querySelectorAll('*'))]
+          const clonedElements = [clonedRoot, ...Array.from(clonedRoot.querySelectorAll('*'))]
+
+          clonedElements.forEach((clonedEl, index) => {
+            const sourceEl = sourceElements[index]
+            if (!(clonedEl instanceof clonedDocument.defaultView!.HTMLElement) || !(sourceEl instanceof HTMLElement)) {
+              return
+            }
+
+            const computed = window.getComputedStyle(sourceEl)
+            const styleText =
+              computed.cssText ||
+              Array.from(computed)
+                .map((prop) => `${prop}: ${computed.getPropertyValue(prop)};`)
+                .join(' ')
+
+            clonedEl.setAttribute('style', styleText)
+            clonedEl.removeAttribute('class')
+          })
+
+          if (summaryGrid instanceof HTMLElement) {
+            summaryGrid.style.cssText = (summaryGrid.style.cssText || '') + '; display:block !important; width:100% !important;'
+          }
+          if (totalsBlock instanceof HTMLElement) {
+            totalsBlock.style.cssText = (totalsBlock.style.cssText || '') + '; width:320px !important; max-width:320px !important; margin-left:auto !important; margin-right:0 !important;'
+          }
+        },
+        ignoreElements: (element) =>
+          element.classList?.contains('no-print') || element.classList?.contains('print-hide-download'),
+      })
+
+      const imageData = canvas.toDataURL('image/png')
+      const pdf = new jsPDF('p', 'mm', 'a4')
+      const pageWidth = pdf.internal.pageSize.getWidth()
+      const pageHeight = pdf.internal.pageSize.getHeight()
+      const imageWidth = pageWidth
+      const imageHeight = (canvas.height * imageWidth) / canvas.width
+
+      let heightLeft = imageHeight
+      let position = 0
+
+      pdf.addImage(imageData, 'PNG', 0, position, imageWidth, imageHeight)
+      heightLeft -= pageHeight
+
+      while (heightLeft > 0) {
+        position -= pageHeight
+        pdf.addPage()
+        pdf.addImage(imageData, 'PNG', 0, position, imageWidth, imageHeight)
+        heightLeft -= pageHeight
+      }
+
+      const fileStem = invoice.brand_name?.trim() ? invoice.brand_name.trim().replace(/[^a-z0-9]+/gi, '-').toLowerCase() : `invoice-${invoice.id}`
+      pdf.save(`${fileStem || `invoice-${invoice.id}`}.pdf`)
+    } catch (error) {
+      console.error('Failed to download PDF', error)
+    } finally {
+      setDownloadingPdf(false)
+    }
+  }
+
   return (
     <div id="invoice-view-root" className={publicView ? 'space-y-4 p-4 sm:p-6 print:p-0 print:m-0' : 'p-4 sm:p-6 space-y-4 print:p-0 print:m-0'}>
       {(showPaymentCompleteBanner || paymentCompletedLocally) && (
@@ -153,7 +270,8 @@ export default function InvoiceView({ invoiceId, publicView = false }: { invoice
           brandMeta={brandMeta as never}
           canDownloadPdf={canDownloadPdf}
           showPaidWatermark={showPaidWatermark}
-          onDownload={() => canDownloadPdf && window.print()}
+          onDownload={handleDownloadPdf}
+          onPrint={() => canDownloadPdf && window.print()}
           rootId="invoice-print-root"
           includeDownloadButton
           showStatusBadge
@@ -288,13 +406,21 @@ export default function InvoiceView({ invoiceId, publicView = false }: { invoice
           }
 
           #invoice-print-root .invoice-summary-grid {
-            display: flex !important;
-            justify-content: flex-end !important;
-            align-items: start !important;
+            display: block !important;
+            width: 100% !important;
           }
 
-          #invoice-print-root .invoice-summary-grid > *:not(.no-print) {
-            flex-shrink: 0 !important;
+          #invoice-print-root .invoice-totals-block {
+            width: 320px !important;
+            max-width: 320px !important;
+            margin-left: auto !important;
+            margin-right: 0 !important;
+          }
+
+          #invoice-print-root .invoice-grand-total {
+            display: flex !important;
+            justify-content: space-between !important;
+            width: 100% !important;
           }
 
           #invoice-print-root,
