@@ -20,7 +20,7 @@ const navItems: Array<{ label: string; href: string }> = [
   { label: 'Brand Identity', href: '/dashboard/brands' },
   { label: 'Invoice', href: '/dashboard/invoices' },
   { label: 'Payment', href: '/dashboard/payments' },
-  { label: 'Settings', href: '#' },
+  { label: 'Settings', href: '/dashboard/settings' },
 ]
 
 function GridIcon({ className = 'h-4 w-4' }: { className?: string }) {
@@ -120,7 +120,7 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
   const [displayRole, setDisplayRole] = useState('')
   const currentTime = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
 
-  const headerTitle = title ?? (pathname === '/dashboard' ? 'Analytics Center' : pathname === '/dashboard/employees' ? 'Employees' : pathname === '/dashboard/brands' ? 'Brand Identity' : pathname === '/dashboard/invoices' ? 'Invoice' : pathname === '/dashboard/payments' ? 'Payment' : pathname.startsWith('/dashboard/') ? pathname.split('/').filter(Boolean).map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' / ') : 'Analytics Center')
+  const headerTitle = title ?? (pathname === '/dashboard' ? 'Analytics Center' : pathname === '/dashboard/employees' ? 'Employees' : pathname === '/dashboard/brands' ? 'Brand Identity' : pathname === '/dashboard/invoices' ? 'Invoice' : pathname === '/dashboard/payments' ? 'Payment' : pathname === '/dashboard/settings' ? 'Settings' : pathname.startsWith('/dashboard/') ? pathname.split('/').filter(Boolean).map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' / ') : 'Analytics Center')
 
   useEffect(() => {
     if (sidebarCollapsed) {

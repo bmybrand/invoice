@@ -1,15 +1,13 @@
 import { NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
+import { findMatchingStripeGatewayForAmount, getInvoicePaymentContext } from '@/lib/server-stripe-gateways'
 
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY
 
 const supabase = serviceRoleKey
   ? createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey)
   : null
-
-const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null
 
 export async function POST(
   req: Request,
@@ -29,13 +27,6 @@ export async function POST(
     )
   }
 
-  if (!stripe) {
-    return NextResponse.json(
-      { error: 'Server not configured. Add STRIPE_SECRET_KEY to .env.local' },
-      { status: 503 }
-    )
-  }
-
   const body = (await req.json().catch(() => null)) as { paymentIntentId?: string } | null
   const paymentIntentId = body?.paymentIntentId?.trim()
 
@@ -43,6 +34,17 @@ export async function POST(
     return NextResponse.json({ error: 'Missing payment intent ID' }, { status: 400 })
   }
 
+  const invoiceContext = await getInvoicePaymentContext(invoiceId)
+  if (!invoiceContext.ok) {
+    return NextResponse.json({ error: invoiceContext.error }, { status: invoiceContext.status })
+  }
+
+  const gatewayLookup = await findMatchingStripeGatewayForAmount(invoiceContext.supabase, invoiceContext.amount)
+  if (!gatewayLookup.ok) {
+    return NextResponse.json({ error: gatewayLookup.error }, { status: gatewayLookup.status })
+  }
+
+  const stripe = new Stripe(gatewayLookup.gateway.secretKey)
   const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId, {
     expand: ['latest_charge'],
   })

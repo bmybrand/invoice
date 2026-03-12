@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { loadStripe } from '@stripe/stripe-js'
 import {
@@ -12,9 +12,6 @@ import {
   useStripe,
 } from '@stripe/react-stripe-js'
 import { supabase } from '@/lib/supabase'
-
-const stripePublishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
-const stripePromise = stripePublishableKey ? loadStripe(stripePublishableKey) : null
 
 const inputClass =
   'mt-2 h-12 w-full rounded-[10px] border border-[#252d41] bg-[#262b40] px-4 text-sm font-medium text-white placeholder:text-[#6f7ca0] focus:border-[#ff6400] focus:outline-none focus:ring-2 focus:ring-[#ff6400]/20'
@@ -263,6 +260,7 @@ function PaymentFormInner({
   setZipCode,
   embedded,
   onPaymentSuccess,
+  gatewayName,
 }: {
   invoiceId: number
   invoiceToken?: string | null
@@ -285,6 +283,7 @@ function PaymentFormInner({
   setZipCode: (value: string) => void
   embedded: boolean
   onPaymentSuccess?: () => void
+  gatewayName: string
 }) {
   const router = useRouter()
   const stripe = useStripe()
@@ -368,7 +367,7 @@ function PaymentFormInner({
       const res = await fetch('/api/create-payment-intent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invoiceId, amount: grandTotal }),
+        body: JSON.stringify({ invoiceId }),
       })
       const data = (await res.json().catch(() => ({}))) as { clientSecret?: string; error?: string }
       if (!res.ok || !data.clientSecret) {
@@ -616,7 +615,7 @@ function PaymentFormInner({
             <div className="mt-5 grid gap-3 sm:grid-cols-3">
               <PaymentMetaPill label="Network" value="Visa / MC" />
               <PaymentMetaPill label="Protection" value="3D Secure" />
-              <PaymentMetaPill label="Gateway" value="Stripe" />
+              <PaymentMetaPill label="Gateway" value={gatewayName} />
             </div>
           </div>
         </section>
@@ -660,12 +659,77 @@ export default function InvoicePayForm({
   const [country, setCountry] = useState('US')
   const [stateRegion, setStateRegion] = useState('')
   const [zipCode, setZipCode] = useState('')
+  const [stripePublishableKey, setStripePublishableKey] = useState<string | null>(null)
+  const [stripeGatewayName, setStripeGatewayName] = useState('Stripe')
+  const [stripeConfigLoading, setStripeConfigLoading] = useState(true)
+  const [stripeConfigError, setStripeConfigError] = useState<string | null>(null)
+  const [stripeFallbackWarning, setStripeFallbackWarning] = useState<string | null>(null)
 
-  if (!stripePublishableKey) {
+  useEffect(() => {
+    let active = true
+
+    async function loadStripeConfig() {
+      setStripeConfigLoading(true)
+      setStripeConfigError(null)
+
+      try {
+        const res = await fetch(`/api/stripe/config?invoiceId=${encodeURIComponent(String(invoiceId))}`)
+        const data = (await res.json().catch(() => ({}))) as {
+          publishableKey?: string
+          gateway?: string
+          source?: 'database' | 'environment'
+          warning?: string | null
+          error?: string
+        }
+
+        if (!active) return
+
+        if (!res.ok || !data.publishableKey) {
+          throw new Error(data.error ?? 'Failed to load payment gateway configuration')
+        }
+
+        setStripePublishableKey(data.publishableKey)
+        setStripeGatewayName(data.gateway?.trim() || 'Stripe')
+        setStripeFallbackWarning(data.source === 'environment' ? data.warning?.trim() || 'Stripe is using fallback environment keys.' : null)
+      } catch (err) {
+        if (!active) return
+        setStripePublishableKey(null)
+        setStripeFallbackWarning(null)
+        setStripeConfigError(err instanceof Error ? err.message : 'Failed to load payment gateway configuration')
+      } finally {
+        if (active) {
+          setStripeConfigLoading(false)
+        }
+      }
+    }
+
+    void loadStripeConfig()
+
+    return () => {
+      active = false
+    }
+  }, [invoiceId])
+
+  const stripePromise = useMemo(
+    () => (stripePublishableKey ? loadStripe(stripePublishableKey) : null),
+    [stripePublishableKey]
+  )
+
+  if (stripeConfigLoading) {
+    return (
+      <div className={embedded ? 'w-full' : 'mx-auto max-w-[1120px] p-4 sm:p-6'}>
+        <p className="rounded-xl border border-slate-700 bg-slate-900/60 px-4 py-3 text-sm text-slate-300">
+          Loading payment configuration...
+        </p>
+      </div>
+    )
+  }
+
+  if (stripeConfigError || !stripePublishableKey || !stripePromise) {
     return (
       <div className={embedded ? 'w-full' : 'mx-auto max-w-[1120px] p-4 sm:p-6'}>
         <p className="rounded-xl border border-amber-500/50 bg-amber-500/10 px-4 py-3 text-sm text-amber-400">
-          Payment form is not configured. Add NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY to .env.local
+          {stripeConfigError ?? 'Payment form is not configured.'}
         </p>
       </div>
     )
@@ -676,6 +740,11 @@ export default function InvoicePayForm({
       {invoiceTitle ? <p className="sr-only">{invoiceTitle}</p> : null}
       <div className={`rounded-[20px] border border-[#1a2d4c] bg-[#0f172b] shadow-[0_24px_60px_rgba(4,10,31,0.45)] ${embedded ? 'p-6 sm:p-7' : 'p-6 sm:p-8'}`}>
         <h1 className="mb-8 text-[18px] font-bold text-white sm:text-[20px]">Pay Invoice</h1>
+        {stripeFallbackWarning ? (
+          <p className="mb-6 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+            {stripeFallbackWarning}
+          </p>
+        ) : null}
         <Elements
           stripe={stripePromise!}
           options={{
@@ -712,6 +781,7 @@ export default function InvoicePayForm({
             setZipCode={setZipCode}
             embedded={embedded}
             onPaymentSuccess={onPaymentSuccess}
+            gatewayName={stripeGatewayName}
           />
         </Elements>
       </div>

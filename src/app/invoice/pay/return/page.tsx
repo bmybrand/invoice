@@ -1,13 +1,14 @@
 import { redirect } from 'next/navigation'
 import Stripe from 'stripe'
 import { decryptInvoiceToken } from '@/lib/invoice-token'
-
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY
+import { findMatchingStripeGatewayForAmount, getInvoicePaymentContext } from '@/lib/server-stripe-gateways'
 
 export default async function InvoicePayReturnPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ token?: string; invoice_id?: string; payment_intent?: string }> | { token?: string; invoice_id?: string; payment_intent?: string }
+  searchParams?:
+    | Promise<{ token?: string; invoice_id?: string; payment_intent?: string; session_id?: string }>
+    | { token?: string; invoice_id?: string; payment_intent?: string; session_id?: string }
 }) {
   const params = searchParams instanceof Promise ? await searchParams : searchParams
   const tokenParam = params?.token
@@ -31,19 +32,43 @@ export default async function InvoicePayReturnPage({
     ? `/invoice?token=${encodeURIComponent(invoiceToken)}`
     : `/invoice?id=${invoiceId}`
 
-  if (!stripeSecretKey) {
+  const invoiceContext = await getInvoicePaymentContext(invoiceId)
+  if (!invoiceContext.ok) {
     redirect(`${invoiceUrl}&payment=processing`)
   }
 
+  const gatewayLookup = await findMatchingStripeGatewayForAmount(invoiceContext.supabase, invoiceContext.amount)
+  if (!gatewayLookup.ok) {
+    redirect(`${invoiceUrl}&payment=processing`)
+  }
+
+  const stripe = new Stripe(gatewayLookup.gateway.secretKey)
+  const sessionId = params?.session_id?.trim()
   const paymentIntentId = params?.payment_intent
+
+  if (sessionId) {
+    const session = await stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ['payment_intent'],
+    })
+    const sessionPaymentIntent =
+      typeof session.payment_intent === 'string' ? null : session.payment_intent
+
+    if (session.payment_status === 'paid' || sessionPaymentIntent?.status === 'succeeded') {
+      await invoiceContext.supabase.from('invoices').update({ status: 'Paid' }).eq('id', invoiceId)
+      redirect(`${invoiceUrl}&payment=success`)
+    }
+
+    redirect(`${invoiceUrl}&payment=processing`)
+  }
+
   if (!paymentIntentId) {
     redirect(`${invoiceUrl}&payment=processing`)
   }
 
-  const stripe = new Stripe(stripeSecretKey)
   const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId)
 
   if (paymentIntent.status === 'succeeded') {
+    await invoiceContext.supabase.from('invoices').update({ status: 'Paid' }).eq('id', invoiceId)
     redirect(`${invoiceUrl}&payment=success`)
   }
 

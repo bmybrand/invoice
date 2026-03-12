@@ -1,25 +1,33 @@
 import { NextResponse } from 'next/server'
 import Stripe from 'stripe'
-
-const secretKey = process.env.STRIPE_SECRET_KEY
-const stripe = secretKey ? new Stripe(secretKey) : null
+import { findMatchingStripeGatewayForAmount, getInvoicePaymentContext } from '@/lib/server-stripe-gateways'
 
 export async function POST(req: Request) {
-  if (!stripe) {
-    return NextResponse.json(
-      { error: 'Stripe is not configured. Add STRIPE_SECRET_KEY to .env.local' },
-      { status: 503 }
-    )
-  }
-
   try {
-    const { invoiceId, amount } = await req.json()
+    const { invoiceId } = await req.json()
+    const parsedInvoiceId = Number(invoiceId)
 
-    if (!invoiceId || typeof amount !== 'number' || amount <= 0) {
-      return NextResponse.json({ error: 'Invalid invoiceId or amount' }, { status: 400 })
+    if (!Number.isFinite(parsedInvoiceId) || parsedInvoiceId <= 0) {
+      return NextResponse.json({ error: 'Invalid invoice ID' }, { status: 400 })
     }
 
-    const amountInCents = Math.round(Number(amount) * 100)
+    const invoiceContext = await getInvoicePaymentContext(parsedInvoiceId)
+    if (!invoiceContext.ok) {
+      return NextResponse.json({ error: invoiceContext.error }, { status: invoiceContext.status })
+    }
+
+    const invoiceStatus = (invoiceContext.invoice.status || '').trim().toLowerCase()
+    if (invoiceStatus.includes('paid') || invoiceStatus.includes('completed')) {
+      return NextResponse.json({ error: 'This invoice has already been paid' }, { status: 409 })
+    }
+
+    const gatewayLookup = await findMatchingStripeGatewayForAmount(invoiceContext.supabase, invoiceContext.amount)
+    if (!gatewayLookup.ok) {
+      return NextResponse.json({ error: gatewayLookup.error }, { status: gatewayLookup.status })
+    }
+
+    const stripe = new Stripe(gatewayLookup.gateway.secretKey)
+    const amountInCents = Math.round(invoiceContext.amount * 100)
     if (amountInCents < 50) {
       return NextResponse.json({ error: 'Amount must be at least $0.50' }, { status: 400 })
     }
@@ -28,10 +36,18 @@ export async function POST(req: Request) {
       amount: amountInCents,
       currency: 'usd',
       automatic_payment_methods: { enabled: true },
-      metadata: { invoice_id: String(invoiceId) },
+      metadata: {
+        invoice_id: String(parsedInvoiceId),
+        gateway_id: gatewayLookup.gateway.id == null ? '' : String(gatewayLookup.gateway.id),
+        gateway_name: gatewayLookup.gateway.name,
+      },
     })
 
-    return NextResponse.json({ clientSecret: paymentIntent.client_secret })
+    return NextResponse.json({
+      clientSecret: paymentIntent.client_secret,
+      gateway: gatewayLookup.gateway.name,
+      source: gatewayLookup.gateway.source,
+    })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to create payment intent'
     return NextResponse.json({ error: message }, { status: 500 })
