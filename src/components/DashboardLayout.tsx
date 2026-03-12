@@ -1,15 +1,24 @@
 'use client'
 
-import { useState, useEffect, createContext, useContext } from 'react'
+import { useState, useEffect, useRef, useCallback, createContext, useContext } from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
 import { Plus_Jakarta_Sans } from 'next/font/google'
 import { supabase } from '@/lib/supabase'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
+const PROFILE_AVATAR_BUCKET = 'profile-images'
 
-type DashboardProfile = { displayName: string; displayRole: string }
-const DashboardProfileContext = createContext<DashboardProfile>({ displayName: '', displayRole: '' })
+type DashboardProfile = {
+  displayName: string
+  displayRole: string
+  onlineAuthIds: string[]
+}
+const DashboardProfileContext = createContext<DashboardProfile>({
+  displayName: '',
+  displayRole: '',
+  onlineAuthIds: [],
+})
 export function useDashboardProfile() {
   return useContext(DashboardProfileContext)
 }
@@ -96,6 +105,14 @@ function ChevronRightIcon({ className = 'h-5 w-5' }: { className?: string }) {
   )
 }
 
+function CloseIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+    </svg>
+  )
+}
+
 function NavIcon({ label, active }: { label: string; active: boolean }) {
   const iconClass = active ? 'text-orange-500' : 'text-slate-400'
   const sizeClass = 'h-3 w-3 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4 lg:h-5 lg:w-5'
@@ -115,84 +132,336 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
   const router = useRouter()
   const pathname = usePathname()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [profileCentered, setProfileCentered] = useState(false)
   const [displayName, setDisplayName] = useState('')
   const [displayRole, setDisplayRole] = useState('')
-  const currentTime = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+  const [displayAvatarUrl, setDisplayAvatarUrl] = useState('')
+  const [currentUserAuthId, setCurrentUserAuthId] = useState<string | null>(null)
+  const [currentUserEmail, setCurrentUserEmail] = useState('')
+  const [currentTime, setCurrentTime] = useState('')
+  const [profileModalOpen, setProfileModalOpen] = useState(false)
+  const [profileName, setProfileName] = useState('')
+  const [profileEmail, setProfileEmail] = useState('')
+  const [profileImageFile, setProfileImageFile] = useState<File | null>(null)
+  const [profileAvatarPreviewUrl, setProfileAvatarPreviewUrl] = useState('')
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [profileError, setProfileError] = useState<string | null>(null)
+  const [profileSuccess, setProfileSuccess] = useState<string | null>(null)
+  const [onlineAuthIds, setOnlineAuthIds] = useState<string[]>([])
+  const profileObjectUrlRef = useRef<string | null>(null)
 
   const headerTitle = title ?? (pathname === '/dashboard' ? 'Analytics Center' : pathname === '/dashboard/employees' ? 'Employees' : pathname === '/dashboard/brands' ? 'Brand Identity' : pathname === '/dashboard/invoices' ? 'Invoice' : pathname === '/dashboard/payments' ? 'Payment' : pathname === '/dashboard/settings' ? 'Settings' : pathname.startsWith('/dashboard/') ? pathname.split('/').filter(Boolean).map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' / ') : 'Analytics Center')
 
   useEffect(() => {
-    if (sidebarCollapsed) {
-      const t = setTimeout(() => setProfileCentered(true), 200)
-      return () => clearTimeout(t)
-    } else {
-      setProfileCentered(false)
+    function updateCurrentTime() {
+      setCurrentTime(
+        new Date().toLocaleTimeString('en-US', {
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true,
+        })
+      )
     }
-  }, [sidebarCollapsed])
+
+    updateCurrentTime()
+    const intervalId = window.setInterval(updateCurrentTime, 60000)
+
+    return () => window.clearInterval(intervalId)
+  }, [])
+
+  const loadProfile = useCallback(async () => {
+    let user = (await supabase.auth.getSession()).data.session?.user
+    if (!user) {
+      const {
+        data: { user: fallbackUser },
+      } = await supabase.auth.getUser()
+      user = fallbackUser ?? undefined
+    }
+
+    if (!user?.id) {
+      setCurrentUserAuthId(null)
+      setCurrentUserEmail('')
+      setDisplayName('')
+      setDisplayRole('')
+      setDisplayAvatarUrl('')
+      setOnlineAuthIds([])
+      return
+    }
+
+    const metadata = user.user_metadata as Record<string, unknown> | undefined
+    const metadataDisplayName =
+      typeof metadata?.display_name === 'string' ? metadata.display_name.trim() : ''
+    const metadataAvatarUrl =
+      typeof metadata?.avatar_url === 'string' ? metadata.avatar_url.trim() : ''
+
+    const { data, error } = await supabase
+      .from('employees')
+      .select('employee_name, role')
+      .eq('auth_id', user.id)
+      .maybeSingle()
+
+    setCurrentUserAuthId(user.id)
+    setCurrentUserEmail(user.email ?? '')
+    setDisplayAvatarUrl(metadataAvatarUrl)
+
+    if (error) {
+      setDisplayName(metadataDisplayName || user.email || 'User')
+      setDisplayRole('')
+      return
+    }
+
+    const row = data as { employee_name?: string; role?: string } | null
+    setDisplayName(row?.employee_name?.trim() || metadataDisplayName || user.email || 'User')
+    setDisplayRole(
+      row?.role
+        ? String(row.role).charAt(0).toUpperCase() + String(row.role).slice(1).toLowerCase()
+        : ''
+    )
+  }, [])
 
   useEffect(() => {
-    async function loadProfile() {
-      let user = (await supabase.auth.getSession()).data.session?.user
-      if (!user) {
-        const { data: { user: u } } = await supabase.auth.getUser()
-        user = u ?? undefined
-      }
-      if (!user?.id) {
-        setDisplayName('')
-        setDisplayRole('')
-        return
-      }
-      const { data, error } = await supabase
-        .from('employees')
-        .select('employee_name, role')
-        .eq('auth_id', user.id)
-        .maybeSingle()
-      if (error) {
-        setDisplayName(user.email ?? 'User')
-        setDisplayRole('')
-        return
-      }
-      const row = data as { employee_name?: string; role?: string } | null
-      setDisplayName(row?.employee_name ?? user.email ?? 'User')
-      setDisplayRole(row?.role ? String(row.role).charAt(0).toUpperCase() + String(row.role).slice(1).toLowerCase() : '')
-    }
-    loadProfile()
+    const timeoutId = window.setTimeout(() => {
+      void loadProfile()
+    }, 0)
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
-        loadProfile()
+        void loadProfile()
       } else if (event === 'SIGNED_OUT') {
+        setCurrentUserAuthId(null)
+        setCurrentUserEmail('')
         setDisplayName('')
         setDisplayRole('')
+        setDisplayAvatarUrl('')
+        setOnlineAuthIds([])
         router.replace('/login')
       } else {
+        setCurrentUserAuthId(null)
+        setCurrentUserEmail('')
         setDisplayName('')
         setDisplayRole('')
+        setDisplayAvatarUrl('')
+        setOnlineAuthIds([])
       }
     })
 
     const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') loadProfile()
+      if (document.visibilityState === 'visible') {
+        void loadProfile()
+      }
     }
     document.addEventListener('visibilitychange', onVisibilityChange)
 
-    const pollInterval = setInterval(loadProfile, 5000)
+    const pollInterval = window.setInterval(() => {
+      void loadProfile()
+    }, 5000)
 
     return () => {
+      window.clearTimeout(timeoutId)
       subscription.unsubscribe()
       document.removeEventListener('visibilitychange', onVisibilityChange)
-      clearInterval(pollInterval)
+      window.clearInterval(pollInterval)
     }
-  }, [router])
+  }, [loadProfile, router])
+
+  useEffect(() => {
+    if (!currentUserAuthId) return
+
+    const channel = supabase.channel('dashboard-employee-presence', {
+      config: {
+        presence: {
+          key: currentUserAuthId,
+        },
+      },
+    })
+
+    const syncPresence = () => {
+      const state = channel.presenceState()
+      setOnlineAuthIds(Object.keys(state).filter(Boolean))
+    }
+
+    channel
+      .on('presence', { event: 'sync' }, syncPresence)
+      .on('presence', { event: 'join' }, syncPresence)
+      .on('presence', { event: 'leave' }, syncPresence)
+      .subscribe(async (status) => {
+        if (status !== 'SUBSCRIBED') return
+
+        const { error } = await channel.track({
+          online_at: new Date().toISOString(),
+        })
+
+        if (error) {
+          console.error('Failed to track employee presence', error)
+          return
+        }
+
+        syncPresence()
+      })
+
+    return () => {
+      void channel.untrack()
+      void supabase.removeChannel(channel)
+    }
+  }, [currentUserAuthId])
 
   async function handleLogout() {
     await supabase.auth.signOut({ scope: 'local' })
     router.push('/login')
   }
 
+  function resetProfileImageState(nextPreviewUrl: string) {
+    if (profileObjectUrlRef.current) {
+      URL.revokeObjectURL(profileObjectUrlRef.current)
+      profileObjectUrlRef.current = null
+    }
+    setProfileImageFile(null)
+    setProfileAvatarPreviewUrl(nextPreviewUrl)
+  }
+
+  function handleProfileImageChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null
+    if (!file) {
+      resetProfileImageState(displayAvatarUrl || '')
+      return
+    }
+
+    if (!file.type.startsWith('image/')) {
+      setProfileError('Profile image must be an image file.')
+      return
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setProfileError('Profile image must be 5MB or smaller.')
+      return
+    }
+
+    if (profileObjectUrlRef.current) {
+      URL.revokeObjectURL(profileObjectUrlRef.current)
+    }
+
+    const objectUrl = URL.createObjectURL(file)
+    profileObjectUrlRef.current = objectUrl
+    setProfileError(null)
+    setProfileImageFile(file)
+    setProfileAvatarPreviewUrl(objectUrl)
+  }
+
+  function openProfileModal() {
+    setProfileName(displayName || '')
+    setProfileEmail(currentUserEmail || '')
+    resetProfileImageState(displayAvatarUrl || '')
+    setProfileError(null)
+    setProfileSuccess(null)
+    setProfileModalOpen(true)
+  }
+
+  function closeProfileModal() {
+    if (profileSaving) return
+    resetProfileImageState(displayAvatarUrl || '')
+    setProfileModalOpen(false)
+    setProfileError(null)
+    setProfileSuccess(null)
+  }
+
+  async function handleProfileSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    if (!currentUserAuthId || profileSaving) return
+
+    const nextName = profileName.trim()
+    const nextEmail = profileEmail.trim()
+    let nextAvatarUrl = displayAvatarUrl.trim()
+
+    if (!nextName) {
+      setProfileError('Name is required.')
+      return
+    }
+
+    if (!nextEmail) {
+      setProfileError('Email is required.')
+      return
+    }
+
+    setProfileSaving(true)
+    setProfileError(null)
+    setProfileSuccess(null)
+
+    const emailChanged = nextEmail.toLowerCase() !== currentUserEmail.trim().toLowerCase()
+
+    if (profileImageFile) {
+      const extension = profileImageFile.name.split('.').pop()?.toLowerCase() || 'png'
+      const filePath = `${currentUserAuthId}/avatar-${Date.now()}.${extension}`
+      const { error: uploadError } = await supabase.storage
+        .from(PROFILE_AVATAR_BUCKET)
+        .upload(filePath, profileImageFile, {
+          upsert: true,
+          contentType: profileImageFile.type,
+          cacheControl: '3600',
+        })
+
+      if (uploadError) {
+        setProfileSaving(false)
+        setProfileError(uploadError.message)
+        return
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from(PROFILE_AVATAR_BUCKET)
+        .getPublicUrl(filePath)
+
+      nextAvatarUrl = publicUrlData.publicUrl
+    }
+
+    const { error: authError } = await supabase.auth.updateUser({
+      email: emailChanged ? nextEmail : undefined,
+      data: {
+        display_name: nextName,
+        avatar_url: nextAvatarUrl || null,
+      },
+    })
+
+    if (authError) {
+      setProfileSaving(false)
+      setProfileError(authError.message)
+      return
+    }
+
+    const { error: employeeError } = await supabase
+      .from('employees')
+      .update({
+        employee_name: nextName,
+        email: nextEmail,
+      })
+      .eq('auth_id', currentUserAuthId)
+
+    if (employeeError) {
+      setProfileSaving(false)
+      setProfileError(employeeError.message)
+      return
+    }
+
+    setDisplayName(nextName)
+    setDisplayAvatarUrl(nextAvatarUrl)
+    setCurrentUserEmail(nextEmail)
+    resetProfileImageState(nextAvatarUrl)
+    setProfileSaving(false)
+    setProfileSuccess(
+      emailChanged
+        ? 'Profile updated. Check your email inbox to confirm the new email address.'
+        : 'Profile updated successfully.'
+    )
+    await loadProfile()
+  }
+
+  useEffect(() => {
+    return () => {
+      if (profileObjectUrlRef.current) {
+        URL.revokeObjectURL(profileObjectUrlRef.current)
+      }
+    }
+  }, [])
+
   return (
-    <DashboardProfileContext.Provider value={{ displayName, displayRole }}>
+    <DashboardProfileContext.Provider value={{ displayName, displayRole, onlineAuthIds }}>
     <div id="dashboard-root-shell" className={`${plusJakarta.className} flex min-h-screen w-full bg-gray-900 text-white`}>
       {/* Sidebar */}
       <aside className={`fixed left-0 top-0 z-20 flex h-screen flex-col border-r border-slate-800 bg-[#0b1323] transition-[width] duration-200 ease-out xl:sticky xl:top-0 xl:left-auto xl:z-auto xl:shrink-0 ${sidebarCollapsed ? 'w-12 sm:w-14 md:w-20' : 'w-full md:w-64'}`}>
@@ -203,18 +472,6 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
           <span className={`truncate text-lg font-extrabold leading-6 transition-[opacity,max-width] duration-200 md:text-xl md:leading-7 ${sidebarCollapsed ? 'w-0 max-w-0 opacity-0' : 'opacity-100 delay-200'}`}>
             Invoice <span className="text-orange-500">CRM</span>
           </span>
-        </div>
-        <div className={`${sidebarCollapsed ? 'flex px-1 pb-2 sm:px-1.5 sm:pb-3' : 'px-3 pb-3 sm:px-4 sm:pb-4 md:px-6 md:pb-6'} ${profileCentered ? 'justify-center' : ''}`}>
-          <div className={`flex items-center rounded-lg border border-slate-800 bg-slate-900/50 p-1.5 transition-[justify-content] duration-200 sm:rounded-xl sm:p-2 md:rounded-2xl md:p-3 ${profileCentered ? 'justify-center gap-0' : sidebarCollapsed ? 'gap-0' : 'gap-2 md:gap-3'}`}>
-            <div className="relative shrink-0">
-              <img src="https://placehold.co/40x40" alt="" className="h-6 w-6 rounded-md shadow-[0px_0px_0px_2px_rgba(59,130,246,0.50)] sm:h-7 sm:w-7 sm:rounded-lg md:h-8 md:w-8 md:rounded-xl lg:h-10 lg:w-10 xl:h-11 xl:w-11" />
-              <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-gray-900 bg-green-500 sm:h-3 sm:w-3 md:-right-1 md:-top-1 md:h-4 md:w-4" />
-            </div>
-            <div className={`overflow-hidden transition-[opacity,max-width] duration-200 ${sidebarCollapsed ? 'w-0 max-w-0 opacity-0' : 'min-w-0 flex-1 opacity-100 delay-200'}`}>
-              <p className="truncate text-xs font-bold leading-4 text-white md:text-sm md:leading-5">{displayName || 'User'}</p>
-              <p className="truncate text-[9px] font-black uppercase leading-3 tracking-wide text-slate-500 md:text-[10px] md:leading-4">{displayRole || '-'}</p>
-            </div>
-          </div>
         </div>
         <nav className={`flex flex-1 flex-col gap-0.5 overflow-hidden ${sidebarCollapsed ? 'items-center px-1 py-1.5 sm:px-1.5 sm:py-2' : 'gap-1 px-3 sm:px-4'}`}>
           {navItems.map((item) => {
@@ -270,13 +527,32 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
             <span className="text-[10px] font-bold uppercase leading-4 tracking-tight text-white sm:text-xs md:text-sm">{headerTitle}</span>
           </div>
           <div className="flex items-center gap-2 sm:gap-4">
+            <button
+              type="button"
+              onClick={openProfileModal}
+              className="flex min-w-0 items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/60 px-2.5 py-1.5 text-left transition hover:border-slate-700 hover:bg-slate-800/80 sm:gap-3 sm:px-3 sm:py-2"
+              title="Edit your profile"
+            >
+              <div className="relative shrink-0">
+                <img
+                  src={displayAvatarUrl || 'https://placehold.co/40x40'}
+                  alt=""
+                  className="h-8 w-8 rounded-lg object-cover shadow-[0px_0px_0px_2px_rgba(59,130,246,0.35)] sm:h-9 sm:w-9"
+                />
+                <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-gray-900 bg-green-500 sm:h-3 sm:w-3" />
+              </div>
+              <div className="min-w-0 max-w-[160px] sm:max-w-[200px]">
+                <p className="truncate text-xs font-bold leading-4 text-white sm:text-sm sm:leading-5">{displayName || 'User'}</p>
+                <p className="truncate text-[9px] font-black uppercase leading-3 tracking-wide text-slate-500 sm:text-[10px] sm:leading-4">{displayRole || '-'}</p>
+              </div>
+            </button>
             <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-2 py-1.5 sm:gap-3 sm:px-4 sm:py-2">
               <div className="flex items-center gap-1">
                 <span className="h-1.5 w-1.5 rounded-full bg-green-500 sm:h-2 sm:w-2" />
                 <span className="text-[10px] font-bold leading-4 text-slate-400 sm:text-xs">System Online</span>
               </div>
               <div className="h-3 w-px bg-slate-700 sm:h-4" />
-              <span className="text-[10px] font-bold leading-4 text-slate-400 sm:text-xs">{currentTime}</span>
+              <span className="text-[10px] font-bold leading-4 text-slate-400 sm:text-xs">{currentTime || '--'}</span>
             </div>
           </div>
         </header>
@@ -286,6 +562,114 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
           {children}
         </main>
       </div>
+
+      {profileModalOpen && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4">
+          <div className="relative w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={closeProfileModal}
+              disabled={profileSaving}
+              aria-label="Close profile editor"
+              className="absolute right-4 top-4 rounded-full border border-slate-600 p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <CloseIcon />
+            </button>
+            <h2 className="text-lg font-bold text-white">My Profile</h2>
+            <p className="mt-1 text-sm text-slate-400">Update your own name, email, and profile image.</p>
+            <form onSubmit={handleProfileSubmit} className="mt-5 flex flex-col gap-4">
+              <div className="flex items-center gap-4 rounded-xl border border-slate-700 bg-slate-900/50 p-4">
+                <img
+                  src={profileAvatarPreviewUrl || displayAvatarUrl || 'https://placehold.co/80x80'}
+                  alt=""
+                  className="h-16 w-16 rounded-xl object-cover"
+                />
+                <div className="min-w-0 flex-1">
+                  <label htmlFor="profile-avatar-upload" className="block text-sm font-medium text-slate-300">
+                    Profile Image
+                  </label>
+                  <input
+                    id="profile-avatar-upload"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleProfileImageChange}
+                    className="mt-2 block w-full text-sm text-slate-300 file:mr-4 file:rounded-lg file:border-0 file:bg-orange-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-orange-600"
+                  />
+                  <p className="mt-2 text-xs text-slate-500">Upload PNG, JPG, WEBP, or GIF up to 5MB.</p>
+                </div>
+              </div>
+              <div>
+                <label htmlFor="profile-name" className="block text-sm font-medium text-slate-300">
+                  Name
+                </label>
+                <input
+                  id="profile-name"
+                  type="text"
+                  value={profileName}
+                  onChange={(e) => setProfileName(e.target.value)}
+                  required
+                  placeholder="Full name"
+                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                />
+              </div>
+              <div>
+                <label htmlFor="profile-email" className="block text-sm font-medium text-slate-300">
+                  Email
+                </label>
+                <input
+                  id="profile-email"
+                  type="email"
+                  value={profileEmail}
+                  onChange={(e) => setProfileEmail(e.target.value)}
+                  required
+                  placeholder="name@company.com"
+                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                />
+              </div>
+              <div>
+                <label htmlFor="profile-role" className="block text-sm font-medium text-slate-300">
+                  Role
+                </label>
+                <input
+                  id="profile-role"
+                  type="text"
+                  value={displayRole || '-'}
+                  readOnly
+                  className="mt-1 w-full cursor-not-allowed rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-3 text-slate-500"
+                />
+                <p className="mt-1 text-xs text-slate-500">Role is managed separately and cannot be changed here.</p>
+              </div>
+              {profileError && (
+                <p className="rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+                  {profileError}
+                </p>
+              )}
+              {profileSuccess && (
+                <p className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">
+                  {profileSuccess}
+                </p>
+              )}
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={closeProfileModal}
+                  disabled={profileSaving}
+                  className="flex-1 rounded-xl border border-slate-600 px-4 py-3 text-sm font-medium text-slate-300 hover:bg-slate-700/50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={profileSaving}
+                  className="flex-1 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50"
+                >
+                  {profileSaving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
     </DashboardProfileContext.Provider>
   )

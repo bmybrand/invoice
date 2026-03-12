@@ -8,6 +8,7 @@ import { useDashboardProfile } from '@/components/DashboardLayout'
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
 const PAGE_SIZE = 10
+const PROFILE_AVATAR_BUCKET = 'profile-images'
 
 type EmployeeRow = {
   id: number
@@ -117,7 +118,7 @@ function CloseIcon({ className = 'h-4 w-4' }: { className?: string }) {
 }
 
 export default function Employees() {
-  const { displayRole } = useDashboardProfile()
+  const { displayRole, onlineAuthIds } = useDashboardProfile()
   const [employees, setEmployees] = useState<EmployeeRow[]>([])
   const [employeesLoading, setEmployeesLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
@@ -132,6 +133,7 @@ export default function Employees() {
   const [searchQuery, setSearchQuery] = useState('')
   const [roleFilter, setRoleFilter] = useState('') // '' = all, 'superadmin' | 'admin' | 'user'
   const [roleDropdownOpen, setRoleDropdownOpen] = useState(false)
+  const [employeeAvatarUrls, setEmployeeAvatarUrls] = useState<Record<string, string>>({})
   const [editingEmployee, setEditingEmployee] = useState<EmployeeRow | null>(null)
   const [editName, setEditName] = useState('')
   const [editRole, setEditRole] = useState<'user' | 'admin' | 'superadmin'>('user')
@@ -153,6 +155,7 @@ export default function Employees() {
     (displayRole || '').trim().toLowerCase().replace(/\s+/g, '') === 'superadmin'
   const isAdmin =
     (displayRole || '').trim().toLowerCase().replace(/\s+/g, '') === 'admin'
+  const onlineAuthIdSet = new Set(onlineAuthIds)
 
   const [currentUserAuthId, setCurrentUserAuthId] = useState<string | null>(null)
   const [currentUserEmployeeId, setCurrentUserEmployeeId] = useState<number | null>(null)
@@ -220,20 +223,60 @@ export default function Employees() {
     if (currentPage > totalPages) setCurrentPage(1)
   }, [currentPage, totalPages])
 
+  const fetchEmployeeAvatarUrls = useCallback(async (rows: EmployeeRow[]) => {
+    const authIds = Array.from(new Set(rows.map((row) => row.auth_id).filter(Boolean)))
+
+    if (authIds.length === 0) {
+      setEmployeeAvatarUrls({})
+      return
+    }
+
+    const avatarEntries = await Promise.all(
+      authIds.map(async (authId) => {
+        const { data, error } = await supabase.storage.from(PROFILE_AVATAR_BUCKET).list(authId)
+
+        if (error || !data?.length) return [authId, ''] as const
+
+        const latestFile = [...data]
+          .sort((a, b) => {
+            const aTime = Date.parse(a.updated_at || a.created_at || '')
+            const bTime = Date.parse(b.updated_at || b.created_at || '')
+            return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime)
+          })[0]
+
+        if (!latestFile?.name) return [authId, ''] as const
+
+        const { data: publicUrlData } = supabase.storage
+          .from(PROFILE_AVATAR_BUCKET)
+          .getPublicUrl(`${authId}/${latestFile.name}`)
+
+        return [authId, publicUrlData.publicUrl] as const
+      })
+    )
+
+    setEmployeeAvatarUrls(
+      Object.fromEntries(avatarEntries.filter((entry) => entry[1]))
+    )
+  }, [])
+
   const fetchEmployees = useCallback(async () => {
     setEmployeesLoading(true)
     const { data, error } = await supabase
       .from('employees')
       .select('id, auth_id, employee_name, email, role, department, created_at')
       .order('created_at', { ascending: false })
+
     setEmployeesLoading(false)
     if (error) {
       console.error('Failed to fetch employees', error)
       setEmployees([])
+      setEmployeeAvatarUrls({})
       return
     }
-    setEmployees((data as EmployeeRow[]) ?? [])
-  }, [])
+    const rows = (data as EmployeeRow[]) ?? []
+    setEmployees(rows)
+    void fetchEmployeeAvatarUrls(rows)
+  }, [fetchEmployeeAvatarUrls])
 
   useEffect(() => {
     fetchEmployees()
@@ -508,8 +551,20 @@ export default function Employees() {
             paginatedEmployees.map((emp) => (
             <div key={emp.id} className="w-full min-w-[560px] border-t border-slate-700 grid grid-cols-[1fr_1fr_140px_100px] gap-0 items-center">
               <div className="px-4 sm:px-6 py-4 flex items-center gap-3 min-w-0">
-                <div className="w-10 h-10 rounded-full bg-orange-500/10 border border-orange-500/20 shrink-0 overflow-hidden">
-                  <img src="https://placehold.co/40x40" alt="" className="w-full h-full object-cover" />
+                <div className="relative w-10 h-10 shrink-0">
+                  <div className="h-full w-full overflow-hidden rounded-full border border-orange-500/20 bg-orange-500/10">
+                    <img
+                      src={employeeAvatarUrls[emp.auth_id] || 'https://placehold.co/40x40'}
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  {onlineAuthIdSet.has(emp.auth_id) && (
+                    <span
+                      className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-slate-800 bg-emerald-500"
+                      title="Online"
+                    />
+                  )}
                 </div>
                 <div className="min-w-0">
                   <p className="text-white text-sm font-bold truncate">{emp.employee_name}</p>

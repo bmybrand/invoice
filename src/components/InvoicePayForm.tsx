@@ -420,10 +420,9 @@ function PaymentFormInner({
 
     const paymentStatus = paymentIntent?.status ?? 'processing'
     const stripePaymentIntentId = paymentIntent?.id ?? null
-    const stripeTransactionId =
-      typeof paymentIntent?.latest_charge === 'string'
-        ? paymentIntent.latest_charge
-        : null
+    // Stripe.js does not expose latest_charge on the client-side PaymentIntent type.
+    // The confirmed server-side paths populate the real transaction id afterward.
+    const stripeTransactionId = null
 
     const { error: insertError } = await supabase.from('payment_submissions').insert({
       invoice_id: invoiceId,
