@@ -349,14 +349,13 @@ export function InvoiceDocument({
         </div>
         <div className="text-right">
           <p className="text-5xl font-black uppercase tracking-wide text-orange-600">Invoice</p>
-          {includeDownloadButton && (
+          {includeDownloadButton && canDownloadPdf && (
             <div className="no-print print-hide-download print:hidden mt-3 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={onDownload}
-                disabled={!canDownloadPdf}
                 className="inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-xs font-bold text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-300"
-                title={canDownloadPdf ? 'Download invoice PDF' : 'Download is available after payment'}
+                title="Download invoice PDF"
               >
                 <span className="inline-block h-2 w-2 rounded-sm bg-white" />
                 Download PDF
@@ -364,9 +363,8 @@ export function InvoiceDocument({
               <button
                 type="button"
                 onClick={onPrint}
-                disabled={!canDownloadPdf}
                 className="inline-flex items-center gap-2 rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-xs font-bold text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-800 disabled:text-slate-400"
-                title={canDownloadPdf ? 'Print invoice' : 'Print is available after payment'}
+                title="Print invoice"
               >
                 Print
               </button>

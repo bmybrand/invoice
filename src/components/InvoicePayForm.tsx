@@ -69,14 +69,6 @@ function PaymentDetailsIcon() {
   )
 }
 
-function CardGlyphIcon() {
-  return (
-    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 8.25h16.5m-14.25 3h3m-4.5-4.5h13.5A1.5 1.5 0 0120.25 8.25v7.5a1.5 1.5 0 01-1.5 1.5H5.25a1.5 1.5 0 01-1.5-1.5v-7.5a1.5 1.5 0 011.5-1.5z" />
-    </svg>
-  )
-}
-
 function PaymentMetaPill({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-[12px] border border-[#252d41] bg-[#262b40] px-4 py-3 text-center">
@@ -541,23 +533,20 @@ function PaymentFormInner({
             </div>
             <div className="rounded-[10px] border border-[#252d41] bg-[#262b40] px-4 py-3.5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <div className="flex min-w-0 flex-1 items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-[#202948] text-[#5f7094]">
-                    <CardGlyphIcon />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <CardNumberElement
-                      options={{
-                        style: {
-                          base: {
-                            ...stripeBaseStyle,
-                            iconColor: '#6f7ca0',
-                          },
-                          invalid: stripeInvalidStyle,
+                <div className="min-w-0 flex-1">
+                  <CardNumberElement
+                    options={{
+                      showIcon: true,
+                      iconStyle: 'solid',
+                      style: {
+                        base: {
+                          ...stripeBaseStyle,
+                          iconColor: '#6f7ca0',
                         },
-                      }}
-                    />
-                  </div>
+                        invalid: stripeInvalidStyle,
+                      },
+                    }}
+                  />
                 </div>
                 <div className="grid grid-cols-2 gap-3 sm:w-[190px] sm:flex-none">
                   <div className="sm:border-l sm:border-[#3a4a70] sm:pl-3">
