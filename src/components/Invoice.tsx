@@ -43,6 +43,12 @@ type ActionMenuState = {
   top: number
   left: number
 }
+
+type GatewayLimitInfo = {
+  name: string
+  minAmount: number
+  maxAmount: number | null
+}
 const INVOICE_GRID = 'minmax(48px,0.6fr) minmax(100px,1.2fr) minmax(100px,1.2fr) minmax(100px,1.2fr) minmax(140px,1.5fr) minmax(90px,1.15fr) minmax(100px,1.2fr) minmax(90px,1fr) minmax(90px,1fr) 72px'
 
 function SearchIcon({ className = 'h-4 w-4' }: { className?: string }) {
@@ -166,6 +172,77 @@ function serviceSummary(lines: ServiceLine[]): string {
   return `${lines.length} services`
 }
 
+function getInvoiceGatewayValidationAmount(
+  status: string,
+  subTotal: number,
+  payableAmount: number
+): number {
+  if (isAdvanceUnpaidStatus(status)) {
+    return payableAmount
+  }
+  return subTotal
+}
+
+function isGatewayLimitBlockingError(message: string | null): boolean {
+  return (message || '').includes('Invoice amount exceeds the active payment gateway limit')
+}
+
+function formatGatewayLimitAmount(amount: number | null): string {
+  if (amount == null) return 'No maximum'
+  return `$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+function GatewayLimitAlert({
+  message,
+  gateways,
+  infoOpen,
+  onToggleInfo,
+}: {
+  message: string
+  gateways: GatewayLimitInfo[]
+  infoOpen: boolean
+  onToggleInfo: () => void
+}) {
+  const hasGatewayInfo = gateways.length > 0
+
+  return (
+    <div className="mx-10 mt-4 rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-700">
+      <div className="relative flex items-start justify-between gap-3">
+        <p>{message}</p>
+        {hasGatewayInfo ? (
+          <button
+            type="button"
+            onClick={onToggleInfo}
+            aria-expanded={infoOpen}
+            aria-label="Show active gateway limits"
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-red-400/60 bg-white/70 text-red-700 transition hover:bg-white"
+          >
+            <InfoIcon className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
+      </div>
+      {infoOpen && hasGatewayInfo ? (
+        <div className="mt-3 rounded-lg border border-red-300/40 bg-white/70 px-4 py-3 text-xs text-red-900">
+          <p className="font-semibold uppercase tracking-wide text-red-800">Active Gateway Limits</p>
+          <div className="mt-2 space-y-2">
+            {gateways.map((gateway) => (
+              <div
+                key={`${gateway.name}-${gateway.minAmount}-${gateway.maxAmount ?? 'none'}`}
+                className="flex justify-between gap-4"
+              >
+                <span className="font-medium">{gateway.name}</span>
+                <span>
+                  {formatGatewayLimitAmount(gateway.minAmount)} to {formatGatewayLimitAmount(gateway.maxAmount)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function formatInvoiceCode(id: number): string {
   const mixed = (id * 7919 + 12345) % 100000
   const normalized = Math.abs(mixed)
@@ -218,9 +295,10 @@ export function InvoiceDocument({
   includeDownloadButton = true,
   showStatusBadge = true,
   summaryActions,
-  totalNote,
+  showPayableSummary = false,
+  payableAmount,
+  remainingAmount,
   onGrandTotalClick,
-  showPaymentDetails = false,
   paymentFormContent,
 }: {
   invoice: InvoiceRow
@@ -233,15 +311,21 @@ export function InvoiceDocument({
   includeDownloadButton?: boolean
   showStatusBadge?: boolean
   summaryActions?: ReactNode
-  totalNote?: ReactNode
+  showPayableSummary?: boolean
+  payableAmount?: number
+  remainingAmount?: number
   onGrandTotalClick?: () => void
-  showPaymentDetails?: boolean
   paymentFormContent?: ReactNode
 }) {
   const serviceLines = toServiceLines((invoice as unknown as { service?: unknown }).service)
   const subTotal = servicesSubtotal(serviceLines)
   const grandTotal = subTotal
   const invoiceType = invoice.invoice_type || 'Standard'
+  const normalizedStatus = (invoice.status || '').toLowerCase()
+  const payableSummaryLabel =
+    normalizedStatus.includes('paid') || normalizedStatus.includes('completed')
+      ? 'Paid Amount'
+      : 'Payable Amount'
 
   return (
     <div id={rootId} className="relative flex min-h-[1120px] flex-col overflow-visible bg-white shadow-xl md:min-h-[1280px] print:min-h-0 print:overflow-visible">
@@ -343,31 +427,50 @@ export function InvoiceDocument({
         )}
       </div>
 
-      <div className={`invoice-summary-grid relative z-10 grid grid-cols-1 gap-8 px-10 py-8 pb-12 ${showPaymentDetails ? 'md:grid-cols-2' : 'flex justify-end'}`}>
-        {showPaymentDetails && (
-          <div className="no-print">
+      <div className="invoice-summary-grid relative z-10 grid grid-cols-1 gap-8 px-10 py-8 md:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="invoice-details-column space-y-5">
+          <div>
             <p className="text-sm font-bold text-slate-900">Payment Details</p>
             <div className="invoice-payment-box mt-2 rounded-lg border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
               <p><span className="font-semibold text-slate-800">Card payments:</span> Stripe</p>
               <p className="mt-1"><span className="font-semibold text-slate-800">Invoice type:</span> {invoiceType}</p>
             </div>
           </div>
-        )}
-        <div className={`invoice-totals-block w-full md:w-80 ${showPaymentDetails ? 'md:justify-self-end' : ''}`}>
+
+          <div>
+            <p className="text-sm font-bold text-slate-900">Terms & Conditions</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500">Please pay within 15 days of receiving this invoice. A late fee of 5% per month will be applied to overdue balances.</p>
+          </div>
+        </div>
+
+        <div className="invoice-totals-block w-full md:justify-self-end md:w-80">
           <div className="space-y-2 text-sm">
-            <div className="flex justify-between"><span className="text-slate-600">Sub Total</span><span className="font-medium text-slate-700">${subTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-            <div className="my-2 h-px bg-slate-200" />
             <div
-              className={`invoice-grand-total flex justify-between rounded-xl bg-orange-600 p-4 text-white ${onGrandTotalClick ? 'cursor-pointer hover:bg-orange-700 transition-colors no-print' : ''}`}
+              className={`invoice-grand-total flex justify-between rounded-lg px-1 py-2 ${onGrandTotalClick ? 'cursor-pointer hover:bg-slate-100 transition-colors no-print' : ''}`}
               role={onGrandTotalClick ? 'button' : undefined}
               tabIndex={onGrandTotalClick ? 0 : undefined}
               onClick={onGrandTotalClick}
               onKeyDown={onGrandTotalClick ? (e) => e.key === 'Enter' && onGrandTotalClick() : undefined}
             >
-              <span className="text-lg font-bold">Grand Total</span>
-              <span className="text-2xl font-black">${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              <span className="text-slate-600">Total</span>
+              <span className="font-medium text-slate-700">${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
-            {totalNote}
+            {showPayableSummary ? (
+              <>
+                <div className="rounded-xl bg-orange-600 p-4 text-white">
+                  <span className="block text-xs font-bold uppercase tracking-wide text-orange-100">{payableSummaryLabel}</span>
+                  <p className="mt-2 text-2xl font-black">
+                    ${(payableAmount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-600">Remaining</span>
+                  <span className="font-medium text-slate-700">
+                    ${(remainingAmount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </>
+            ) : null}
             {summaryActions}
           </div>
         </div>
@@ -379,14 +482,8 @@ export function InvoiceDocument({
       ) : null}
       </div>
 
-      <div className="invoice-bottom-block mt-auto shrink-0">
-        <div className="relative z-10 px-10 pb-6">
-          <p className="text-sm font-bold text-slate-900">Terms & Conditions</p>
-          <p className="mt-1 text-xs leading-5 text-slate-500">Please pay within 15 days of receiving this invoice. A late fee of 5% per month will be applied to overdue balances.</p>
-        </div>
-        <div className="invoice-footer-contact relative z-10 border-t border-slate-200 bg-slate-50 px-10 py-6 text-sm text-slate-500">
-          +1 (555) 000-1234 | www.studioshodwe.com | 456 Design Blvd, Creative City, NY
-        </div>
+      <div className="invoice-footer-contact mt-auto shrink-0 relative z-10 border-t border-slate-200 bg-slate-50 px-10 py-6 text-sm text-slate-500">
+        +1 (555) 000-1234 | www.studioshodwe.com | 456 Design Blvd, Creative City, NY
       </div>
     </div>
   )
@@ -412,9 +509,12 @@ export default function Invoice() {
   const [addPayableAmount, setAddPayableAmount] = useState('')
   const [addInvoiceType, setAddInvoiceType] = useState<string>(INVOICE_TYPE_OPTIONS[0])
   const [savedAddInvoiceId, setSavedAddInvoiceId] = useState<number | null>(null)
+  const [savedAddInvoiceUrl, setSavedAddInvoiceUrl] = useState('')
   const [addUrlCopied, setAddUrlCopied] = useState(false)
   const [addLoading, setAddLoading] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
+  const [addGatewayLimits, setAddGatewayLimits] = useState<GatewayLimitInfo[]>([])
+  const [addGatewayInfoOpen, setAddGatewayInfoOpen] = useState(false)
   const [editingInvoice, setEditingInvoice] = useState<InvoiceRow | null>(null)
   const [editBrand, setEditBrand] = useState('')
   const [editEmail, setEditEmail] = useState('')
@@ -423,11 +523,45 @@ export default function Invoice() {
   const [editStatus, setEditStatus] = useState('Pending')
   const [editPayableAmount, setEditPayableAmount] = useState('')
   const [editInvoiceType, setEditInvoiceType] = useState<string>(INVOICE_TYPE_OPTIONS[0])
+  const [editInvoiceUrl, setEditInvoiceUrl] = useState('')
   const [editUrlCopied, setEditUrlCopied] = useState(false)
   const [editLoading, setEditLoading] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
+  const [editGatewayLimits, setEditGatewayLimits] = useState<GatewayLimitInfo[]>([])
+  const [editGatewayInfoOpen, setEditGatewayInfoOpen] = useState(false)
   const [deletingInvoice, setDeletingInvoice] = useState<InvoiceRow | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
+
+  async function validateGatewayAmountForInvoice(amount: number): Promise<{
+    error: string | null
+    gateways: GatewayLimitInfo[]
+  }> {
+    try {
+      const res = await fetch(
+        `/api/payment-gateways/validate-amount?amount=${encodeURIComponent(String(amount))}`
+      )
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string
+        gateways?: GatewayLimitInfo[]
+      }
+
+      if (!res.ok) {
+        return {
+          error:
+            data.error?.trim() ||
+            'Invoice amount exceeds the active payment gateway limit. Adjust the amount or update gateway settings.',
+          gateways: Array.isArray(data.gateways) ? data.gateways : [],
+        }
+      }
+
+      return { error: null, gateways: [] }
+    } catch {
+      return {
+        error: 'Failed to validate payment gateway limits.',
+        gateways: [],
+      }
+    }
+  }
   const [currentUserEmployeeId, setCurrentUserEmployeeId] = useState<number | null>(null)
   const [openActionMenu, setOpenActionMenu] = useState<ActionMenuState | null>(null)
 
@@ -630,6 +764,38 @@ export default function Invoice() {
     return validateServiceLines(addServices)
   })()
 
+  useEffect(() => {
+    if (!showAddModal || !isGatewayLimitBlockingError(addError) || !addValidation.valid) return
+
+    let active = true
+
+    async function revalidateGatewayLimit() {
+      const subTotal = servicesSubtotal(addServices)
+      const payableAmount = isAdvanceUnpaidStatus(addStatus) ? parseAmountValue(addPayableAmount) : 0
+      const gatewayValidationAmount = getInvoiceGatewayValidationAmount(addStatus, subTotal, payableAmount)
+      const gatewayValidation = await validateGatewayAmountForInvoice(gatewayValidationAmount)
+
+      if (!active) return
+
+      if (gatewayValidation.error) {
+        setAddGatewayLimits(gatewayValidation.gateways)
+        setAddGatewayInfoOpen(false)
+        setAddError(gatewayValidation.error)
+        return
+      }
+
+      setAddGatewayLimits([])
+      setAddGatewayInfoOpen(false)
+      setAddError(null)
+    }
+
+    void revalidateGatewayLimit()
+
+    return () => {
+      active = false
+    }
+  }, [showAddModal, addError, addValidation.valid, addServices, addStatus, addPayableAmount])
+
   const editValidation = (() => {
     if (!editBrand.trim() || !editEmail.trim() || !editPhone.trim()) {
       return { valid: false, message: 'Fill all required fields: brand, email, phone.' }
@@ -668,6 +834,16 @@ export default function Invoice() {
     }))
     const subTotal = servicesSubtotal(cleanServices)
     const payableAmount = isAdvanceUnpaidStatus(addStatus) ? parseAmountValue(addPayableAmount) : 0
+    const gatewayValidationAmount = getInvoiceGatewayValidationAmount(addStatus, subTotal, payableAmount)
+    const gatewayValidation = await validateGatewayAmountForInvoice(gatewayValidationAmount)
+    if (gatewayValidation.error) {
+      setAddError(gatewayValidation.error)
+      setAddGatewayLimits(gatewayValidation.gateways)
+      setAddGatewayInfoOpen(false)
+      return
+    }
+    setAddGatewayLimits([])
+    setAddGatewayInfoOpen(false)
     setAddError(null)
     setAddLoading(true)
 
@@ -694,9 +870,13 @@ export default function Invoice() {
       return
     }
 
-    setSavedAddInvoiceId(typeof insertedInvoice?.id === 'number' ? insertedInvoice.id : null)
+    const nextInvoiceId = typeof insertedInvoice?.id === 'number' ? insertedInvoice.id : null
+    setSavedAddInvoiceId(nextInvoiceId)
+    setSavedAddInvoiceUrl(
+      nextInvoiceId === null ? '' : `${window.location.origin}${getInvoiceLink(nextInvoiceId)}`
+    )
     setAddUrlCopied(false)
-    if (typeof insertedInvoice?.id !== 'number') {
+    if (nextInvoiceId === null) {
       setAddError('Invoice saved, but the share URL could not be prepared.')
     }
     await fetchInvoices()
@@ -711,8 +891,11 @@ export default function Invoice() {
     setAddPayableAmount('')
     setAddInvoiceType(INVOICE_TYPE_OPTIONS[0])
     setSavedAddInvoiceId(null)
+    setSavedAddInvoiceUrl('')
     setAddUrlCopied(false)
     setAddError(null)
+    setAddGatewayLimits([])
+    setAddGatewayInfoOpen(false)
   }
 
   function closeAddModal() {
@@ -722,12 +905,10 @@ export default function Invoice() {
   }
 
   async function handleCopyAddedInvoiceUrl() {
-    if (savedAddInvoiceId === null) return
-
-    const invoiceUrl = `${window.location.origin}${getInvoiceLink(savedAddInvoiceId)}`
+    if (!savedAddInvoiceUrl.trim()) return
 
     try {
-      await navigator.clipboard.writeText(invoiceUrl)
+      await navigator.clipboard.writeText(savedAddInvoiceUrl)
       setAddUrlCopied(true)
       setAddError(null)
     } catch {
@@ -745,23 +926,25 @@ export default function Invoice() {
     setEditStatus(inv.status || 'Pending')
     setEditPayableAmount(inv.payable_amount == null ? '' : String(inv.payable_amount))
     setEditInvoiceType(inv.invoice_type || INVOICE_TYPE_OPTIONS[0])
+    setEditInvoiceUrl(`${window.location.origin}${getInvoiceLink(inv.id)}`)
     setEditUrlCopied(false)
     setEditError(null)
+    setEditGatewayLimits([])
+    setEditGatewayInfoOpen(false)
   }
 
   function closeEditModal() {
     if (editLoading) return
     setEditingInvoice(null)
+    setEditInvoiceUrl('')
     setEditUrlCopied(false)
   }
 
   async function handleCopyEditInvoiceUrl() {
-    if (!editingInvoice) return
-
-    const invoiceUrl = `${window.location.origin}${getInvoiceLink(editingInvoice.id)}`
+    if (!editInvoiceUrl.trim()) return
 
     try {
-      await navigator.clipboard.writeText(invoiceUrl)
+      await navigator.clipboard.writeText(editInvoiceUrl)
       setEditUrlCopied(true)
       setEditError(null)
     } catch {
@@ -784,6 +967,16 @@ export default function Invoice() {
     }))
     const subTotal = servicesSubtotal(cleanServices)
     const payableAmount = isAdvanceUnpaidStatus(editStatus) ? parseAmountValue(editPayableAmount) : 0
+    const gatewayValidationAmount = getInvoiceGatewayValidationAmount(editStatus, subTotal, payableAmount)
+    const gatewayValidation = await validateGatewayAmountForInvoice(gatewayValidationAmount)
+    if (gatewayValidation.error) {
+      setEditGatewayLimits(gatewayValidation.gateways)
+      setEditGatewayInfoOpen(false)
+      setEditError(gatewayValidation.error)
+      return
+    }
+    setEditGatewayLimits([])
+    setEditGatewayInfoOpen(false)
     setEditError(null)
     setEditLoading(true)
 
@@ -1159,7 +1352,7 @@ export default function Invoice() {
               onClick={() => !deleteLoading && setDeletingInvoice(null)}
               disabled={deleteLoading}
               aria-label="Close modal"
-              className="absolute right-4 top-4 rounded-full border border-slate-600 p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              className="absolute right-4 top-4 rounded-full border border-orange-500/30 bg-orange-500/10 p-2 text-orange-400 transition hover:bg-orange-500/20 hover:text-orange-300 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <CloseIcon />
             </button>
@@ -1167,19 +1360,12 @@ export default function Invoice() {
             <p className="mt-1 text-sm text-slate-400">
               Delete invoice <span className="font-semibold text-white">#{formatInvoiceCode(deletingInvoice.id)}</span>? This cannot be undone.
             </p>
-            <div className="mt-6 flex gap-3">
-              <button
-                type="button"
-                onClick={() => !deleteLoading && setDeletingInvoice(null)}
-                className="flex-1 rounded-xl border border-slate-600 px-4 py-3 text-sm font-medium text-slate-300 hover:bg-slate-700/50"
-              >
-                Cancel
-              </button>
+            <div className="mt-6 flex justify-end">
               <button
                 type="button"
                 onClick={handleDeleteConfirm}
                 disabled={deleteLoading}
-                className="flex-1 rounded-xl bg-red-500 px-4 py-3 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-50"
+                className="w-full rounded-xl bg-red-500 px-4 py-3 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-50 sm:w-auto sm:min-w-[140px]"
               >
                 {deleteLoading ? 'Deleting...' : 'Delete'}
               </button>
@@ -1197,7 +1383,7 @@ export default function Invoice() {
               onClick={closeAddModal}
               disabled={addLoading}
               aria-label="Close modal"
-              className="absolute right-4 top-4 z-20 rounded-full border border-slate-300 bg-white/90 p-2 text-slate-600 transition hover:bg-white hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+              className="absolute right-4 top-4 z-20 rounded-full border border-orange-300 bg-white/95 p-2 text-orange-500 transition hover:bg-orange-50 hover:text-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <CloseIcon />
             </button>
@@ -1351,30 +1537,28 @@ export default function Invoice() {
 
                           <div className="md:justify-self-end md:w-80">
                             <div className="space-y-2 text-sm">
-                              <div className="flex justify-between"><span className="text-slate-600">Sub Total</span><span className="font-medium text-slate-700">${subTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-                              <div className="my-2 h-px bg-slate-200" />
-                              <div className="flex justify-between rounded-xl bg-orange-600 p-4 text-white">
-                                <span className="text-lg font-bold">Grand Total</span>
-                                <span className="text-2xl font-black">${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              <div className="flex justify-between">
+                                <span className="text-slate-600">Total</span>
+                                <span className="font-medium text-slate-700">${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                               </div>
                               {isAdvanceUnpaidStatus(addStatus) && (
                                 <>
-                                  <div>
-                                    <label htmlFor="add-payable-amount" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Payable Amount</label>
+                                  <div className="rounded-xl bg-orange-600 p-4 text-white">
+                                    <label htmlFor="add-payable-amount" className="block text-xs font-bold uppercase tracking-wide text-orange-100">Payable Amount</label>
                                     <input
                                       id="add-payable-amount"
                                       type="text"
                                       value={addPayableAmount}
                                       onChange={(e) => setAddPayableAmount(sanitizeCurrencyInput(e.target.value))}
-                                      placeholder="0.00"
+                                      placeholder="$0.00"
                                       inputMode="decimal"
                                       pattern="^\d+(\.\d{1,2})?$"
-                                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                                      className="mt-2 w-full rounded-md border border-white/15 bg-transparent px-2.5 py-1.5 text-2xl font-black text-white placeholder:text-orange-100/80 focus:border-white/30 focus:outline-none focus:ring-0"
                                     />
                                   </div>
-                                  <div className="flex justify-between text-xs font-semibold uppercase tracking-wide text-amber-600">
-                                    <span>Remaining</span>
-                                    <span>${remainingAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                  <div className="flex justify-between">
+                                    <span className="text-slate-600">Remaining</span>
+                                    <span className="font-medium text-slate-700">${remainingAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                   </div>
                                 </>
                               )}
@@ -1392,15 +1576,36 @@ export default function Invoice() {
                   {currentUserEmployeeId === null && !addError && savedAddInvoiceId === null && (
                     <p className="mx-10 mt-4 rounded-lg border border-amber-500/50 bg-amber-500/10 px-4 py-3 text-sm text-amber-700">You must be registered as an employee to create invoices.</p>
                   )}
-                  {savedAddInvoiceId !== null && !addError && (
-                    <p className="mx-10 mt-4 rounded-lg border border-emerald-500/50 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700">
-                      {addUrlCopied ? 'Invoice URL copied.' : 'Invoice saved. Use Copy URL to share it.'}
-                    </p>
+                  {savedAddInvoiceId !== null && !addError && savedAddInvoiceUrl && (
+                    <div className={`mx-10 mt-4 flex items-center justify-between gap-3 rounded-lg border px-4 py-3 text-sm ${addUrlCopied ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-slate-200 bg-slate-50'}`}>
+                      <a
+                        href={savedAddInvoiceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={`min-w-0 flex-1 truncate ${addUrlCopied ? 'text-emerald-700' : 'text-slate-700 hover:text-orange-600'}`}
+                      >
+                        {savedAddInvoiceUrl}
+                      </a>
+                      <button
+                        type="button"
+                        onClick={handleCopyAddedInvoiceUrl}
+                        aria-label="Copy invoice URL"
+                        className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition ${addUrlCopied ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700' : 'border-slate-300 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600'}`}
+                      >
+                        <CopyIcon className="h-4 w-4" />
+                      </button>
+                    </div>
                   )}
-                  {addError && <p className="mx-10 mt-4 rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-700">{addError}</p>}
+                  {addError ? (
+                    <GatewayLimitAlert
+                      message={addError}
+                      gateways={addGatewayLimits}
+                      infoOpen={addGatewayInfoOpen}
+                      onToggleInfo={() => setAddGatewayInfoOpen((open) => !open)}
+                    />
+                  ) : null}
 
-                  <div className="flex gap-3 px-10 py-6">
-                    <button type="button" onClick={closeAddModal} className="flex-1 rounded-xl border border-slate-300 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-100">Cancel</button>
+                  <div className="flex justify-end px-10 py-6">
                     {savedAddInvoiceId !== null ? (
                       <button
                         type="button"
@@ -1412,7 +1617,12 @@ export default function Invoice() {
                     ) : (
                       <button
                         type="submit"
-                        disabled={addLoading || currentUserEmployeeId === null || !addValidation.valid}
+                        disabled={
+                          addLoading ||
+                          currentUserEmployeeId === null ||
+                          !addValidation.valid ||
+                          isGatewayLimitBlockingError(addError)
+                        }
                         className="flex-1 rounded-xl bg-orange-600 px-4 py-3 text-sm font-semibold text-white hover:bg-orange-700 disabled:opacity-50"
                       >
                         {addLoading ? 'Adding...' : 'Add Invoice'}
@@ -1436,7 +1646,7 @@ export default function Invoice() {
               onClick={closeEditModal}
               disabled={editLoading}
               aria-label="Close modal"
-              className="absolute right-4 top-4 z-20 rounded-full border border-slate-300 bg-white/90 p-2 text-slate-600 transition hover:bg-white hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+              className="absolute right-4 top-4 z-20 rounded-full border border-orange-300 bg-white/95 p-2 text-orange-500 transition hover:bg-orange-50 hover:text-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <CloseIcon />
             </button>
@@ -1593,30 +1803,28 @@ export default function Invoice() {
 
                           <div className="md:justify-self-end md:w-80">
                             <div className="space-y-2 text-sm">
-                              <div className="flex justify-between"><span className="text-slate-600">Sub Total</span><span className="font-medium text-slate-700">${subTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-                              <div className="my-2 h-px bg-slate-200" />
-                              <div className="flex justify-between rounded-xl bg-orange-600 p-4 text-white">
-                                <span className="text-lg font-bold">Grand Total</span>
-                                <span className="text-2xl font-black">${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              <div className="flex justify-between">
+                                <span className="text-slate-600">Total</span>
+                                <span className="font-medium text-slate-700">${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                               </div>
                               {isAdvanceUnpaidStatus(editStatus) && (
                                 <>
-                                  <div>
-                                    <label htmlFor="edit-payable-amount" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Payable Amount</label>
+                                  <div className="rounded-xl bg-orange-600 p-4 text-white">
+                                    <label htmlFor="edit-payable-amount" className="block text-xs font-bold uppercase tracking-wide text-orange-100">Payable Amount</label>
                                     <input
                                       id="edit-payable-amount"
                                       type="text"
                                       value={editPayableAmount}
                                       onChange={(e) => setEditPayableAmount(sanitizeCurrencyInput(e.target.value))}
-                                      placeholder="0.00"
+                                      placeholder="$0.00"
                                       inputMode="decimal"
                                       pattern="^\d+(\.\d{1,2})?$"
-                                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                                      className="mt-2 w-full rounded-md border border-white/15 bg-transparent px-2.5 py-1.5 text-2xl font-black text-white placeholder:text-orange-100/80 focus:border-white/30 focus:outline-none focus:ring-0"
                                     />
                                   </div>
-                                  <div className="flex justify-between text-xs font-semibold uppercase tracking-wide text-amber-600">
-                                    <span>Remaining</span>
-                                    <span>${remainingAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                  <div className="flex justify-between">
+                                    <span className="text-slate-600">Remaining</span>
+                                    <span className="font-medium text-slate-700">${remainingAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                   </div>
                                 </>
                               )}
@@ -1631,10 +1839,36 @@ export default function Invoice() {
                     )
                   })()}
 
-                  {editError && <p className="mx-10 mt-4 rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-700">{editError}</p>}
+                  {editError && (
+                    <GatewayLimitAlert
+                      message={editError}
+                      gateways={editGatewayLimits}
+                      infoOpen={editGatewayInfoOpen}
+                      onToggleInfo={() => setEditGatewayInfoOpen((open) => !open)}
+                    />
+                  )}
+                  {editInvoiceUrl && (
+                    <div className={`mx-10 mt-4 flex items-center justify-between gap-3 rounded-lg border px-4 py-3 text-sm ${editUrlCopied ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-slate-200 bg-slate-50'}`}>
+                      <a
+                        href={editInvoiceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={`min-w-0 flex-1 truncate ${editUrlCopied ? 'text-emerald-700' : 'text-slate-700 hover:text-orange-600'}`}
+                      >
+                        {editInvoiceUrl}
+                      </a>
+                      <button
+                        type="button"
+                        onClick={handleCopyEditInvoiceUrl}
+                        aria-label="Copy invoice URL"
+                        className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition ${editUrlCopied ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700' : 'border-slate-300 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600'}`}
+                      >
+                        <CopyIcon className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
 
-                  <div className="flex gap-3 px-10 py-6">
-                    <button type="button" onClick={closeEditModal} className="flex-1 rounded-xl border border-slate-300 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-100">Cancel</button>
+                  <div className="flex flex-col gap-3 px-10 py-6 sm:flex-row sm:justify-end">
                     <button
                       type="submit"
                       disabled={editLoading || !editValidation.valid}

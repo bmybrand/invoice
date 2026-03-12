@@ -662,7 +662,6 @@ export default function InvoicePayForm({
   const [stripeGatewayName, setStripeGatewayName] = useState('Stripe')
   const [stripeConfigLoading, setStripeConfigLoading] = useState(true)
   const [stripeConfigError, setStripeConfigError] = useState<string | null>(null)
-  const [stripeFallbackWarning, setStripeFallbackWarning] = useState<string | null>(null)
 
   useEffect(() => {
     let active = true
@@ -676,8 +675,6 @@ export default function InvoicePayForm({
         const data = (await res.json().catch(() => ({}))) as {
           publishableKey?: string
           gateway?: string
-          source?: 'database' | 'environment'
-          warning?: string | null
           error?: string
         }
 
@@ -689,11 +686,9 @@ export default function InvoicePayForm({
 
         setStripePublishableKey(data.publishableKey)
         setStripeGatewayName(data.gateway?.trim() || 'Stripe')
-        setStripeFallbackWarning(data.source === 'environment' ? data.warning?.trim() || 'Stripe is using fallback environment keys.' : null)
       } catch (err) {
         if (!active) return
         setStripePublishableKey(null)
-        setStripeFallbackWarning(null)
         setStripeConfigError(err instanceof Error ? err.message : 'Failed to load payment gateway configuration')
       } finally {
         if (active) {
@@ -739,11 +734,6 @@ export default function InvoicePayForm({
       {invoiceTitle ? <p className="sr-only">{invoiceTitle}</p> : null}
       <div className={`rounded-[20px] border border-[#1a2d4c] bg-[#0f172b] shadow-[0_24px_60px_rgba(4,10,31,0.45)] ${embedded ? 'p-6 sm:p-7' : 'p-6 sm:p-8'}`}>
         <h1 className="mb-8 text-[18px] font-bold text-white sm:text-[20px]">Pay Invoice</h1>
-        {stripeFallbackWarning ? (
-          <p className="mb-6 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
-            {stripeFallbackWarning}
-          </p>
-        ) : null}
         <Elements
           stripe={stripePromise!}
           options={{

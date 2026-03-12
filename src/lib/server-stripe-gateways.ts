@@ -17,8 +17,10 @@ export type StripeGatewayMatch = {
   maxAmount: number | null
   secretKey: string
   publishableKey: string | null
-  source: 'database' | 'environment'
+  source: 'database'
 }
+
+export type StripeGatewayLimit = Pick<StripeGatewayMatch, 'name' | 'minAmount' | 'maxAmount'>
 
 type InvoicePaymentContext =
   | {
@@ -37,6 +39,17 @@ type GatewayLookupResult =
   | {
       ok: true
       gateway: StripeGatewayMatch
+    }
+  | {
+      ok: false
+      status: number
+      error: string
+    }
+
+type GatewayListResult =
+  | {
+      ok: true
+      gateways: StripeGatewayMatch[]
     }
   | {
       ok: false
@@ -161,23 +174,6 @@ function normalizeGateway(gateway: PaymentGatewayRow): StripeGatewayMatch | null
   }
 }
 
-function getEnvironmentStripeGateway(): StripeGatewayMatch | null {
-  const secretKey = normalizeString(process.env.STRIPE_SECRET_KEY)
-  if (!secretKey) return null
-
-  const publishableKey = normalizeString(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY) || null
-
-  return {
-    id: null,
-    name: 'Stripe',
-    minAmount: 0,
-    maxAmount: null,
-    secretKey,
-    publishableKey,
-    source: 'environment',
-  }
-}
-
 export async function getInvoicePaymentContext(invoiceId: number): Promise<InvoicePaymentContext> {
   const supabase = createServiceRoleSupabase()
 
@@ -217,6 +213,29 @@ export async function findMatchingStripeGatewayForAmount(
   supabase: SupabaseClient,
   amount: number
 ): Promise<GatewayLookupResult> {
+  const gatewayList = await getActiveStripeGateways(supabase)
+  if (!gatewayList.ok) {
+    return gatewayList
+  }
+
+  const gateways = gatewayList.gateways
+
+  const matchedGateway = gateways.find(
+    (gateway) => amount >= gateway.minAmount && (gateway.maxAmount == null || amount <= gateway.maxAmount)
+  )
+
+  if (!matchedGateway) {
+    return {
+      ok: false,
+      status: 400,
+      error: 'Invoice amount exceeds the active payment gateway limit. Adjust the amount or update gateway settings.',
+    }
+  }
+
+  return { ok: true, gateway: matchedGateway }
+}
+
+async function getActiveStripeGateways(supabase: SupabaseClient): Promise<GatewayListResult> {
   const { data, error } = await supabase.from('payment_gateways').select('*').order('id', { ascending: true })
 
   if (error) {
@@ -228,25 +247,66 @@ export async function findMatchingStripeGatewayForAmount(
     .filter((gateway): gateway is StripeGatewayMatch => gateway !== null)
     .sort((a, b) => a.minAmount - b.minAmount)
 
-  const matchedGateway = gateways.find(
-    (gateway) => amount >= gateway.minAmount && (gateway.maxAmount == null || amount <= gateway.maxAmount)
-  )
+  return {
+    ok: true,
+    gateways,
+  }
+}
 
-  if (!matchedGateway) {
-    const environmentGateway = getEnvironmentStripeGateway()
-    if (environmentGateway) {
-      console.warn(
-        `[Stripe] No active payment gateway matched amount ${amount}. Falling back to environment Stripe keys.`
-      )
-      return { ok: true, gateway: environmentGateway }
-    }
+export async function validateStripeGatewayAmount(amount: number): Promise<GatewayLookupResult> {
+  const supabase = createServiceRoleSupabase()
 
+  if (!supabase) {
     return {
       ok: false,
-      status: 400,
-      error: 'No active Stripe gateway matches this invoice amount and fallback Stripe environment keys are missing',
+      status: 503,
+      error: 'Server not configured. Add SUPABASE_SERVICE_ROLE_KEY to .env.local',
     }
   }
 
-  return { ok: true, gateway: matchedGateway }
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return {
+      ok: false,
+      status: 400,
+      error: 'Invoice amount is invalid',
+    }
+  }
+
+  return findMatchingStripeGatewayForAmount(supabase, amount)
+}
+
+export async function listActiveStripeGatewayLimits(): Promise<
+  | {
+      ok: true
+      gateways: StripeGatewayLimit[]
+    }
+  | {
+      ok: false
+      status: number
+      error: string
+    }
+> {
+  const supabase = createServiceRoleSupabase()
+
+  if (!supabase) {
+    return {
+      ok: false,
+      status: 503,
+      error: 'Server not configured. Add SUPABASE_SERVICE_ROLE_KEY to .env.local',
+    }
+  }
+
+  const gatewayList = await getActiveStripeGateways(supabase)
+  if (!gatewayList.ok) {
+    return gatewayList
+  }
+
+  return {
+    ok: true,
+    gateways: gatewayList.gateways.map((gateway) => ({
+      name: gateway.name,
+      minAmount: gateway.minAmount,
+      maxAmount: gateway.maxAmount,
+    })),
+  }
 }

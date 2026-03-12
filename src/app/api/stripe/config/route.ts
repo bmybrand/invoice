@@ -29,10 +29,5 @@ export async function GET(req: Request) {
   return NextResponse.json({
     publishableKey: gatewayLookup.gateway.publishableKey,
     gateway: gatewayLookup.gateway.name,
-    source: gatewayLookup.gateway.source,
-    warning:
-      gatewayLookup.gateway.source === 'environment'
-        ? 'No active matching payment gateway was found in settings. Falling back to environment Stripe keys.'
-        : null,
   })
 }

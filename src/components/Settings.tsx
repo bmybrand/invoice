@@ -469,7 +469,7 @@ export default function Settings() {
                   type="button"
                   onClick={closeModal}
                   disabled={submitting}
-                  className="rounded-full p-1 text-slate-400 transition hover:bg-slate-800 hover:text-white disabled:opacity-50"
+                  className="rounded-full border border-orange-500/30 bg-orange-500/10 p-1.5 text-orange-400 transition hover:bg-orange-500/20 hover:text-orange-300 disabled:opacity-50"
                   aria-label="Close modal"
                 >
                   <CloseIcon />
@@ -583,15 +583,7 @@ export default function Settings() {
                   </p>
                 )}
 
-                <div className="flex items-center justify-end gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={closeModal}
-                    disabled={submitting}
-                    className="rounded-xl border border-slate-700 px-5 py-3 text-sm font-medium text-slate-300 transition hover:bg-slate-700/50 hover:text-white disabled:opacity-50"
-                  >
-                    Close
-                  </button>
+                <div className="flex items-center justify-end pt-2">
                   <button
                     type="submit"
                     disabled={submitting}

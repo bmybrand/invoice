@@ -216,10 +216,14 @@ export default function InvoiceView({ invoiceId, invoiceToken, publicView = fals
           }
 
           if (summaryGrid instanceof HTMLElement) {
-            summaryGrid.style.cssText = (summaryGrid.style.cssText || '') + '; display:block !important; width:100% !important;'
+            summaryGrid.style.cssText =
+              (summaryGrid.style.cssText || '') +
+              '; display:grid !important; grid-template-columns:minmax(0,1fr) 320px !important; align-items:start !important; gap:32px !important; width:100% !important;'
           }
           if (totalsBlock instanceof HTMLElement) {
-            totalsBlock.style.cssText = (totalsBlock.style.cssText || '') + '; width:320px !important; max-width:320px !important; margin-left:auto !important; margin-right:0 !important;'
+            totalsBlock.style.cssText =
+              (totalsBlock.style.cssText || '') +
+              '; width:100% !important; max-width:320px !important; justify-self:end !important; margin-left:0 !important; margin-right:0 !important;'
           }
         },
         ignoreElements: (element) =>
@@ -289,7 +293,6 @@ export default function InvoiceView({ invoiceId, invoiceToken, publicView = fals
           rootId="invoice-print-root"
           includeDownloadButton
           showStatusBadge
-          showPaymentDetails={shouldShowPaymentForm}
           paymentFormContent={shouldShowPaymentForm ? (
             <InvoicePayForm
               invoiceId={invoice.id}
@@ -304,12 +307,9 @@ export default function InvoiceView({ invoiceId, invoiceToken, publicView = fals
               }}
             />
           ) : null}
-          totalNote={showPayableDetails ? (
-            <div className="space-y-1 text-right text-xs font-semibold uppercase tracking-wide text-amber-600">
-              <p>Payable Amount: ${payableAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-              <p>Remaining: ${remainingAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-            </div>
-          ) : null}
+          showPayableSummary={showPayableDetails}
+          payableAmount={payableAmount}
+          remainingAmount={remainingAmount}
           summaryActions={null}
         />
       </div>
@@ -382,7 +382,6 @@ export default function InvoiceView({ invoiceId, invoiceToken, publicView = fals
 
           #invoice-print-root {
             margin: 0 !important;
-            padding-bottom: 100px !important;
             min-height: 100vh !important;
             display: flex !important;
             flex-direction: column !important;
@@ -393,21 +392,6 @@ export default function InvoiceView({ invoiceId, invoiceToken, publicView = fals
 
           #invoice-print-root > div.flex {
             flex: 1 1 auto !important;
-          }
-
-          #invoice-print-root .invoice-bottom-block {
-            position: fixed !important;
-            bottom: 0 !important;
-            left: 0 !important;
-            right: 0 !important;
-            width: 100% !important;
-            display: block !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            background: #fff !important;
-            z-index: 2147483647 !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
           }
 
           #invoice-print-root .invoice-meta-grid {
@@ -421,14 +405,18 @@ export default function InvoiceView({ invoiceId, invoiceToken, publicView = fals
           }
 
           #invoice-print-root .invoice-summary-grid {
-            display: block !important;
+            display: grid !important;
+            grid-template-columns: minmax(0, 1fr) 320px !important;
+            align-items: start !important;
+            gap: 2rem !important;
             width: 100% !important;
           }
 
           #invoice-print-root .invoice-totals-block {
-            width: 320px !important;
+            width: 100% !important;
             max-width: 320px !important;
-            margin-left: auto !important;
+            justify-self: end !important;
+            margin-left: 0 !important;
             margin-right: 0 !important;
           }
 

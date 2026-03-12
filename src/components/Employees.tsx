@@ -748,7 +748,7 @@ export default function Employees() {
               onClick={() => !deleteLoading && setDeletingEmployee(null)}
               disabled={deleteLoading}
               aria-label="Close modal"
-              className="absolute right-4 top-4 rounded-full border border-slate-600 p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              className="absolute right-4 top-4 rounded-full border border-orange-500/30 bg-orange-500/10 p-2 text-orange-400 transition hover:bg-orange-500/20 hover:text-orange-300 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <CloseIcon />
             </button>
@@ -756,19 +756,12 @@ export default function Employees() {
             <p className="mt-1 text-sm text-slate-400">
               Delete <span className="font-semibold text-white">{deletingEmployee.employee_name}</span>? This cannot be undone.
             </p>
-            <div className="mt-6 flex gap-3">
-              <button
-                type="button"
-                onClick={() => !deleteLoading && setDeletingEmployee(null)}
-                className="flex-1 rounded-xl border border-slate-600 px-4 py-3 text-sm font-medium text-slate-300 hover:bg-slate-700/50"
-              >
-                Cancel
-              </button>
+            <div className="mt-6 flex justify-end">
               <button
                 type="button"
                 onClick={handleDeleteConfirm}
                 disabled={deleteLoading}
-                className="flex-1 rounded-xl bg-red-500 px-4 py-3 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-50"
+                className="w-full rounded-xl bg-red-500 px-4 py-3 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-50 sm:w-auto sm:min-w-[140px]"
               >
                 {deleteLoading ? 'Deleting…' : 'Delete'}
               </button>
@@ -786,7 +779,7 @@ export default function Employees() {
               onClick={() => !editLoading && setEditingEmployee(null)}
               disabled={editLoading}
               aria-label="Close modal"
-              className="absolute right-4 top-4 rounded-full border border-slate-600 p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              className="absolute right-4 top-4 rounded-full border border-orange-500/30 bg-orange-500/10 p-2 text-orange-400 transition hover:bg-orange-500/20 hover:text-orange-300 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <CloseIcon />
             </button>
@@ -891,18 +884,11 @@ export default function Employees() {
               {editError && (
                 <p className="rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-400">{editError}</p>
               )}
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => !editLoading && setEditingEmployee(null)}
-                  className="flex-1 rounded-xl border border-slate-600 px-4 py-3 text-sm font-medium text-slate-300 hover:bg-slate-700/50"
-                >
-                  Cancel
-                </button>
+              <div className="flex justify-end">
                 <button
                   type="submit"
                   disabled={editLoading}
-                  className="flex-1 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50"
+                  className="w-full rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50 sm:w-auto sm:min-w-[148px]"
                 >
                   {editLoading ? 'Saving…' : 'Save'}
                 </button>
@@ -921,7 +907,7 @@ export default function Employees() {
               onClick={() => !addLoading && setShowAddModal(false)}
               disabled={addLoading}
               aria-label="Close modal"
-              className="absolute right-4 top-4 rounded-full border border-slate-600 p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              className="absolute right-4 top-4 rounded-full border border-orange-500/30 bg-orange-500/10 p-2 text-orange-400 transition hover:bg-orange-500/20 hover:text-orange-300 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <CloseIcon />
             </button>
@@ -991,18 +977,11 @@ export default function Employees() {
               {addError && (
                 <p className="rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-400">{addError}</p>
               )}
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => !addLoading && setShowAddModal(false)}
-                  className="flex-1 rounded-xl border border-slate-600 px-4 py-3 text-sm font-medium text-slate-300 hover:bg-slate-700/50"
-                >
-                  Cancel
-                </button>
+              <div className="flex justify-end">
                 <button
                   type="submit"
                   disabled={addLoading}
-                  className="flex-1 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50"
+                  className="w-full rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50 sm:w-auto sm:min-w-[148px]"
                 >
                   {addLoading ? 'Signing up…' : 'Sign Up'}
                 </button>

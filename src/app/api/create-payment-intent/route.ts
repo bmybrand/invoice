@@ -46,7 +46,6 @@ export async function POST(req: Request) {
     return NextResponse.json({
       clientSecret: paymentIntent.client_secret,
       gateway: gatewayLookup.gateway.name,
-      source: gatewayLookup.gateway.source,
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to create payment intent'

@@ -571,7 +571,7 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
               onClick={closeProfileModal}
               disabled={profileSaving}
               aria-label="Close profile editor"
-              className="absolute right-4 top-4 rounded-full border border-slate-600 p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              className="absolute right-4 top-4 rounded-full border border-orange-500/30 bg-orange-500/10 p-2 text-orange-400 transition hover:bg-orange-500/20 hover:text-orange-300 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <CloseIcon />
             </button>
@@ -649,19 +649,11 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
                   {profileSuccess}
                 </p>
               )}
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={closeProfileModal}
-                  disabled={profileSaving}
-                  className="flex-1 rounded-xl border border-slate-600 px-4 py-3 text-sm font-medium text-slate-300 hover:bg-slate-700/50 disabled:opacity-50"
-                >
-                  Cancel
-                </button>
+              <div className="flex justify-end">
                 <button
                   type="submit"
                   disabled={profileSaving}
-                  className="flex-1 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50"
+                  className="w-full rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50 sm:w-auto sm:min-w-[148px]"
                 >
                   {profileSaving ? 'Saving...' : 'Save'}
                 </button>
