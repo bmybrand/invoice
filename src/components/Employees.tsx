@@ -138,6 +138,7 @@ export default function Employees() {
   const [editName, setEditName] = useState('')
   const [editRole, setEditRole] = useState<'user' | 'admin' | 'superadmin'>('user')
   const [editDepartment, setEditDepartment] = useState('')
+  const [editPassword, setEditPassword] = useState('')
   const [editLoading, setEditLoading] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
   const [deletingEmployee, setDeletingEmployee] = useState<EmployeeRow | null>(null)
@@ -336,7 +337,77 @@ export default function Employees() {
       role === 'superadmin' ? 'superadmin' : role === 'admin' ? 'admin' : 'user'
     )
     setEditDepartment(emp.department || '')
+    setEditPassword('')
     setEditError(null)
+  }
+
+  async function getAuthTokenForPasswordUpdate() {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+
+    if (session?.access_token?.trim()) {
+      return session.access_token.trim()
+    }
+
+    const {
+      data: refreshedData,
+      error: refreshError,
+    } = await supabase.auth.refreshSession()
+
+    if (refreshError) {
+      return ''
+    }
+
+    return refreshedData.session?.access_token?.trim() || ''
+  }
+
+  async function updateEmployeePassword(authId: string) {
+    const nextPassword = editPassword.trim()
+    if (!nextPassword || !isSuperAdmin) return null
+
+    if (nextPassword.length < 8) {
+      return 'Password must be at least 8 characters long.'
+    }
+
+    let token = await getAuthTokenForPasswordUpdate()
+
+    if (!token) {
+      return 'Authentication expired. Sign in again and try again.'
+    }
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await fetch('/api/employees/password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          authId,
+          password: nextPassword,
+        }),
+      })
+
+      const result = await response.json().catch(() => null)
+      if (response.ok) {
+        return null
+      }
+
+      const authError =
+        response.status === 401 &&
+        (result?.error === 'Authentication failed' || result?.error === 'Missing authorization token')
+
+      if (!authError || attempt === 1) {
+        return result?.error || 'Failed to update employee password.'
+      }
+
+      token = await getAuthTokenForPasswordUpdate()
+      if (!token) {
+        return 'Authentication expired. Sign in again and try again.'
+      }
+    }
+    return 'Failed to update employee password.'
   }
 
   async function handleEditSubmit(e: React.FormEvent) {
@@ -344,6 +415,13 @@ export default function Employees() {
     if (!editingEmployee || !canEdit(editingEmployee)) return
     setEditError(null)
     setEditLoading(true)
+
+    const passwordError = await updateEmployeePassword(editingEmployee.auth_id)
+    if (passwordError) {
+      setEditLoading(false)
+      setEditError(passwordError)
+      return
+    }
 
     const isEditingSuperAdmin = (editingEmployee.role || '').trim().toLowerCase().replace(/\s+/g, '') === 'superadmin'
 
@@ -794,6 +872,22 @@ export default function Employees() {
                   className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                 />
               </div>
+              {isSuperAdmin && (
+                <div>
+                  <label htmlFor="edit-password" className="block text-sm font-medium text-slate-300">New password</label>
+                  <input
+                    id="edit-password"
+                    type="password"
+                    value={editPassword}
+                    onChange={(e) => setEditPassword(e.target.value)}
+                    placeholder="Leave blank to keep current password"
+                    className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                  />
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Superadmin only. Leave this blank if you do not want to change the password.
+                  </p>
+                </div>
+              )}
               {editError && (
                 <p className="rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-400">{editError}</p>
               )}
