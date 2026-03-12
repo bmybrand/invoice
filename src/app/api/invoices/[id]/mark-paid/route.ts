@@ -43,8 +43,14 @@ export async function POST(
     return NextResponse.json({ error: 'Missing payment intent ID' }, { status: 400 })
   }
 
-  const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId)
+  const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId, {
+    expand: ['latest_charge'],
+  })
   const intentInvoiceId = Number(paymentIntent.metadata?.invoice_id ?? 0)
+  const stripeTransactionId =
+    typeof paymentIntent.latest_charge === 'string'
+      ? paymentIntent.latest_charge
+      : paymentIntent.latest_charge?.id ?? null
 
   if (paymentIntent.status !== 'succeeded') {
     return NextResponse.json({ error: 'Payment is not confirmed yet' }, { status: 409 })
@@ -64,5 +70,33 @@ export async function POST(
     return NextResponse.json({ error: error.message ?? 'Failed to update status' }, { status: 500 })
   }
 
-  return NextResponse.json({ success: true })
+  const { data: paymentSubmission } = await supabase
+    .from('payment_submissions')
+    .select('id')
+    .eq('invoice_id', invoiceId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (paymentSubmission?.id) {
+    const { error: paymentSubmissionError } = await supabase
+      .from('payment_submissions')
+      .update({
+        payment_method: 'Stripe',
+        payment_status: paymentIntent.status,
+        stripe_payment_intent_id: paymentIntent.id,
+        stripe_transaction_id: stripeTransactionId,
+      })
+      .eq('id', paymentSubmission.id)
+
+    if (paymentSubmissionError) {
+      console.error('Failed to update payment submission tracking fields:', paymentSubmissionError)
+    }
+  }
+
+  return NextResponse.json({
+    success: true,
+    stripePaymentIntentId: paymentIntent.id,
+    stripeTransactionId,
+  })
 }

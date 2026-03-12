@@ -28,7 +28,7 @@ type InvoiceRow = {
   invoice_type: string
 }
 
-export default function InvoiceView({ invoiceId, publicView = false }: { invoiceId: number; publicView?: boolean }) {
+export default function InvoiceView({ invoiceId, invoiceToken, publicView = false }: { invoiceId: number; invoiceToken: string | null; publicView?: boolean }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const paymentParam = searchParams.get('payment')
@@ -124,6 +124,7 @@ export default function InvoiceView({ invoiceId, publicView = false }: { invoice
   const remainingAmount = Math.max(grandTotal - payableAmount, 0)
   const showPayableDetails = invoice.payable_amount != null
   const amountToPay = showPayableDetails && payableAmount > 0 ? payableAmount : grandTotal
+  const shouldShowPaymentForm = !isPaid && !isProcessing
 
   async function handleDownloadPdf() {
     if (!canDownloadPdf || downloadingPdf || !invoice) return
@@ -288,10 +289,11 @@ export default function InvoiceView({ invoiceId, publicView = false }: { invoice
           rootId="invoice-print-root"
           includeDownloadButton
           showStatusBadge
-          showPaymentDetails={!publicView}
-          paymentFormContent={!publicView && !isPaid && !isProcessing ? (
+          showPaymentDetails={shouldShowPaymentForm}
+          paymentFormContent={shouldShowPaymentForm ? (
             <InvoicePayForm
               invoiceId={invoice.id}
+              invoiceToken={invoiceToken}
               grandTotal={amountToPay}
               initialEmail={invoice.email}
               initialPhone={invoice.phone}

@@ -232,6 +232,7 @@ function ContactFields({
 
 type InvoicePayFormProps = {
   invoiceId: number
+  invoiceToken?: string | null
   grandTotal: number
   invoiceTitle?: string
   initialEmail?: string
@@ -242,6 +243,7 @@ type InvoicePayFormProps = {
 
 function PaymentFormInner({
   invoiceId,
+  invoiceToken,
   grandTotal,
   fullName,
   setFullName,
@@ -263,6 +265,7 @@ function PaymentFormInner({
   onPaymentSuccess,
 }: {
   invoiceId: number
+  invoiceToken?: string | null
   grandTotal: number
   fullName: string
   setFullName: (value: string) => void
@@ -296,6 +299,10 @@ function PaymentFormInner({
   )
   const [submittedPaymentStatus, setSubmittedPaymentStatus] = useState<'succeeded' | 'processing'>('processing')
 
+  const invoiceUrl = invoiceToken
+    ? `/invoice?token=${encodeURIComponent(invoiceToken)}`
+    : `/invoice?id=${invoiceId}`
+
   useEffect(() => {
     if (!paymentSubmitted) return
 
@@ -303,18 +310,18 @@ function PaymentFormInner({
       if (submittedPaymentStatus === 'succeeded') {
         onPaymentSuccess?.()
         if (!embedded) {
-          router.replace(`/invoice?id=${invoiceId}&payment=success`)
+          router.replace(`${invoiceUrl}&payment=success`)
         }
         return
       }
 
       if (!embedded) {
-        router.replace(`/invoice?id=${invoiceId}&payment=processing`)
+        router.replace(`${invoiceUrl}&payment=processing`)
       }
     }, 1600)
 
     return () => window.clearTimeout(timeoutId)
-  }, [embedded, invoiceId, onPaymentSuccess, paymentSubmitted, router, submittedPaymentStatus])
+  }, [embedded, invoiceUrl, onPaymentSuccess, paymentSubmitted, router, submittedPaymentStatus])
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -412,6 +419,13 @@ function PaymentFormInner({
       return
     }
 
+    const paymentStatus = paymentIntent?.status ?? 'processing'
+    const stripePaymentIntentId = paymentIntent?.id ?? null
+    const stripeTransactionId =
+      typeof paymentIntent?.latest_charge === 'string'
+        ? paymentIntent.latest_charge
+        : null
+
     const { error: insertError } = await supabase.from('payment_submissions').insert({
       invoice_id: invoiceId,
       full_name: fullName.trim(),
@@ -426,6 +440,10 @@ function PaymentFormInner({
       card_expiry_month: null,
       card_expiry_year: null,
       amount_paid: grandTotal,
+      payment_method: 'Stripe',
+      payment_status: paymentStatus,
+      stripe_payment_intent_id: stripePaymentIntentId,
+      stripe_transaction_id: stripeTransactionId,
     })
 
     if (insertError) {
@@ -435,8 +453,6 @@ function PaymentFormInner({
       setPaying(false)
       return
     }
-
-    const paymentStatus = paymentIntent?.status ?? 'processing'
 
     if (paymentStatus === 'succeeded') {
       const paymentIntentId = paymentIntent?.id
@@ -628,6 +644,7 @@ function PaymentFormInner({
 
 export default function InvoicePayForm({
   invoiceId,
+  invoiceToken,
   grandTotal,
   invoiceTitle,
   initialEmail = '',
@@ -675,6 +692,7 @@ export default function InvoicePayForm({
         >
           <PaymentFormInner
             invoiceId={invoiceId}
+            invoiceToken={invoiceToken}
             grandTotal={grandTotal}
             fullName={fullName}
             setFullName={setFullName}

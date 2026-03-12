@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import Stripe from 'stripe'
+import { encryptInvoiceId } from '@/lib/invoice-token'
 
 const secretKey = process.env.STRIPE_SECRET_KEY
 const stripe = secretKey ? new Stripe(secretKey) : null
@@ -25,6 +26,7 @@ export async function POST(req: Request) {
     }
 
     const origin = req.headers.get('origin') || clientOrigin || req.headers.get('referer')?.replace(/\/$/, '') || 'http://localhost:3000'
+    const token = encryptInvoiceId(invoiceId)
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
@@ -42,8 +44,8 @@ export async function POST(req: Request) {
           quantity: 1,
         },
       ],
-      success_url: `${origin}/invoice/pay/return?invoice_id=${invoiceId}`,
-      cancel_url: `${origin}/invoice/pay?id=${invoiceId}`,
+      success_url: `${origin}/invoice/pay/return?token=${encodeURIComponent(token)}`,
+      cancel_url: `${origin}/invoice/pay?token=${encodeURIComponent(token)}`,
       customer_email: typeof email === 'string' && email.trim() ? email.trim() : undefined,
       metadata: { invoice_id: String(invoiceId) },
     })

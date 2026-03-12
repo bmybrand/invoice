@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { DashboardLayout } from '@/components/DashboardLayout'
 import InvoicePayForm from '@/components/InvoicePayForm'
 
-export default function InvoicePayRouteShell({ invoiceId }: { invoiceId: number }) {
+export default function InvoicePayRouteShell({ invoiceId, invoiceToken }: { invoiceId: number; invoiceToken: string | null }) {
   const router = useRouter()
   const [resolved, setResolved] = useState(false)
   const [isEmployee, setIsEmployee] = useState(false)
@@ -52,12 +52,13 @@ export default function InvoicePayRouteShell({ invoiceId }: { invoiceId: number 
       }
 
       const normalizedStatus = (data.status || '').toLowerCase()
+      const invoiceUrl = invoiceToken ? `/invoice?token=${encodeURIComponent(invoiceToken)}` : `/invoice?id=${invoiceId}`
       if (normalizedStatus.includes('paid') || normalizedStatus.includes('completed')) {
-        router.replace(`/invoice?id=${invoiceId}`)
+        router.replace(invoiceUrl)
         return
       }
       if (normalizedStatus.includes('processing')) {
-        router.replace(`/invoice?id=${invoiceId}&payment=processing`)
+        router.replace(`${invoiceUrl}&payment=processing`)
         return
       }
 
@@ -78,7 +79,7 @@ export default function InvoicePayRouteShell({ invoiceId }: { invoiceId: number 
     }
 
     fetchInvoice()
-  }, [invoiceId, router])
+  }, [invoiceId, invoiceToken, router])
 
   if (!resolved) {
     return (
@@ -105,7 +106,7 @@ export default function InvoicePayRouteShell({ invoiceId }: { invoiceId: number 
     )
   }
 
-  const invoiceTitle = invoice.brand_name ? `${invoice.brand_name} – Payment` : undefined
+  const invoiceTitle = invoice.brand_name ? `${invoice.brand_name} â€“ Payment` : undefined
 
   if (isEmployee) {
     return (
@@ -114,14 +115,15 @@ export default function InvoicePayRouteShell({ invoiceId }: { invoiceId: number 
           <div className="border-b border-slate-700 px-4 py-4 sm:px-6">
             <button
               type="button"
-              onClick={() => router.push(`/invoice?id=${invoiceId}`)}
+              onClick={() => router.push(invoiceToken ? `/invoice?token=${encodeURIComponent(invoiceToken)}` : `/invoice?id=${invoiceId}`)}
               className="text-sm font-medium text-slate-400 hover:text-white"
             >
-              ← Back to Invoice
+              â† Back to Invoice
             </button>
           </div>
           <InvoicePayForm
             invoiceId={invoiceId}
+            invoiceToken={invoiceToken}
             grandTotal={invoice.grandTotal}
             invoiceTitle={invoiceTitle}
             initialEmail={invoice.email}
@@ -137,14 +139,15 @@ export default function InvoicePayRouteShell({ invoiceId }: { invoiceId: number 
       <div className="border-b border-slate-700 px-4 py-4 sm:px-6">
         <button
           type="button"
-          onClick={() => router.push(`/invoice?id=${invoiceId}`)}
+          onClick={() => router.push(invoiceToken ? `/invoice?token=${encodeURIComponent(invoiceToken)}` : `/invoice?id=${invoiceId}`)}
           className="text-sm font-medium text-slate-400 hover:text-white"
         >
-          ← Back to Invoice
+          â† Back to Invoice
         </button>
       </div>
       <InvoicePayForm
         invoiceId={invoiceId}
+        invoiceToken={invoiceToken}
         grandTotal={invoice.grandTotal}
         invoiceTitle={invoiceTitle}
         initialEmail={invoice.email}

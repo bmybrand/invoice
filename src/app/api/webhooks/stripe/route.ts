@@ -47,6 +47,36 @@ export async function POST(req: Request) {
         console.error('Failed to update invoice to Paid:', error)
         return NextResponse.json({ error: 'Database update failed' }, { status: 500 })
       }
+
+      const stripeTransactionId =
+        typeof paymentIntent.latest_charge === 'string'
+          ? paymentIntent.latest_charge
+          : paymentIntent.latest_charge?.id ?? null
+
+      const { data: paymentSubmission } = await supabase
+        .from('payment_submissions')
+        .select('id')
+        .eq('invoice_id', Number(invoiceId))
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (paymentSubmission?.id) {
+        const { error: paymentSubmissionError } = await supabase
+          .from('payment_submissions')
+          .update({
+            payment_method: 'Stripe',
+            payment_status: paymentIntent.status,
+            stripe_payment_intent_id: paymentIntent.id,
+            stripe_transaction_id: stripeTransactionId,
+          })
+          .eq('id', paymentSubmission.id)
+
+        if (paymentSubmissionError) {
+          console.error('Failed to update payment submission from webhook:', paymentSubmissionError)
+          return NextResponse.json({ error: 'Payment submission update failed' }, { status: 500 })
+        }
+      }
     }
   } else if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session

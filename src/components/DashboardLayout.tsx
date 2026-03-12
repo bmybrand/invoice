@@ -14,14 +14,12 @@ export function useDashboardProfile() {
   return useContext(DashboardProfileContext)
 }
 
-const navItems: Array<{ label: string; href: string; children?: Array<{ label: string; href: string }> }> = [
+const navItems: Array<{ label: string; href: string }> = [
   { label: 'Dashboard', href: '/dashboard' },
   { label: 'Employees', href: '/dashboard/employees' },
   { label: 'Brand Identity', href: '/dashboard/brands' },
-  { label: 'Revenue', href: '#', children: [
-    { label: 'Invoice', href: '/dashboard/invoices' },
-    { label: 'Payment', href: '/dashboard/payments' },
-  ]},
+  { label: 'Invoice', href: '/dashboard/invoices' },
+  { label: 'Payment', href: '/dashboard/payments' },
   { label: 'Settings', href: '#' },
 ]
 
@@ -98,14 +96,6 @@ function ChevronRightIcon({ className = 'h-5 w-5' }: { className?: string }) {
   )
 }
 
-function ChevronDownIcon({ className = 'h-4 w-4' }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-    </svg>
-  )
-}
-
 function NavIcon({ label, active }: { label: string; active: boolean }) {
   const iconClass = active ? 'text-orange-500' : 'text-slate-400'
   const sizeClass = 'h-3 w-3 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4 lg:h-5 lg:w-5'
@@ -114,7 +104,6 @@ function NavIcon({ label, active }: { label: string; active: boolean }) {
     case 'Dashboard': return <GridIcon className={className} />
     case 'Employees': return <UsersIcon className={className} />
     case 'Brand Identity': return <StarIcon className={className} />
-    case 'Revenue': return <DollarIcon className={className} />
     case 'Invoice': return <DollarIcon className={className} />
     case 'Payment': return <DollarIcon className={className} />
     case 'Settings': return <GearIcon className={className} />
@@ -127,7 +116,6 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
   const pathname = usePathname()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [profileCentered, setProfileCentered] = useState(false)
-  const [revenueExpanded, setRevenueExpanded] = useState(false)
   const [displayName, setDisplayName] = useState('')
   const [displayRole, setDisplayRole] = useState('')
   const currentTime = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
@@ -142,10 +130,6 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
       setProfileCentered(false)
     }
   }, [sidebarCollapsed])
-
-  useEffect(() => {
-    if (pathname === '/dashboard/invoices' || pathname === '/dashboard/payments') setRevenueExpanded(true)
-  }, [pathname])
 
   useEffect(() => {
     async function loadProfile() {
@@ -234,50 +218,7 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
         </div>
         <nav className={`flex flex-1 flex-col gap-0.5 overflow-hidden ${sidebarCollapsed ? 'items-center px-1 py-1.5 sm:px-1.5 sm:py-2' : 'gap-1 px-3 sm:px-4'}`}>
           {navItems.map((item) => {
-            const hasChildren = 'children' in item && item.children?.length
-            const childActive = hasChildren && item.children?.some((c) => pathname === c.href)
-            const active = pathname === item.href || childActive
-
-            if (item.label === 'Revenue' && hasChildren) {
-              return (
-                <div key={item.label}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (sidebarCollapsed) setSidebarCollapsed(false)
-                      else setRevenueExpanded((e) => !e)
-                    }}
-                    className={`flex w-full items-center rounded-md py-2 hover:bg-white/5 sm:rounded-lg sm:py-2.5 md:rounded-xl md:py-3 ${sidebarCollapsed ? 'justify-center px-1 sm:px-1.5' : 'px-3 sm:px-4'} ${active ? 'border-l-4 border-orange-500 bg-gradient-to-r from-orange-500/20 to-orange-500/0' : ''}`}
-                    title={sidebarCollapsed ? item.label : undefined}
-                  >
-                    <div className={`flex min-w-0 flex-1 items-center gap-2 sm:gap-3 ${sidebarCollapsed ? 'justify-center' : 'justify-start'}`}>
-                      <span className="h-3 w-3 shrink-0 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4 lg:h-5 lg:w-5 [&_svg]:!h-full [&_svg]:!w-full [&_svg]:block"><NavIcon label={item.label} active={!!active} /></span>
-                      <span className={`truncate text-sm transition-opacity duration-200 md:text-base md:leading-6 ${sidebarCollapsed ? 'max-w-0 opacity-0' : 'opacity-100 delay-200'} ${active ? 'font-bold leading-5 text-orange-500' : 'font-normal leading-5 text-slate-400'}`}>{item.label}</span>
-                    </div>
-                    {!sidebarCollapsed && (
-                      <ChevronDownIcon className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${revenueExpanded ? 'rotate-180' : ''}`} />
-                    )}
-                  </button>
-                  {!sidebarCollapsed && revenueExpanded && item.children && (
-                    <div className="ml-4 mt-0.5 flex flex-col gap-0.5 border-l border-slate-700 pl-3">
-                      {item.children.map((child) => {
-                        const childIsActive = pathname === child.href
-                        return (
-                          <Link
-                            key={child.label}
-                            href={child.href}
-                            className={`flex items-center gap-2 rounded-md py-2 sm:py-2.5 ${childIsActive ? 'text-orange-500 font-semibold' : 'text-slate-400 hover:text-slate-300'}`}
-                          >
-                            <span className="h-3 w-3 shrink-0 sm:h-3.5 sm:w-3.5 [&_svg]:!h-full [&_svg]:!w-full [&_svg]:block"><NavIcon label={child.label} active={!!childIsActive} /></span>
-                            <span className="truncate text-sm">{child.label}</span>
-                          </Link>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              )
-            }
+            const active = pathname === item.href
 
             return active ? (
               <Link

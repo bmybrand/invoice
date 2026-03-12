@@ -5,6 +5,7 @@ import { Plus_Jakarta_Sans } from 'next/font/google'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useDashboardProfile } from '@/components/DashboardLayout'
+import { getInvoiceLink } from '@/lib/invoice-token'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
@@ -105,6 +106,15 @@ function CloseIcon({ className = 'h-4 w-4' }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+    </svg>
+  )
+}
+
+function CopyIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25H18a2.25 2.25 0 002.25-2.25V6A2.25 2.25 0 0018 3.75H9A2.25 2.25 0 006.75 6v2.25" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 8.25h9A2.25 2.25 0 0117.25 10.5v7.5A2.25 2.25 0 0115 20.25H6A2.25 2.25 0 013.75 18v-7.5A2.25 2.25 0 016 8.25z" />
     </svg>
   )
 }
@@ -401,6 +411,8 @@ export default function Invoice() {
   const [addStatus, setAddStatus] = useState('Pending')
   const [addPayableAmount, setAddPayableAmount] = useState('')
   const [addInvoiceType, setAddInvoiceType] = useState<string>(INVOICE_TYPE_OPTIONS[0])
+  const [savedAddInvoiceId, setSavedAddInvoiceId] = useState<number | null>(null)
+  const [addUrlCopied, setAddUrlCopied] = useState(false)
   const [addLoading, setAddLoading] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
   const [editingInvoice, setEditingInvoice] = useState<InvoiceRow | null>(null)
@@ -411,6 +423,7 @@ export default function Invoice() {
   const [editStatus, setEditStatus] = useState('Pending')
   const [editPayableAmount, setEditPayableAmount] = useState('')
   const [editInvoiceType, setEditInvoiceType] = useState<string>(INVOICE_TYPE_OPTIONS[0])
+  const [editUrlCopied, setEditUrlCopied] = useState(false)
   const [editLoading, setEditLoading] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
   const [deletingInvoice, setDeletingInvoice] = useState<InvoiceRow | null>(null)
@@ -643,6 +656,7 @@ export default function Invoice() {
   async function handleAddSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (currentUserEmployeeId === null) return
+    if (savedAddInvoiceId !== null) return
     if (!addValidation.valid) {
       setAddError(addValidation.message)
       return
@@ -657,18 +671,22 @@ export default function Invoice() {
     setAddError(null)
     setAddLoading(true)
 
-    const { error: insertError } = await supabase.from('invoices').insert({
-      invoice_date: new Date().toISOString().slice(0, 10),
-      invoice_creator_id: currentUserEmployeeId,
-      brand_name: addBrand.trim(),
-      email: addEmail.trim(),
-      service: cleanServices,
-      phone: addPhone.trim(),
-      amount: subTotal.toFixed(2),
-      status: addStatus,
-      payable_amount: payableAmount > 0 ? payableAmount.toFixed(2) : null,
-      invoice_type: addInvoiceType,
-    })
+    const { data: insertedInvoice, error: insertError } = await supabase
+      .from('invoices')
+      .insert({
+        invoice_date: new Date().toISOString().slice(0, 10),
+        invoice_creator_id: currentUserEmployeeId,
+        brand_name: addBrand.trim(),
+        email: addEmail.trim(),
+        service: cleanServices,
+        phone: addPhone.trim(),
+        amount: subTotal.toFixed(2),
+        status: addStatus,
+        payable_amount: payableAmount > 0 ? payableAmount.toFixed(2) : null,
+        invoice_type: addInvoiceType,
+      })
+      .select('id')
+      .single()
 
     setAddLoading(false)
     if (insertError) {
@@ -676,7 +694,15 @@ export default function Invoice() {
       return
     }
 
-    setShowAddModal(false)
+    setSavedAddInvoiceId(typeof insertedInvoice?.id === 'number' ? insertedInvoice.id : null)
+    setAddUrlCopied(false)
+    if (typeof insertedInvoice?.id !== 'number') {
+      setAddError('Invoice saved, but the share URL could not be prepared.')
+    }
+    await fetchInvoices()
+  }
+
+  function resetAddModalState() {
     setAddBrand('')
     setAddEmail('')
     setAddServices([{ description: '', qty: 1, price: '' }])
@@ -684,7 +710,30 @@ export default function Invoice() {
     setAddStatus('Pending')
     setAddPayableAmount('')
     setAddInvoiceType(INVOICE_TYPE_OPTIONS[0])
-    await fetchInvoices()
+    setSavedAddInvoiceId(null)
+    setAddUrlCopied(false)
+    setAddError(null)
+  }
+
+  function closeAddModal() {
+    if (addLoading) return
+    setShowAddModal(false)
+    resetAddModalState()
+  }
+
+  async function handleCopyAddedInvoiceUrl() {
+    if (savedAddInvoiceId === null) return
+
+    const invoiceUrl = `${window.location.origin}${getInvoiceLink(savedAddInvoiceId)}`
+
+    try {
+      await navigator.clipboard.writeText(invoiceUrl)
+      setAddUrlCopied(true)
+      setAddError(null)
+    } catch {
+      setAddError('Failed to copy invoice URL.')
+      setAddUrlCopied(false)
+    }
   }
 
   function openEditModal(inv: InvoiceRow) {
@@ -696,7 +745,29 @@ export default function Invoice() {
     setEditStatus(inv.status || 'Pending')
     setEditPayableAmount(inv.payable_amount == null ? '' : String(inv.payable_amount))
     setEditInvoiceType(inv.invoice_type || INVOICE_TYPE_OPTIONS[0])
+    setEditUrlCopied(false)
     setEditError(null)
+  }
+
+  function closeEditModal() {
+    if (editLoading) return
+    setEditingInvoice(null)
+    setEditUrlCopied(false)
+  }
+
+  async function handleCopyEditInvoiceUrl() {
+    if (!editingInvoice) return
+
+    const invoiceUrl = `${window.location.origin}${getInvoiceLink(editingInvoice.id)}`
+
+    try {
+      await navigator.clipboard.writeText(invoiceUrl)
+      setEditUrlCopied(true)
+      setEditError(null)
+    } catch {
+      setEditError('Failed to copy invoice URL.')
+      setEditUrlCopied(false)
+    }
   }
 
   async function handleEditSubmit(e: React.FormEvent) {
@@ -736,6 +807,7 @@ export default function Invoice() {
       return
     }
 
+    setEditUrlCopied(false)
     setEditingInvoice(null)
     setEditPayableAmount('')
     await fetchInvoices()
@@ -988,14 +1060,33 @@ export default function Invoice() {
                         >
                           <button
                             type="button"
-                            onClick={() => {
+                            onClick={async () => {
                               setOpenActionMenu(null)
-                              router.push(`/invoice?id=${inv.id}`)
+                              const { getInvoiceLink } = await import('@/app/actions/invoice-link')
+                              const url = await getInvoiceLink(inv.id)
+                              router.push(url)
                             }}
                             className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-blue-400 transition hover:bg-slate-800"
                           >
                             <InfoIcon className="h-4 w-4" />
                             View
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              setOpenActionMenu(null)
+                              const invoiceUrl = `${window.location.origin}${getInvoiceLink(inv.id)}`
+
+                              try {
+                                await navigator.clipboard.writeText(invoiceUrl)
+                              } catch {
+                                console.error('Failed to copy invoice URL')
+                              }
+                            }}
+                            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-slate-300 transition hover:bg-slate-800"
+                          >
+                            <CopyIcon className="h-4 w-4" />
+                            Copy
                           </button>
                           {canEditInvoice(inv) && (
                             <button
@@ -1103,7 +1194,7 @@ export default function Invoice() {
           <div className="relative w-full max-w-5xl" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
-              onClick={() => !addLoading && setShowAddModal(false)}
+              onClick={closeAddModal}
               disabled={addLoading}
               aria-label="Close modal"
               className="absolute right-4 top-4 z-20 rounded-full border border-slate-300 bg-white/90 p-2 text-slate-600 transition hover:bg-white hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
@@ -1298,20 +1389,35 @@ export default function Invoice() {
                     )
                   })()}
 
-                  {currentUserEmployeeId === null && !addError && (
+                  {currentUserEmployeeId === null && !addError && savedAddInvoiceId === null && (
                     <p className="mx-10 mt-4 rounded-lg border border-amber-500/50 bg-amber-500/10 px-4 py-3 text-sm text-amber-700">You must be registered as an employee to create invoices.</p>
+                  )}
+                  {savedAddInvoiceId !== null && !addError && (
+                    <p className="mx-10 mt-4 rounded-lg border border-emerald-500/50 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700">
+                      {addUrlCopied ? 'Invoice URL copied.' : 'Invoice saved. Use Copy URL to share it.'}
+                    </p>
                   )}
                   {addError && <p className="mx-10 mt-4 rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-700">{addError}</p>}
 
                   <div className="flex gap-3 px-10 py-6">
-                    <button type="button" onClick={() => !addLoading && setShowAddModal(false)} className="flex-1 rounded-xl border border-slate-300 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-100">Cancel</button>
-                    <button
-                      type="submit"
-                      disabled={addLoading || currentUserEmployeeId === null || !addValidation.valid}
-                      className="flex-1 rounded-xl bg-orange-600 px-4 py-3 text-sm font-semibold text-white hover:bg-orange-700 disabled:opacity-50"
-                    >
-                      {addLoading ? 'Adding...' : 'Add Invoice'}
-                    </button>
+                    <button type="button" onClick={closeAddModal} className="flex-1 rounded-xl border border-slate-300 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-100">Cancel</button>
+                    {savedAddInvoiceId !== null ? (
+                      <button
+                        type="button"
+                        onClick={handleCopyAddedInvoiceUrl}
+                        className="flex-1 rounded-xl bg-orange-600 px-4 py-3 text-sm font-semibold text-white hover:bg-orange-700"
+                      >
+                        {addUrlCopied ? 'Copied' : 'Copy URL'}
+                      </button>
+                    ) : (
+                      <button
+                        type="submit"
+                        disabled={addLoading || currentUserEmployeeId === null || !addValidation.valid}
+                        className="flex-1 rounded-xl bg-orange-600 px-4 py-3 text-sm font-semibold text-white hover:bg-orange-700 disabled:opacity-50"
+                      >
+                        {addLoading ? 'Adding...' : 'Add Invoice'}
+                      </button>
+                    )}
                   </div>
                   </form>
                 )
@@ -1327,7 +1433,7 @@ export default function Invoice() {
           <div className="relative w-full max-w-5xl" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
-              onClick={() => !editLoading && setEditingInvoice(null)}
+              onClick={closeEditModal}
               disabled={editLoading}
               aria-label="Close modal"
               className="absolute right-4 top-4 z-20 rounded-full border border-slate-300 bg-white/90 p-2 text-slate-600 transition hover:bg-white hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
@@ -1528,13 +1634,22 @@ export default function Invoice() {
                   {editError && <p className="mx-10 mt-4 rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-700">{editError}</p>}
 
                   <div className="flex gap-3 px-10 py-6">
-                    <button type="button" onClick={() => !editLoading && setEditingInvoice(null)} className="flex-1 rounded-xl border border-slate-300 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-100">Cancel</button>
+                    <button type="button" onClick={closeEditModal} className="flex-1 rounded-xl border border-slate-300 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-100">Cancel</button>
                     <button
                       type="submit"
                       disabled={editLoading || !editValidation.valid}
                       className="flex-1 rounded-xl bg-orange-600 px-4 py-3 text-sm font-semibold text-white hover:bg-orange-700 disabled:opacity-50"
                     >
                       {editLoading ? 'Saving...' : 'Save'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCopyEditInvoiceUrl}
+                      disabled={editLoading}
+                      className="inline-flex min-w-[108px] items-center justify-center gap-2 rounded-xl border border-orange-300 bg-orange-50 px-4 py-3 text-sm font-semibold text-orange-700 hover:bg-orange-100 disabled:opacity-50"
+                    >
+                      <CopyIcon className="h-4 w-4" />
+                      {editUrlCopied ? 'Copied' : 'Copy'}
                     </button>
                   </div>
                   </form>

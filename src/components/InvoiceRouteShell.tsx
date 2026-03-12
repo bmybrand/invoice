@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { DashboardLayout } from '@/components/DashboardLayout'
 import InvoiceView from '@/components/InvoiceView'
 
-export default function InvoiceRouteShell({ invoiceId }: { invoiceId: number }) {
+export default function InvoiceRouteShell({ invoiceId, invoiceToken }: { invoiceId: number; invoiceToken: string | null }) {
   const [resolved, setResolved] = useState(false)
   const [isEmployee, setIsEmployee] = useState(false)
 
@@ -41,14 +41,14 @@ export default function InvoiceRouteShell({ invoiceId }: { invoiceId: number }) 
   if (isEmployee) {
     return (
       <DashboardLayout title="Invoice">
-        <InvoiceView invoiceId={invoiceId} publicView={false} />
+        <InvoiceView invoiceId={invoiceId} invoiceToken={invoiceToken} publicView={false} />
       </DashboardLayout>
     )
   }
 
   return (
     <div className="min-h-screen bg-white">
-      <InvoiceView invoiceId={invoiceId} publicView />
+      <InvoiceView invoiceId={invoiceId} invoiceToken={invoiceToken} publicView />
     </div>
   )
 }
