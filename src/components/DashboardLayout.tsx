@@ -286,12 +286,12 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
       .subscribe(async (status) => {
         if (status !== 'SUBSCRIBED') return
 
-        const { error } = await channel.track({
+        const trackStatus = await channel.track({
           online_at: new Date().toISOString(),
         })
 
-        if (error) {
-          console.error('Failed to track employee presence', error)
+        if (trackStatus !== 'ok') {
+          console.error('Failed to track employee presence', trackStatus)
           return
         }
 
