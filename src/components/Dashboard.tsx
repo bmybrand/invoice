@@ -386,7 +386,7 @@ export function Dashboard() {
             <div className="flex flex-wrap gap-3 sm:gap-4 lg:flex-nowrap lg:gap-6">
               <div className="relative flex max-h-80 min-h-56 min-w-0 w-full flex-col justify-center overflow-hidden rounded-2xl border border-orange-500/20 bg-gradient-to-br from-slate-900 to-slate-800 p-4 sm:min-h-80 sm:max-h-96 sm:rounded-[32px] sm:p-8 lg:w-0 lg:min-w-0 lg:flex-[7]">
                 <div className="absolute inset-y-0 right-4 flex items-center opacity-5 sm:right-6">
-                  <img src="/sheild.svg" alt="" className="h-72 w-56 object-contain sm:h-80 sm:w-64" />
+                  <img src="/%24%20coin.svg" alt="" className="h-72 w-56 object-contain sm:h-80 sm:w-64" />
                 </div>
                 <div className="relative flex flex-col gap-2 sm:gap-4">
                   <div className="flex items-center gap-2">
