@@ -465,11 +465,11 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
     <div id="dashboard-root-shell" className={`${plusJakarta.className} flex min-h-screen w-full bg-gray-900 text-white`}>
       {/* Sidebar */}
       <aside className={`fixed left-0 top-0 z-20 flex h-screen flex-col border-r border-slate-800 bg-[#0b1323] transition-[width] duration-200 ease-out xl:sticky xl:top-0 xl:left-auto xl:z-auto xl:shrink-0 ${sidebarCollapsed ? 'w-12 sm:w-14 md:w-20' : 'w-full md:w-64'}`}>
-        <div className={`flex items-center justify-center overflow-hidden p-4 ${sidebarCollapsed ? 'gap-0 p-2 sm:p-3' : 'gap-2 p-6 md:p-8'}`}>
-          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-orange-500 text-white sm:h-7 sm:w-7 md:h-8 md:w-8 md:rounded-lg xl:h-9 xl:w-9">
-            <LightningIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5 md:h-4 md:w-5 xl:h-5 xl:w-5" />
+        <div className="flex items-center justify-center overflow-hidden gap-2 p-6 md:p-8">
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md sm:h-7 sm:w-7 md:h-8 md:w-8 md:rounded-lg xl:h-9 xl:w-9">
+            <img src="/bmybrand-B.svg" alt="Brand Logo" className="h-full w-full object-contain" />
           </div>
-          <span className={`truncate text-lg font-extrabold leading-6 transition-[opacity,max-width] duration-200 md:text-xl md:leading-7 ${sidebarCollapsed ? 'w-0 max-w-0 opacity-0' : 'opacity-100 delay-200'}`}>
+          <span className={`truncate text-lg font-extrabold leading-6 transition-[opacity,max-width] duration-200 md:text-xl md:leading-7 ${sidebarCollapsed ? 'w-0 max-w-0 opacity-0' : 'opacity-100 delay-200'}`}> 
             Invoice <span className="text-orange-500">CRM</span>
           </span>
         </div>
@@ -481,10 +481,10 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
               <Link
                 key={item.label}
                 href={item.href}
-                className={`flex items-center justify-start gap-2 rounded-md py-2 border-l-4 border-orange-500 bg-gradient-to-r from-orange-500/20 to-orange-500/0 sm:gap-3 sm:rounded-lg sm:py-2.5 md:rounded-xl md:py-3 ${sidebarCollapsed ? 'justify-center px-1 sm:px-1.5' : 'px-3 sm:px-4'}`}
+                className={`flex items-center justify-start gap-2 rounded-md py-2 border-l-4 border-orange-500 bg-linear-to-r from-orange-500/20 to-orange-500/0 sm:gap-3 sm:rounded-lg sm:py-2.5 md:rounded-xl md:py-3 ${sidebarCollapsed ? 'justify-center px-1 sm:px-1.5' : 'px-3 sm:px-4'}`}
                 title={sidebarCollapsed ? item.label : undefined}
               >
-                <span className="h-3 w-3 shrink-0 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4 lg:h-5 lg:w-5 [&_svg]:!h-full [&_svg]:!w-full [&_svg]:block"><NavIcon label={item.label} active={!!active} /></span>
+                <span className="h-3 w-3 shrink-0 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4 lg:h-5 lg:w-5 [&_svg]:h-full! [&_svg]:w-full! [&_svg]:block"><NavIcon label={item.label} active={!!active} /></span>
                 <span className={`truncate text-sm font-bold leading-5 text-orange-500 transition-opacity duration-200 md:text-base md:leading-6 ${sidebarCollapsed ? 'max-w-0 opacity-0' : 'opacity-100 delay-200'}`}>{item.label}</span>
               </Link>
             ) : (
@@ -494,13 +494,13 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
                 className={`flex items-center justify-start gap-2 rounded-md py-2 hover:bg-white/5 sm:rounded-lg sm:py-2.5 md:rounded-xl md:py-3 ${sidebarCollapsed ? 'justify-center px-1 sm:px-1.5' : 'px-3 sm:px-4'}`}
                 title={sidebarCollapsed ? item.label : undefined}
               >
-                <span className="h-3 w-3 shrink-0 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4 lg:h-5 lg:w-5 [&_svg]:!h-full [&_svg]:!w-full [&_svg]:block"><NavIcon label={item.label} active={!!active} /></span>
+                <span className="h-3 w-3 shrink-0 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4 lg:h-5 lg:w-5 [&_svg]:h-full! [&_svg]:w-full! [&_svg]:block"><NavIcon label={item.label} active={!!active} /></span>
                 <span className={`truncate text-sm font-normal leading-5 text-slate-400 transition-opacity duration-200 md:text-base md:leading-6 ${sidebarCollapsed ? 'max-w-0 opacity-0' : 'opacity-100 delay-200'}`}>{item.label}</span>
               </Link>
             )
           })}
         </nav>
-        <div className={`p-2 ${sidebarCollapsed ? 'p-1 sm:p-1.5' : 'p-3 sm:p-4 md:p-6'}`}>
+        <div className="p-3 sm:p-4 md:p-6">
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
             className="mb-1 flex w-full items-center justify-center rounded-md border border-slate-700/50 bg-slate-800/50 p-1.5 text-slate-400 transition hover:bg-slate-800 hover:text-white sm:mb-1.5 sm:rounded-lg sm:p-2 md:mb-2 md:rounded-xl md:p-2.5"
@@ -513,7 +513,7 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
             className={`flex w-full items-center justify-center gap-1.5 rounded-md border border-slate-700/50 bg-slate-800/50 p-1.5 text-xs font-bold leading-4 text-white transition hover:bg-slate-800 sm:gap-2 sm:rounded-lg sm:p-2 sm:text-sm sm:leading-5 md:rounded-xl md:leading-6 ${sidebarCollapsed ? '' : 'px-2.5 py-2 sm:px-3 sm:py-2.5 md:px-4 md:py-3'}`}
             title={sidebarCollapsed ? 'Log Out' : undefined}
           >
-            <LogoutIcon />
+            <span className="flex items-center justify-center h-5 w-5"><LogoutIcon /></span>
             <span className={`truncate transition-opacity duration-200 ${sidebarCollapsed ? 'max-w-0 opacity-0' : 'opacity-100 delay-200'}`}>Log Out</span>
           </button>
         </div>
@@ -541,7 +541,7 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
                 />
                 <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-gray-900 bg-green-500 sm:h-3 sm:w-3" />
               </div>
-              <div className="min-w-0 max-w-[160px] sm:max-w-[200px]">
+              <div className="min-w-0 max-w-40 sm:max-w-50">
                 <p className="truncate text-xs font-bold leading-4 text-white sm:text-sm sm:leading-5">{displayName || 'User'}</p>
                 <p className="truncate text-[9px] font-black uppercase leading-3 tracking-wide text-slate-500 sm:text-[10px] sm:leading-4">{displayRole || '-'}</p>
               </div>
@@ -653,7 +653,7 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
                 <button
                   type="submit"
                   disabled={profileSaving}
-                  className="w-full rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50 sm:w-auto sm:min-w-[148px]"
+                  className="w-full rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50 sm:w-auto sm:min-w-37"
                 >
                   {profileSaving ? 'Saving...' : 'Save'}
                 </button>
