@@ -32,6 +32,7 @@ body {
 }
 .scrollbar-thin::-webkit-scrollbar {
   width: 5px;
+  height: 5px; /* horizontal scrollbar */
 }
 .scrollbar-thin::-webkit-scrollbar-track {
   background: transparent;

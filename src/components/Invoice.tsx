@@ -92,6 +92,22 @@ function PlusIcon({ className = 'h-4 w-3' }: { className?: string }) {
   )
 }
 
+function ChevronLeftIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+    </svg>
+  )
+}
+
+function ChevronRightIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+    </svg>
+  )
+}
+
 function ChevronDownIcon({ className = 'h-4 w-4' }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -668,7 +684,7 @@ export default function Invoice() {
   ]
   const statusFilterLabel = statusOptions.find((o) => o.value === statusFilter)?.label ?? 'All Statuses'
 
-  const PAGE_SIZE = 10
+  const PAGE_SIZE = 4
 
   useEffect(() => {
     setCurrentPage(1)
@@ -1138,7 +1154,7 @@ export default function Invoice() {
 
       {/* Table */}
       <div className="w-full bg-slate-800/80 rounded-xl border border-slate-700 overflow-hidden">
-        <div className="w-full overflow-x-auto">
+        <div className="w-full overflow-x-auto scrollbar-thin">
           <div className="w-full" style={{ minWidth: '1180px' }}>
             {/* Table header */}
             <div className="w-full grid bg-slate-900/50 border-b border-slate-700" style={{ gridTemplateColumns: INVOICE_GRID }}>
@@ -1325,17 +1341,45 @@ export default function Invoice() {
               type="button"
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={currentPage <= 1}
-              className="px-4 py-2 rounded-lg border border-slate-700 text-slate-300 text-sm font-medium hover:bg-slate-700/50 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-8 h-8 rounded-lg border border-slate-700 flex justify-center items-center text-slate-400 hover:bg-slate-700/50 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              aria-label="Previous page"
             >
-              Previous
+              <ChevronLeftIcon />
             </button>
+            {(() => {
+              const pages: (number | 'ellipsis')[] =
+                totalPages <= 4
+                  ? Array.from({ length: totalPages }, (_, i) => i + 1)
+                  : [1, 2, 'ellipsis', totalPages]
+              return pages.map((page) =>
+                page === 'ellipsis' ? (
+                  <span key="ellipsis" className="w-8 text-center text-slate-500 text-xs">
+                    ...
+                  </span>
+                ) : (
+                  <button
+                    key={page}
+                    type="button"
+                    onClick={() => setCurrentPage(page)}
+                    className={`w-8 h-8 rounded-lg flex justify-center items-center text-xs font-medium transition ${
+                      currentPage === page
+                        ? 'bg-orange-500 text-white'
+                        : 'border border-slate-700 text-slate-400 hover:bg-slate-700/50'
+                    }`}
+                  >
+                    {page}
+                  </button>
+                )
+              )
+            })()}
             <button
               type="button"
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage >= totalPages}
-              className="px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-medium hover:bg-orange-600 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-8 h-8 rounded-lg border border-slate-700 flex justify-center items-center text-slate-400 hover:bg-slate-700/50 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              aria-label="Next page"
             >
-              Next
+              <ChevronRightIcon />
             </button>
           </div>
         </div>
@@ -1385,7 +1429,7 @@ export default function Invoice() {
             >
               <CloseIcon />
             </button>
-            <div className="max-h-[92vh] overflow-y-auto rounded-2xl bg-neutral-100 p-6 shadow-2xl text-slate-800">
+            <div className="max-h-[92vh] overflow-y-auto scrollbar-thin rounded-2xl bg-neutral-100 p-6 shadow-2xl text-slate-800">
               {(() => {
                 return (
                   <form onSubmit={handleAddSubmit} className="rounded-xl bg-white shadow-2xl outline outline-1 outline-slate-200">
@@ -1648,7 +1692,7 @@ export default function Invoice() {
             >
               <CloseIcon />
             </button>
-            <div className="max-h-[92vh] overflow-y-auto rounded-2xl bg-neutral-100 p-6 shadow-2xl text-slate-800">
+            <div className="max-h-[92vh] overflow-y-auto scrollbar-thin rounded-2xl bg-neutral-100 p-6 shadow-2xl text-slate-800">
               {(() => {
                 return (
                   <form onSubmit={handleEditSubmit} className="rounded-xl bg-white shadow-2xl outline outline-1 outline-slate-200">

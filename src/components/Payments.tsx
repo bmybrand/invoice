@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
-const PAGE_SIZE = 10
+const PAGE_SIZE = 4
 const PAYMENT_GRID =
   'minmax(88px,0.75fr) minmax(120px,1fr) minmax(140px,1fr) minmax(220px,1.5fr) minmax(110px,0.85fr) minmax(130px,1fr) minmax(130px,0.95fr) minmax(220px,1.7fr) minmax(120px,0.95fr) minmax(160px,1.1fr) minmax(100px,0.9fr) 72px'
 
@@ -303,7 +303,7 @@ export default function Payments() {
       </div>
 
       <div className="w-full overflow-hidden rounded-xl border border-slate-700 bg-slate-800/80">
-        <div className="w-full overflow-x-auto">
+        <div className="w-full overflow-x-auto scrollbar-thin">
           <div className="w-full" style={{ minWidth: '1880px' }}>
             <div className="grid w-full border-b border-slate-700 bg-slate-900/50" style={{ gridTemplateColumns: PAYMENT_GRID }}>
               {[

@@ -16,6 +16,9 @@ type BrandRow = {
   created_at?: string
 }
 
+const PAGE_SIZE = 4
+const BRAND_GRID = 'minmax(68px,0.75fr) minmax(108px,1.15fr) minmax(148px,2.1fr) 128px 96px 100px'
+
 function SearchIcon({ className = 'h-4 w-4' }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -97,8 +100,6 @@ export default function Brand() {
   const [deleteLoading, setDeleteLoading] = useState(false)
 
   const isSuperAdmin = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '') === 'superadmin'
-
-  const PAGE_SIZE = 10
 
   const fetchBrands = useCallback(async () => {
     setBrandsLoading(true)
@@ -267,18 +268,18 @@ export default function Brand() {
 
       {/* Table */}
       <div className="w-full bg-slate-800/80 rounded-xl border border-slate-700 overflow-hidden">
-        <div className="w-full overflow-x-auto">
+        <div className="w-full overflow-x-auto scrollbar-thin">
           <div className="w-full min-w-[640px]">
             {/* Table header */}
-            <div className="w-full grid grid-cols-[minmax(80px,1fr)_minmax(120px,2fr)_minmax(120px,2fr)_128px_96px_100px] bg-slate-900/50 border-b border-slate-700">
-              <div className="px-4 sm:px-6 py-4">
-                <span className="text-slate-400 text-xs font-bold uppercase tracking-wide">Brand ID</span>
+            <div className="w-full grid bg-slate-900/50 border-b border-slate-700" style={{ gridTemplateColumns: BRAND_GRID }}>
+              <div className="px-4 sm:px-6 py-4 min-w-0 flex items-center">
+                <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Brand ID</span>
               </div>
-              <div className="px-4 sm:px-6 py-4">
-                <span className="text-slate-400 text-xs font-bold uppercase tracking-wide">Brand Name</span>
+              <div className="px-4 sm:px-6 py-4 min-w-0 flex items-center">
+                <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Brand Name</span>
               </div>
-              <div className="px-4 sm:px-6 py-4">
-                <span className="text-slate-400 text-xs font-bold uppercase tracking-wide">Brand URL</span>
+              <div className="px-4 sm:px-6 py-4 min-w-0 flex items-center">
+                <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Brand URL</span>
               </div>
               <div className="px-4 sm:px-6 py-4">
                 <span className="text-slate-400 text-xs font-bold uppercase tracking-wide">Logo</span>
@@ -303,17 +304,18 @@ export default function Brand() {
             paginatedBrands.map((brand) => (
               <div
                 key={brand.id}
-                className="w-full grid grid-cols-[minmax(80px,1fr)_minmax(120px,2fr)_minmax(120px,2fr)_128px_96px_100px] border-t border-slate-700 items-center"
+                className="w-full grid border-t border-slate-700 items-center"
+                style={{ gridTemplateColumns: BRAND_GRID }}
               >
-                <div className="px-4 sm:px-6 py-4">
-                  <span className="text-white text-sm font-bold font-mono">#{brand.id}</span>
+                <div className="px-4 sm:px-6 py-4 min-w-0">
+                  <span className="block truncate whitespace-nowrap text-white text-sm font-bold font-mono">#{brand.id}</span>
                 </div>
-                <div className="px-4 sm:px-6 py-4">
-                  <span className="text-white text-sm font-semibold">{brand.brand_name}</span>
+                <div className="px-4 sm:px-6 py-4 min-w-0">
+                  <span className="block truncate whitespace-nowrap text-white text-sm font-semibold">{brand.brand_name}</span>
                 </div>
-                <div className="px-4 sm:px-6 py-4">
+                <div className="px-4 sm:px-6 py-4 min-w-0">
                   {brand.brand_url ? (
-                    <a href={brand.brand_url.startsWith('http') ? brand.brand_url : `https://${brand.brand_url}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 text-sm underline hover:text-blue-300">
+                    <a href={brand.brand_url.startsWith('http') ? brand.brand_url : `https://${brand.brand_url}`} target="_blank" rel="noopener noreferrer" className="block truncate whitespace-nowrap text-blue-400 text-sm underline hover:text-blue-300">
                       {brand.brand_url}
                     </a>
                   ) : (
@@ -383,17 +385,45 @@ export default function Brand() {
               type="button"
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={currentPage <= 1}
-              className="px-4 py-2 rounded-lg border border-slate-700 text-slate-300 text-sm font-medium hover:bg-slate-700/50 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-8 h-8 rounded-lg border border-slate-700 flex justify-center items-center text-slate-400 hover:bg-slate-700/50 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              aria-label="Previous page"
             >
-              Previous
+              <ChevronLeftIcon />
             </button>
+            {(() => {
+              const pages: (number | 'ellipsis')[] =
+                totalPages <= 4
+                  ? Array.from({ length: totalPages }, (_, i) => i + 1)
+                  : [1, 2, 'ellipsis', totalPages]
+              return pages.map((page) =>
+                page === 'ellipsis' ? (
+                  <span key="ellipsis" className="w-8 text-center text-slate-500 text-xs">
+                    ...
+                  </span>
+                ) : (
+                  <button
+                    key={page}
+                    type="button"
+                    onClick={() => setCurrentPage(page)}
+                    className={`w-8 h-8 rounded-lg flex justify-center items-center text-xs font-medium transition ${
+                      currentPage === page
+                        ? 'bg-orange-500 text-white'
+                        : 'border border-slate-700 text-slate-400 hover:bg-slate-700/50'
+                    }`}
+                  >
+                    {page}
+                  </button>
+                )
+              )
+            })()}
             <button
               type="button"
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage >= totalPages}
-              className="px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-medium hover:bg-orange-600 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-8 h-8 rounded-lg border border-slate-700 flex justify-center items-center text-slate-400 hover:bg-slate-700/50 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              aria-label="Next page"
             >
-              Next
+              <ChevronRightIcon />
             </button>
           </div>
         </div>

@@ -7,7 +7,7 @@ import { useDashboardProfile } from '@/components/DashboardLayout'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
-const PAGE_SIZE = 10
+const PAGE_SIZE = 4
 const PROFILE_AVATAR_BUCKET = 'profile-images'
 
 type EmployeeRow = {
@@ -143,6 +143,7 @@ export default function Employees() {
   const [editError, setEditError] = useState<string | null>(null)
   const [deletingEmployee, setDeletingEmployee] = useState<EmployeeRow | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const roleOptions = [
     { value: '', label: 'All Roles' },
@@ -283,40 +284,60 @@ export default function Employees() {
     fetchEmployees()
   }, [fetchEmployees])
 
+  async function getCurrentAuthToken() {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+
+    if (session?.access_token?.trim()) {
+      return session.access_token.trim()
+    }
+
+    const {
+      data: refreshedData,
+      error: refreshError,
+    } = await supabase.auth.refreshSession()
+
+    if (refreshError) {
+      return ''
+    }
+
+    return refreshedData.session?.access_token?.trim() || ''
+  }
+
   async function handleAddSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!isSuperAdmin) return
     setAddError(null)
     setAddLoading(true)
 
-    const { data: authData, error: signUpError } = await supabase.auth.signUp({
-      email: addEmail,
-      password: addPassword,
-    })
-
-    if (signUpError) {
-      setAddError(signUpError.message)
+    const token = await getCurrentAuthToken()
+    if (!token) {
       setAddLoading(false)
+      setAddError('Authentication expired. Sign in again and try again.')
       return
     }
 
-    if (!authData.user?.id) {
-      setAddError('Failed to create user')
-      setAddLoading(false)
-      return
-    }
-
-    const { error: insertError } = await supabase.from('employees').insert({
-      auth_id: authData.user.id,
-      email: addEmail,
-      employee_name: addName,
-      role: addRole,
-      department: addDepartment,
+    const response = await fetch('/api/employees', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        email: addEmail,
+        password: addPassword,
+        name: addName,
+        role: addRole,
+        department: addDepartment,
+      }),
     })
+
+    const result = (await response.json().catch(() => null)) as { error?: string } | null
 
     setAddLoading(false)
-    if (insertError) {
-      setAddError(insertError.message)
+    if (!response.ok) {
+      setAddError(result?.error || 'Failed to create user')
       return
     }
 
@@ -341,27 +362,6 @@ export default function Employees() {
     setEditError(null)
   }
 
-  async function getAuthTokenForPasswordUpdate() {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-
-    if (session?.access_token?.trim()) {
-      return session.access_token.trim()
-    }
-
-    const {
-      data: refreshedData,
-      error: refreshError,
-    } = await supabase.auth.refreshSession()
-
-    if (refreshError) {
-      return ''
-    }
-
-    return refreshedData.session?.access_token?.trim() || ''
-  }
-
   async function updateEmployeePassword(authId: string) {
     const nextPassword = editPassword.trim()
     if (!nextPassword || !isSuperAdmin) return null
@@ -370,7 +370,7 @@ export default function Employees() {
       return 'Password must be at least 8 characters long.'
     }
 
-    let token = await getAuthTokenForPasswordUpdate()
+    let token = await getCurrentAuthToken()
 
     if (!token) {
       return 'Authentication expired. Sign in again and try again.'
@@ -402,7 +402,7 @@ export default function Employees() {
         return result?.error || 'Failed to update employee password.'
       }
 
-      token = await getAuthTokenForPasswordUpdate()
+      token = await getCurrentAuthToken()
       if (!token) {
         return 'Authentication expired. Sign in again and try again.'
       }
@@ -478,11 +478,26 @@ export default function Employees() {
 
   async function handleDeleteConfirm() {
     if (!deletingEmployee || !canDelete(deletingEmployee)) return
+    setDeleteError(null)
     setDeleteLoading(true)
-    const { error } = await supabase.from('employees').delete().eq('id', deletingEmployee.id)
+    const token = await getCurrentAuthToken()
+
+    if (!token) {
+      setDeleteLoading(false)
+      setDeleteError('Authentication expired. Sign in again and try again.')
+      return
+    }
+
+    const response = await fetch(`/api/employees/${deletingEmployee.id}`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+    const result = (await response.json().catch(() => null)) as { error?: string } | null
     setDeleteLoading(false)
-    if (error) {
-      console.error('Failed to delete employee', error)
+    if (!response.ok) {
+      setDeleteError(result?.error || 'Failed to delete employee')
       return
     }
     setDeletingEmployee(null)
@@ -603,7 +618,7 @@ export default function Employees() {
 
       {/* Table */}
       <div className="w-full bg-slate-800/80 rounded-xl border border-slate-700 overflow-hidden">
-        <div className="w-full overflow-x-auto">
+        <div className="w-full overflow-x-auto scrollbar-thin">
           {/* Table header */}
           <div className="w-full min-w-[560px] bg-slate-900/50 border-b border-slate-700 grid grid-cols-[1fr_1fr_140px_100px] gap-0">
             <div className="px-4 sm:px-6 py-4">
@@ -669,7 +684,10 @@ export default function Employees() {
                 {canDelete(emp) && (
                   <button
                     type="button"
-                    onClick={() => setDeletingEmployee(emp)}
+                    onClick={() => {
+                      setDeleteError(null)
+                      setDeletingEmployee(emp)
+                    }}
                     className="p-2 rounded-lg text-slate-400 hover:bg-slate-700/50 hover:text-red-400 transition"
                     aria-label="Delete"
                   >
@@ -745,7 +763,12 @@ export default function Employees() {
           <div className="relative w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
-              onClick={() => !deleteLoading && setDeletingEmployee(null)}
+              onClick={() => {
+                if (!deleteLoading) {
+                  setDeleteError(null)
+                  setDeletingEmployee(null)
+                }
+              }}
               disabled={deleteLoading}
               aria-label="Close modal"
               className="absolute right-4 top-4 rounded-full border border-orange-500/30 bg-orange-500/10 p-2 text-orange-400 transition hover:bg-orange-500/20 hover:text-orange-300 disabled:cursor-not-allowed disabled:opacity-50"
@@ -756,6 +779,9 @@ export default function Employees() {
             <p className="mt-1 text-sm text-slate-400">
               Delete <span className="font-semibold text-white">{deletingEmployee.employee_name}</span>? This cannot be undone.
             </p>
+            {deleteError && (
+              <p className="mt-4 rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-400">{deleteError}</p>
+            )}
             <div className="mt-6 flex justify-end">
               <button
                 type="button"
@@ -983,7 +1009,7 @@ export default function Employees() {
                   disabled={addLoading}
                   className="w-full rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50 sm:w-auto sm:min-w-[148px]"
                 >
-                  {addLoading ? 'Signing up…' : 'Sign Up'}
+                  {addLoading ? 'Adding User...' : 'Add User'}
                 </button>
               </div>
             </form>

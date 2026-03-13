@@ -344,7 +344,7 @@ export default function Settings() {
           </div>
 
           <div className="w-full overflow-hidden rounded-xl border border-slate-700 bg-slate-800/80">
-            <div className="w-full overflow-x-auto">
+            <div className="w-full overflow-x-auto scrollbar-thin">
               <div className="min-w-[1520px]">
                 <div className="grid grid-cols-[1fr_190px_190px_1.65fr_1.65fr_1.65fr_1.65fr_90px_72px] border-b border-slate-700 bg-slate-900/50">
                   {[
