@@ -5,6 +5,7 @@ import { Plus_Jakarta_Sans } from 'next/font/google'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useDashboardProfile } from '@/components/DashboardLayout'
+import { useClientDashboardData } from '@/context/ClientDashboardDataContext'
 import { getInvoiceLink } from '@/lib/invoice-token'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
@@ -505,7 +506,8 @@ export function InvoiceDocument({
 
 export default function Invoice() {
   const router = useRouter()
-  const { displayRole } = useDashboardProfile()
+  const { displayRole, accountType } = useDashboardProfile()
+  const clientData = useClientDashboardData()
   const [invoices, setInvoices] = useState<InvoiceRow[]>([])
   const [invoicesLoading, setInvoicesLoading] = useState(true)
   const [employees, setEmployees] = useState<EmployeeOption[]>([])
@@ -603,11 +605,29 @@ export default function Invoice() {
 
 
   const fetchInvoices = useCallback(async () => {
+    const isClient = accountType === 'client'
+    const clientBrand = clientData?.clientBrandName ?? null
+
+    if (isClient && clientData?.loading) return
+
+    if (isClient && !clientBrand) {
+      setInvoicesLoading(true)
+      setInvoices([])
+      setInvoicesLoading(false)
+      return
+    }
+
     setInvoicesLoading(true)
-    const { data, error } = await supabase
+    let query = supabase
       .from('invoices')
       .select('*, employees!invoice_creator_id(employee_name)')
       .order('created_at', { ascending: false })
+
+    if (isClient && clientBrand) {
+      query = query.eq('brand_name', clientBrand)
+    }
+
+    const { data, error } = await query
     setInvoicesLoading(false)
     if (error) {
       console.error('Failed to fetch invoices', error)
@@ -635,7 +655,7 @@ export default function Invoice() {
       }
     })
     setInvoices(rows)
-  }, [])
+  }, [accountType, clientData?.clientBrandName, clientData?.loading])
 
   const fetchEmployees = useCallback(async () => {
     const { data, error } = await supabase
@@ -1084,14 +1104,16 @@ export default function Invoice() {
               Create, edit and track your invoices.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowAddModal(true)}
-            className="h-12 min-w-36 px-6 bg-orange-500 rounded-xl shadow-[0px_4px_20px_0px_rgba(249,115,22,0.2)] flex justify-center items-center gap-2 hover:bg-orange-600 transition shrink-0"
-          >
-            <PlusIcon className="h-4 w-3 text-white" />
-            <span className="text-white text-sm font-bold">Add New Invoice</span>
-          </button>
+          {accountType !== 'client' && (
+            <button
+              type="button"
+              onClick={() => setShowAddModal(true)}
+              className="h-12 min-w-36 px-6 bg-orange-500 rounded-xl shadow-[0px_4px_20px_0px_rgba(249,115,22,0.2)] flex justify-center items-center gap-2 hover:bg-orange-600 transition shrink-0"
+            >
+              <PlusIcon className="h-4 w-3 text-white" />
+              <span className="text-white text-sm font-bold">Add New Invoice</span>
+            </button>
+          )}
         </div>
       </div>
 

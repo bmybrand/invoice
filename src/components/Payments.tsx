@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Plus_Jakarta_Sans } from 'next/font/google'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { useDashboardProfile } from '@/components/DashboardLayout'
+import { useClientDashboardData } from '@/context/ClientDashboardDataContext'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
@@ -131,6 +133,8 @@ function formatDateTime(value: string | null | undefined): string {
 
 export default function Payments() {
   const router = useRouter()
+  const { accountType } = useDashboardProfile()
+  const clientData = useClientDashboardData()
   const [payments, setPayments] = useState<PaymentRow[]>([])
   const [paymentsLoading, setPaymentsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
@@ -142,12 +146,55 @@ export default function Payments() {
     async function fetchPayments() {
       setPaymentsLoading(true)
 
-      const { data: submissionData, error: submissionError } = await supabase
-        .from('payment_submissions')
-        .select(
-          'id, invoice_id, full_name, phone, email, amount_paid, payment_method, payment_status, stripe_payment_intent_id, stripe_transaction_id, created_at'
-        )
-        .order('created_at', { ascending: false })
+      const isClient = accountType === 'client'
+      const clientBrand = clientData?.clientBrandName ?? null
+
+      if (isClient && (clientData?.loading || !clientBrand)) {
+        setPayments([])
+        setPaymentsLoading(false)
+        return
+      }
+
+      let submissionData: PaymentSubmissionRow[] | null = null
+      let submissionError: Error | null = null
+
+      if (isClient && clientBrand) {
+        const { data: invoiceData } = await supabase
+          .from('invoices')
+          .select('id')
+          .eq('brand_name', clientBrand)
+
+        if (!active) return
+
+        const invoiceIds = ((invoiceData ?? []) as { id: number }[]).map((r) => r.id).filter((id) => Number.isFinite(id))
+
+        if (invoiceIds.length === 0) {
+          setPayments([])
+          setPaymentsLoading(false)
+          return
+        }
+
+        const res = await supabase
+          .from('payment_submissions')
+          .select(
+            'id, invoice_id, full_name, phone, email, amount_paid, payment_method, payment_status, stripe_payment_intent_id, stripe_transaction_id, created_at'
+          )
+          .in('invoice_id', invoiceIds)
+          .order('created_at', { ascending: false })
+
+        submissionData = (res.data ?? []) as PaymentSubmissionRow[]
+        submissionError = res.error as Error | null
+      } else {
+        const res = await supabase
+          .from('payment_submissions')
+          .select(
+            'id, invoice_id, full_name, phone, email, amount_paid, payment_method, payment_status, stripe_payment_intent_id, stripe_transaction_id, created_at'
+          )
+          .order('created_at', { ascending: false })
+
+        submissionData = (res.data ?? []) as PaymentSubmissionRow[]
+        submissionError = res.error as Error | null
+      }
 
       if (!active) return
 
@@ -241,7 +288,7 @@ export default function Payments() {
     return () => {
       active = false
     }
-  }, [])
+  }, [accountType, clientData?.clientBrandName, clientData?.loading])
 
   const filteredPayments = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()

@@ -56,9 +56,8 @@ export function LoginForm() {
       await new Promise((resolve) => setTimeout(resolve, 150))
     }
 
-    setLoading(false)
-
     if (!sessionReady) {
+      setLoading(false)
       setError('Sign-in completed, but the session is still syncing. Please try again.')
       return
     }
@@ -127,16 +126,21 @@ export function LoginForm() {
               </p>
             )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="mt-1 flex items-center justify-center gap-2 rounded-lg bg-orange-500 px-4 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-orange-600 disabled:opacity-50 sm:mt-2 sm:rounded-xl sm:px-5 sm:py-4 sm:text-base lg:py-5 lg:px-6 lg:text-lg"
-            >
-              {loading ? 'Signing in…' : 'Sign In'}
-              <svg className="h-5 w-5 sm:h-6 sm:w-6 lg:h-7 lg:w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-              </svg>
-            </button>
+           <button
+  type="submit"
+  disabled={loading}
+  className="mt-1 flex items-center justify-center gap-2 rounded-lg bg-orange-500 px-4 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-orange-600 disabled:opacity-50 sm:mt-2 sm:rounded-xl sm:px-5 sm:py-4 sm:text-base lg:py-5 lg:px-6 lg:text-lg"
+>
+  {loading ? 'Signing in…' : 'Sign In'}
+</button>
+
+<p className="text-center text-sm text-slate-400 sm:text-base">
+  Don’t have an account?{' '}
+  <Link href="/register" className="font-medium text-orange-500 hover:text-orange-400">
+    Create one
+  </Link>
+</p>
+
           </form>
         </div>
       </div>
