@@ -59,6 +59,22 @@ function ChevronRightIcon({ className = 'h-4 w-4' }: { className?: string }) {
   )
 }
 
+function PencilIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
+    </svg>
+  )
+}
+
+function TrashIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+    </svg>
+  )
+}
+
 export default function Clients() {
   const { displayRole } = useDashboardProfile()
   const [clients, setClients] = useState<ClientRow[]>([])
@@ -78,6 +94,18 @@ export default function Clients() {
   const isAdmin = normalizedRole === 'admin'
   const isSuperAdmin = normalizedRole === 'superadmin'
   const canAddClient = isAdmin || isSuperAdmin
+  const canEditDelete = isAdmin || isSuperAdmin
+
+  const [editingClient, setEditingClient] = useState<ClientRow | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editEmail, setEditEmail] = useState('')
+  const [editBrandId, setEditBrandId] = useState<number | null>(null)
+  const [editPassword, setEditPassword] = useState('')
+  const [editLoading, setEditLoading] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
+  const [deletingClient, setDeletingClient] = useState<ClientRow | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const fetchBrands = useCallback(async () => {
     const { data, error } = await supabase.from('brands').select('id, brand_name').order('brand_name')
@@ -202,6 +230,91 @@ export default function Clients() {
     await fetchClients()
   }
 
+  function openEditModal(c: ClientRow) {
+    setEditingClient(c)
+    setEditName(c.name || '')
+    setEditEmail(c.email || '')
+    setEditBrandId(c.brand_id ?? null)
+    setEditPassword('')
+    setEditError(null)
+  }
+
+  async function handleEditSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editingClient || !canEditDelete) return
+    if (editPassword.trim() && editPassword.trim().length < 8) {
+      setEditError('Password must be at least 8 characters long.')
+      return
+    }
+    setEditError(null)
+    setEditLoading(true)
+
+    const token = await getCurrentAuthToken()
+    if (!token) {
+      setEditLoading(false)
+      setEditError('Authentication expired. Sign in again and try again.')
+      return
+    }
+
+    const payload: Record<string, unknown> = {
+      name: editName.trim(),
+      email: editEmail.trim(),
+      brand_id: editBrandId,
+    }
+    if (editPassword.trim()) {
+      payload.password = editPassword.trim()
+    }
+
+    const response = await fetch(`/api/clients/${editingClient.id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    })
+
+    const result = (await response.json().catch(() => null)) as { error?: string } | null
+    setEditLoading(false)
+
+    if (!response.ok) {
+      setEditError(result?.error || 'Failed to update client')
+      return
+    }
+
+    setEditingClient(null)
+    await fetchClients()
+  }
+
+  async function handleDeleteConfirm() {
+    if (!deletingClient || !canEditDelete) return
+    setDeleteError(null)
+    setDeleteLoading(true)
+
+    const token = await getCurrentAuthToken()
+    if (!token) {
+      setDeleteLoading(false)
+      setDeleteError('Authentication expired. Sign in again and try again.')
+      return
+    }
+
+    const response = await fetch(`/api/clients/${deletingClient.id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+
+    const result = (await response.json().catch(() => null)) as { error?: string } | null
+    setDeleteLoading(false)
+
+    if (!response.ok) {
+      setDeleteError(result?.error || 'Failed to delete client')
+      return
+    }
+
+    setDeletingClient(null)
+    await fetchClients()
+  }
+
   return (
     <div className={`${plusJakarta.className} w-full flex flex-col text-white`}>
       <div className="w-full pb-6">
@@ -259,18 +372,23 @@ export default function Clients() {
                 <th className="px-4 sm:px-6 py-4 text-left">
                   <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Brand</span>
                 </th>
+                {canEditDelete && (
+                  <th className="w-[100px] px-4 sm:px-6 py-4 text-right">
+                    <span className="text-slate-400 text-xs font-bold uppercase tracking-wide">Actions</span>
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
               {clientsLoading ? (
                 <tr>
-                  <td colSpan={4} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
+                  <td colSpan={canEditDelete ? 5 : 4} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
                     Loading clients…
                   </td>
                 </tr>
               ) : paginatedClients.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
+                  <td colSpan={canEditDelete ? 5 : 4} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
                     {searchQuery.trim() ? 'No matching clients' : 'No clients yet. Add a client to get started.'}
                   </td>
                 </tr>
@@ -289,6 +407,31 @@ export default function Clients() {
                     <td className="px-4 sm:px-6 py-4 min-w-0">
                       <span className="text-slate-300 text-sm truncate block whitespace-nowrap" title={c.brand_name || '-'}>{c.brand_name || '-'}</span>
                     </td>
+                    {canEditDelete && (
+                      <td className="w-[100px] px-4 sm:px-6 py-4">
+                        <div className="flex justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(c)}
+                            className="p-2 rounded-lg text-slate-400 hover:bg-slate-700/50 hover:text-slate-300 transition"
+                            aria-label="Edit"
+                          >
+                            <PencilIcon />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDeleteError(null)
+                              setDeletingClient(c)
+                            }}
+                            className="p-2 rounded-lg text-slate-400 hover:bg-slate-700/50 hover:text-red-400 transition"
+                            aria-label="Delete"
+                          >
+                            <TrashIcon />
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))
               )}
@@ -353,6 +496,138 @@ export default function Clients() {
           </div>
         </div>
       </div>
+
+      {editingClient && (
+        <>
+          <div className="fixed inset-0 z-40 bg-black/60" onClick={() => !editLoading && setEditingClient(null)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-white">Edit Client</h2>
+                <button
+                  type="button"
+                  onClick={() => !editLoading && setEditingClient(null)}
+                  className="p-2 rounded-lg text-slate-400 hover:bg-slate-700 hover:text-white transition"
+                  aria-label="Close"
+                >
+                  <CloseIcon />
+                </button>
+              </div>
+
+              <form onSubmit={handleEditSubmit} className="flex flex-col gap-4">
+                <div>
+                  <label htmlFor="edit-name" className="block text-sm font-medium text-slate-300 mb-1">Name</label>
+                  <input
+                    id="edit-name"
+                    type="text"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    placeholder="Client name"
+                    required
+                    className="w-full rounded-xl border border-slate-600 bg-slate-900/50 px-4 py-3 text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="edit-email" className="block text-sm font-medium text-slate-300 mb-1">Email</label>
+                  <input
+                    id="edit-email"
+                    type="email"
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                    placeholder="client@example.com"
+                    required
+                    className="w-full rounded-xl border border-slate-600 bg-slate-900/50 px-4 py-3 text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="edit-brand" className="block text-sm font-medium text-slate-300 mb-1">Brand</label>
+                  <select
+                    id="edit-brand"
+                    value={editBrandId ?? ''}
+                    onChange={(e) => setEditBrandId(e.target.value ? Number(e.target.value) : null)}
+                    required
+                    className="w-full rounded-xl border border-slate-600 bg-slate-900/50 px-4 py-3 text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  >
+                    <option value="">Select a brand</option>
+                    {brands.map((b) => (
+                      <option key={b.id} value={b.id}>{b.brand_name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="edit-password" className="block text-sm font-medium text-slate-300 mb-1">New password</label>
+                  <input
+                    id="edit-password"
+                    type="password"
+                    value={editPassword}
+                    onChange={(e) => setEditPassword(e.target.value)}
+                    placeholder="Leave blank to keep current password"
+                    className="w-full rounded-xl border border-slate-600 bg-slate-900/50 px-4 py-3 text-white text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                  <p className="mt-0.5 text-xs text-slate-500">Leave blank if you do not want to change the password.</p>
+                </div>
+
+                {editError && (
+                  <p className="rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-400">{editError}</p>
+                )}
+
+                <div className="flex gap-2 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setEditingClient(null)}
+                    disabled={editLoading}
+                    className="px-4 py-2 rounded-xl border border-slate-600 text-slate-300 text-sm font-medium hover:bg-slate-700 transition disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={editLoading}
+                    className="px-4 py-2 rounded-xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition disabled:opacity-50"
+                  >
+                    {editLoading ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </>
+      )}
+
+      {deletingClient && (
+        <>
+          <div className="fixed inset-0 z-40 bg-black/60" onClick={() => !deleteLoading && setDeletingClient(null)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl">
+              <h2 className="text-lg font-bold text-white">Delete Client</h2>
+              <p className="mt-2 text-slate-400 text-sm">
+                Are you sure you want to delete <span className="font-medium text-white">{deletingClient.name}</span> ({deletingClient.email})? This will also remove their account access.
+              </p>
+              {deleteError && (
+                <p className="mt-4 rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-400">{deleteError}</p>
+              )}
+              <div className="mt-6 flex gap-2 justify-end">
+                <button
+                  type="button"
+                  onClick={() => setDeletingClient(null)}
+                  disabled={deleteLoading}
+                  className="px-4 py-2 rounded-xl border border-slate-600 text-slate-300 text-sm font-medium hover:bg-slate-700 transition disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteConfirm}
+                  disabled={deleteLoading}
+                  className="px-4 py-2 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600 transition disabled:opacity-50"
+                >
+                  {deleteLoading ? 'Deleting…' : 'Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {showAddModal && (
         <>
