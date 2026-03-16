@@ -397,7 +397,7 @@ export function InvoiceDocument({
       <div className="invoice-meta-grid relative z-10 grid grid-cols-1 gap-10 px-10 py-8 md:grid-cols-2">
         <div>
           <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Invoice To</p>
-          <p className="mt-2 text-xl font-bold text-slate-900">{invoice.client_name || invoice.brand_name || 'Ketut Susilo'}</p>
+          <p className="mt-2 text-xl font-bold text-slate-900">{invoice.client_name || "" }</p>
           <div className="mt-3 space-y-1 text-sm text-slate-600">
             <p>{invoice.email || 'ketut.susilo@example.com'}</p>
             <p>{invoice.phone || '+1 (555) 000-1234'}</p>
