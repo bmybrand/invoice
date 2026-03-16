@@ -24,11 +24,15 @@ type ServiceLine = {
   price: string
 }
 
+type ClientOption = { id: number; name: string; email: string; brand_id: number | null }
+
 type InvoiceRow = {
   id: number
   invoice_date: string
   invoice_creator_id: number
   invoice_creator: string
+  client_id: number | null
+  client_name: string
   brand_name: string
   email: string
   service: ServiceLine[]
@@ -50,7 +54,7 @@ type GatewayLimitInfo = {
   minAmount: number
   maxAmount: number | null
 }
-const INVOICE_GRID = 'minmax(48px,0.6fr) minmax(100px,1.2fr) minmax(100px,1.2fr) minmax(100px,1.2fr) minmax(140px,1.5fr) minmax(90px,1.15fr) minmax(100px,1.2fr) minmax(90px,1fr) minmax(90px,1fr) 72px'
+const INVOICE_GRID = 'minmax(48px,0.6fr) minmax(100px,1.2fr) minmax(100px,1.2fr) minmax(100px,1.2fr) minmax(100px,1.2fr) minmax(140px,1.5fr) minmax(90px,1.15fr) minmax(100px,1.2fr) minmax(90px,1fr) minmax(90px,1fr) 72px'
 
 function SearchIcon({ className = 'h-4 w-4' }: { className?: string }) {
   return (
@@ -393,7 +397,7 @@ export function InvoiceDocument({
       <div className="invoice-meta-grid relative z-10 grid grid-cols-1 gap-10 px-10 py-8 md:grid-cols-2">
         <div>
           <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Invoice To</p>
-          <p className="mt-2 text-xl font-bold text-slate-900">{invoice.brand_name || 'Ketut Susilo'}</p>
+          <p className="mt-2 text-xl font-bold text-slate-900">{invoice.client_name || invoice.brand_name || 'Ketut Susilo'}</p>
           <div className="mt-3 space-y-1 text-sm text-slate-600">
             <p>{invoice.email || 'ketut.susilo@example.com'}</p>
             <p>{invoice.phone || '+1 (555) 000-1234'}</p>
@@ -511,12 +515,15 @@ export default function Invoice() {
   const [invoices, setInvoices] = useState<InvoiceRow[]>([])
   const [invoicesLoading, setInvoicesLoading] = useState(true)
   const [employees, setEmployees] = useState<EmployeeOption[]>([])
+  const [clients, setClients] = useState<ClientOption[]>([])
   const [brands, setBrands] = useState<BrandOption[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'unpaid'>('all')
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [showAddModal, setShowAddModal] = useState(false)
+  const [addClientId, setAddClientId] = useState<number | null>(null)
+  const [addClientName, setAddClientName] = useState('')
   const [addBrand, setAddBrand] = useState('')
   const [addEmail, setAddEmail] = useState('')
   const [addServices, setAddServices] = useState<ServiceLine[]>([{ description: '', qty: 1, price: '' }])
@@ -532,6 +539,8 @@ export default function Invoice() {
   const [addGatewayLimits, setAddGatewayLimits] = useState<GatewayLimitInfo[]>([])
   const [addGatewayInfoOpen, setAddGatewayInfoOpen] = useState(false)
   const [editingInvoice, setEditingInvoice] = useState<InvoiceRow | null>(null)
+  const [editClientId, setEditClientId] = useState<number | null>(null)
+  const [editClientName, setEditClientName] = useState('')
   const [editBrand, setEditBrand] = useState('')
   const [editEmail, setEditEmail] = useState('')
   const [editServices, setEditServices] = useState<ServiceLine[]>([{ description: '', qty: 1, price: '' }])
@@ -606,11 +615,11 @@ export default function Invoice() {
 
   const fetchInvoices = useCallback(async () => {
     const isClient = accountType === 'client'
-    const clientBrand = clientData?.clientBrandName ?? null
+    const clientId = clientData?.client?.id ?? null
 
     if (isClient && clientData?.loading) return
 
-    if (isClient && !clientBrand) {
+    if (isClient && !clientId) {
       setInvoicesLoading(true)
       setInvoices([])
       setInvoicesLoading(false)
@@ -620,11 +629,11 @@ export default function Invoice() {
     setInvoicesLoading(true)
     let query = supabase
       .from('invoices')
-      .select('*, employees!invoice_creator_id(employee_name)')
+      .select('*, employees!invoice_creator_id(employee_name), clients!client_id(name)')
       .order('created_at', { ascending: false })
 
-    if (isClient && clientBrand) {
-      query = query.eq('brand_name', clientBrand)
+    if (isClient && clientId) {
+      query = query.eq('client_id', clientId)
     }
 
     const { data, error } = await query
@@ -637,6 +646,8 @@ export default function Invoice() {
     const rows = (data ?? []).map((row: Record<string, unknown>) => {
       const emp = row.employees as { employee_name?: string } | { employee_name?: string }[] | null
       const empObj = Array.isArray(emp) ? emp[0] : emp
+      const clientObj = row.clients as { name?: string } | { name?: string }[] | null
+      const clientName = (Array.isArray(clientObj) ? clientObj[0] : clientObj)?.name ?? ''
       const services = toServiceLines(row.service)
       const subtotal = servicesSubtotal(services)
       return {
@@ -644,6 +655,8 @@ export default function Invoice() {
         invoice_date: (row.invoice_date as string) ?? '',
         invoice_creator_id: (row.invoice_creator_id as number) ?? 0,
         invoice_creator: empObj?.employee_name ?? '--',
+        client_id: (row.client_id as number) ?? null,
+        client_name: clientName,
         brand_name: (row.brand_name as string) ?? '',
         email: (row.email as string) ?? '',
         service: services,
@@ -655,7 +668,7 @@ export default function Invoice() {
       }
     })
     setInvoices(rows)
-  }, [accountType, clientData?.clientBrandName, clientData?.loading])
+  }, [accountType, clientData?.client?.id, clientData?.loading])
 
   const fetchEmployees = useCallback(async () => {
     const { data, error } = await supabase
@@ -668,6 +681,19 @@ export default function Invoice() {
       return
     }
     setEmployees((data as EmployeeOption[]) ?? [])
+  }, [])
+
+  const fetchClients = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('clients')
+      .select('id, name, email, brand_id')
+      .order('name')
+    if (error) {
+      console.error('Failed to fetch clients', error)
+      setClients([])
+      return
+    }
+    setClients((data as ClientOption[]) ?? [])
   }, [])
 
   const fetchBrands = useCallback(async () => {
@@ -690,6 +716,10 @@ export default function Invoice() {
   useEffect(() => {
     fetchEmployees()
   }, [fetchEmployees])
+
+  useEffect(() => {
+    fetchClients()
+  }, [fetchClients])
 
   useEffect(() => {
     fetchBrands()
@@ -717,7 +747,7 @@ export default function Invoice() {
       list = list.filter(
         (i) =>
           (i.invoice_creator || '').toLowerCase().includes(q) ||
-          (i.brand_name || '').toLowerCase().includes(q) ||
+          (i.client_name || '').toLowerCase().includes(q) ||
           (i.email || '').toLowerCase().includes(q) ||
           i.service.some((s) => (s.description || '').toLowerCase().includes(q)) ||
           (i.status || '').toLowerCase().includes(q) ||
@@ -886,6 +916,7 @@ export default function Invoice() {
       .insert({
         invoice_date: new Date().toISOString().slice(0, 10),
         invoice_creator_id: currentUserEmployeeId,
+        client_id: addClientId,
         brand_name: addBrand.trim(),
         email: addEmail.trim(),
         service: cleanServices,
@@ -917,6 +948,8 @@ export default function Invoice() {
   }
 
   function resetAddModalState() {
+    setAddClientId(null)
+    setAddClientName('')
     setAddBrand('')
     setAddEmail('')
     setAddServices([{ description: '', qty: 1, price: '' }])
@@ -953,6 +986,8 @@ export default function Invoice() {
 
   function openEditModal(inv: InvoiceRow) {
     setEditingInvoice(inv)
+    setEditClientId(inv.client_id ?? null)
+    setEditClientName(inv.client_name || '')
     setEditBrand(inv.brand_name || '')
     setEditEmail(inv.email || '')
     setEditServices(inv.service.length > 0 ? inv.service : [{ description: '', qty: 1, price: '' }])
@@ -1017,6 +1052,7 @@ export default function Invoice() {
     const { error } = await supabase
       .from('invoices')
       .update({
+        client_id: editClientId,
         brand_name: editBrand.trim(),
         email: editEmail.trim(),
         service: cleanServices,
@@ -1127,7 +1163,7 @@ export default function Invoice() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search by ID, creator, brand, email, service or status..."
+                placeholder="Search by ID, creator, client, email, service or status..."
                 className="flex-1 min-w-0 h-full bg-transparent text-slate-300 text-sm placeholder:text-slate-500 focus:outline-none"
               />
             </div>
@@ -1190,7 +1226,10 @@ export default function Invoice() {
                 <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Invoice Creator</span>
               </div>
               <div className="flex min-w-0 items-center px-4 sm:px-6 py-4">
-                <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Brand Name</span>
+                <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Client Name</span>
+              </div>
+              <div className="flex min-w-0 items-center px-4 sm:px-6 py-4">
+                <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Brand</span>
               </div>
               <div className="flex min-w-0 items-center px-4 sm:px-6 py-4">
                 <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Email</span>
@@ -1235,6 +1274,9 @@ export default function Invoice() {
                   </div>
                   <div className="px-4 sm:px-6 py-4 min-w-0">
                     <span className="text-white text-sm block truncate whitespace-nowrap" title={inv.invoice_creator || '--'}>{inv.invoice_creator || '--'}</span>
+                  </div>
+                  <div className="px-4 sm:px-6 py-4 min-w-0">
+                    <span className="text-white text-sm block truncate whitespace-nowrap" title={inv.client_name || '--'}>{inv.client_name || '--'}</span>
                   </div>
                   <div className="px-4 sm:px-6 py-4 min-w-0">
                     <span className="text-white text-sm block truncate whitespace-nowrap" title={inv.brand_name || '--'}>{inv.brand_name || '--'}</span>
@@ -1488,7 +1530,35 @@ export default function Invoice() {
                             <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Invoice To</p>
                             <div className="mt-3 space-y-3">
                               <div>
-                                <label htmlFor="add-brand" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Client Name</label>
+                                <label htmlFor="add-client" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Client</label>
+                                <select
+                                  id="add-client"
+                                  value={addClientId ?? ''}
+                                  onChange={(e) => {
+                                    const id = e.target.value ? Number(e.target.value) : null
+                                    setAddClientId(id)
+                                    if (id) {
+                                      const c = clients.find((x) => x.id === id)
+                                      if (c) {
+                                        setAddClientName(c.name || '')
+                                        setAddEmail(c.email || '')
+                                        const brand = c.brand_id ? brands.find((b) => b.id === c.brand_id) : null
+                                        if (brand) setAddBrand(brand.brand_name)
+                                      }
+                                    } else {
+                                      setAddClientName('')
+                                    }
+                                  }}
+                                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                                >
+                                  <option value="">Select client (optional)</option>
+                                  {clients.map((c) => (
+                                    <option key={c.id} value={c.id}>{c.name || c.email || `Client #${c.id}`}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div>
+                                <label htmlFor="add-brand" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Select brand</label>
                                 <select
                                   id="add-brand"
                                   value={addBrand}
@@ -1504,11 +1574,11 @@ export default function Invoice() {
                               </div>
                               <div>
                                 <label htmlFor="add-email" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Email</label>
-                                <input id="add-email" type="email" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} placeholder="ketut.susilo@example.com" className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20" />
+                                <input id="add-email" type="email" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} placeholder="ketut.susilo@example.com" required className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20" />
                               </div>
                               <div>
                                 <label htmlFor="add-phone" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Phone</label>
-                                <input id="add-phone" type="tel" value={addPhone} onChange={(e) => setAddPhone(e.target.value)} placeholder="+1 (555) 000-1234" className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20" />
+                                <input id="add-phone" type="tel" value={addPhone} onChange={(e) => setAddPhone(e.target.value)} placeholder="+1 (555) 000-1234" required className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20" />
                               </div>
                             </div>
                           </div>
@@ -1751,7 +1821,35 @@ export default function Invoice() {
                             <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Invoice To</p>
                             <div className="mt-3 space-y-3">
                               <div>
-                                <label htmlFor="edit-brand" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Client Name</label>
+                                <label htmlFor="edit-client" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Client</label>
+                                <select
+                                  id="edit-client"
+                                  value={editClientId ?? ''}
+                                  onChange={(e) => {
+                                    const id = e.target.value ? Number(e.target.value) : null
+                                    setEditClientId(id)
+                                    if (id) {
+                                      const c = clients.find((x) => x.id === id)
+                                      if (c) {
+                                        setEditClientName(c.name || '')
+                                        setEditEmail(c.email || '')
+                                        const brand = c.brand_id ? brands.find((b) => b.id === c.brand_id) : null
+                                        if (brand) setEditBrand(brand.brand_name)
+                                      }
+                                    } else {
+                                      setEditClientName('')
+                                    }
+                                  }}
+                                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                                >
+                                  <option value="">Select client (optional)</option>
+                                  {clients.map((c) => (
+                                    <option key={c.id} value={c.id}>{c.name || c.email || `Client #${c.id}`}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div>
+                                <label htmlFor="edit-brand" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Select brand</label>
                                 <select
                                   id="edit-brand"
                                   value={editBrand}
@@ -1770,11 +1868,11 @@ export default function Invoice() {
                               </div>
                               <div>
                                 <label htmlFor="edit-email" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Email</label>
-                                <input id="edit-email" type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} placeholder="ketut.susilo@example.com" className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20" />
+                                <input id="edit-email" type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} placeholder="ketut.susilo@example.com" required className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20" />
                               </div>
                               <div>
                                 <label htmlFor="edit-phone" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Phone</label>
-                                <input id="edit-phone" type="tel" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="+1 (555) 000-1234" className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20" />
+                                <input id="edit-phone" type="tel" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="+1 (555) 000-1234" required className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20" />
                               </div>
                             </div>
                           </div>

@@ -468,7 +468,7 @@ export default function ClientDashboardPage() {
           </div>
 
           <div className="mt-6 min-h-[280px] h-72 sm:h-80">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minHeight={200} minWidth={0}>
               <PieChart>
                 <Pie
                   data={pieChartData}
@@ -523,7 +523,7 @@ export default function ClientDashboardPage() {
           </div>
 
           <div className="mt-6 min-h-[280px] flex-1">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minHeight={200} minWidth={0}>
               <AreaChart data={monthlyPaidData} margin={{ top: 8, right: 8, left: 8, bottom: 24 }}>
                 <defs>
                   <linearGradient id="clientPaymentGradient" x1="0" y1="0" x2="0" y2="1">
@@ -685,7 +685,7 @@ export default function ClientDashboardPage() {
         </div>
 
         <div className="mt-6 min-h-[280px] h-72 sm:h-80">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minHeight={200} minWidth={0}>
             <BarChart
               data={[
                 { label: 'Pending', value: stats.pendingInvoices },

@@ -507,7 +507,7 @@ export function Dashboard() {
                   </div>
                 </div>
                 <div className="mt-4 h-44 sm:mt-6 sm:h-52">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" minHeight={140} minWidth={0}>
                     <BarChart data={dailyRevenueData} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
                       <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 10, fontWeight: 600 }} />
                       <YAxis hide domain={[0, 'dataMax']} />
@@ -572,7 +572,7 @@ export function Dashboard() {
                   </div>
                 </div>
                 <div className="mt-4 h-44 sm:mt-6 sm:h-52">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" minHeight={140} minWidth={0}>
                     <AreaChart data={growthVelocityData} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
                       <defs>
                         <linearGradient id="growthGradient" x1="0" y1="0" x2="0" y2="1">

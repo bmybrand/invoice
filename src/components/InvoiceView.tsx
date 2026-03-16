@@ -18,6 +18,8 @@ type InvoiceRow = {
   invoice_date: string
   invoice_creator_id: number
   invoice_creator: string
+  client_id: number | null
+  client_name: string
   brand_name: string
   email: string
   service: { description: string; qty: number; price: string }[]
@@ -49,7 +51,7 @@ export default function InvoiceView({ invoiceId, invoiceToken, publicView = fals
       }
 
       const [{ data: invoiceData, error: invoiceError }, { data: brandData, error: brandError }] = await Promise.all([
-        supabase.from('invoices').select('*, employees!invoice_creator_id(employee_name)').eq('id', invoiceId).maybeSingle(),
+        supabase.from('invoices').select('*, employees!invoice_creator_id(employee_name), clients!client_id(name)').eq('id', invoiceId).maybeSingle(),
         supabase.from('brands').select('id, brand_name, brand_url, logo_url').order('brand_name'),
       ])
 
@@ -65,6 +67,8 @@ export default function InvoiceView({ invoiceId, invoiceToken, publicView = fals
 
       const emp = invoiceData.employees as { employee_name?: string } | { employee_name?: string }[] | null
       const empObj = Array.isArray(emp) ? emp[0] : emp
+      const clientObj = invoiceData.clients as { name?: string } | { name?: string }[] | null
+      const clientName = (Array.isArray(clientObj) ? clientObj[0] : clientObj)?.name ?? ''
       const serviceRaw = invoiceData.service
       const normalizedServices = Array.isArray(serviceRaw) ? serviceRaw : []
 
@@ -73,6 +77,8 @@ export default function InvoiceView({ invoiceId, invoiceToken, publicView = fals
         invoice_date: (invoiceData.invoice_date as string) ?? '',
         invoice_creator_id: (invoiceData.invoice_creator_id as number) ?? 0,
         invoice_creator: empObj?.employee_name ?? '--',
+        client_id: (invoiceData.client_id as number) ?? null,
+        client_name: clientName,
         brand_name: (invoiceData.brand_name as string) ?? '',
         email: (invoiceData.email as string) ?? '',
         service: normalizedServices as InvoiceRow['service'],

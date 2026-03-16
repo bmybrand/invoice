@@ -147,9 +147,9 @@ export default function Payments() {
       setPaymentsLoading(true)
 
       const isClient = accountType === 'client'
-      const clientBrand = clientData?.clientBrandName ?? null
+      const clientId = clientData?.client?.id ?? null
 
-      if (isClient && (clientData?.loading || !clientBrand)) {
+      if (isClient && (clientData?.loading || !clientId)) {
         setPayments([])
         setPaymentsLoading(false)
         return
@@ -158,11 +158,11 @@ export default function Payments() {
       let submissionData: PaymentSubmissionRow[] | null = null
       let submissionError: Error | null = null
 
-      if (isClient && clientBrand) {
+      if (isClient && clientId) {
         const { data: invoiceData } = await supabase
           .from('invoices')
           .select('id')
-          .eq('brand_name', clientBrand)
+          .eq('client_id', clientId)
 
         if (!active) return
 
@@ -288,7 +288,7 @@ export default function Payments() {
     return () => {
       active = false
     }
-  }, [accountType, clientData?.clientBrandName, clientData?.loading])
+  }, [accountType, clientData?.client?.id, clientData?.loading])
 
   const filteredPayments = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()

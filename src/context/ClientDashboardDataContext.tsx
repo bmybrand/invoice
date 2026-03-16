@@ -97,32 +97,21 @@ export function ClientDashboardDataProvider({ children }: { children: React.Reac
 
     let invoiceRows: InvoiceRow[] = []
 
-    if (clientRow?.brand_id) {
-      const { data: brandData } = await supabase
-        .from('brands')
-        .select('brand_name')
-        .eq('id', clientRow.brand_id)
-        .maybeSingle()
+    if (clientRow?.id) {
+      const { data: invoiceByClient, error: clientInvoiceError } = await supabase
+        .from('invoices')
+        .select('id, invoice_date, status, amount, payable_amount, email')
+        .eq('client_id', clientRow.id)
+        .order('created_at', { ascending: false })
 
-      const brandName = (brandData as { brand_name?: string } | null)?.brand_name
-      setClientBrandName(brandName ?? null)
-      if (brandName) {
-        const { data: invoiceByBrand, error: brandInvoiceError } = await supabase
-          .from('invoices')
-          .select('id, invoice_date, status, amount, payable_amount, email')
-          .eq('brand_name', brandName)
-          .order('created_at', { ascending: false })
-
-        if (!brandInvoiceError && invoiceByBrand?.length) {
-          invoiceRows = invoiceByBrand as InvoiceRow[]
-        }
-        if (brandInvoiceError) {
-          console.error('Failed to load invoices', brandInvoiceError.message)
-        }
+      if (!clientInvoiceError && invoiceByClient?.length) {
+        invoiceRows = invoiceByClient as InvoiceRow[]
       }
-    } else {
-      setClientBrandName(null)
+      if (clientInvoiceError) {
+        console.error('Failed to load invoices', clientInvoiceError.message)
+      }
     }
+    setClientBrandName(null)
     setInvoices(invoiceRows)
 
     const invoiceIds = invoiceRows.map((inv) => inv.id).filter((id) => Number.isFinite(id))
