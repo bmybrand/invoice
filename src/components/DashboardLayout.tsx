@@ -265,16 +265,12 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
   }, [])
 
   const loadProfile = useCallback(async () => {
-    let user = (await supabase.auth.getSession()).data.session?.user
+    const {
+      data: { user: serverUser },
+      error: userError,
+    } = await supabase.auth.getUser()
 
-    if (!user) {
-      const {
-        data: { user: fallbackUser },
-      } = await supabase.auth.getUser()
-      user = fallbackUser ?? undefined
-    }
-
-    if (!user?.id) {
+    if (userError || !serverUser?.id) {
       setCurrentUserAuthId(null)
       setCurrentUserEmail('')
       setDisplayName('')
@@ -283,9 +279,12 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
       setOnlineAuthIds([])
       setAccountType(null)
       setProfileLoaded(true)
+      await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
       router.replace('/login')
       return
     }
+
+    const user = serverUser
 
     const metadata = user.user_metadata as Record<string, unknown> | undefined
     const metadataDisplayName =
