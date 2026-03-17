@@ -7,6 +7,7 @@ import { Plus_Jakarta_Sans } from 'next/font/google'
 import { supabase } from '@/lib/supabase'
 import { ClientDashboardDataProvider, useClientDashboardData } from '@/context/ClientDashboardDataContext'
 import { NotificationsBell } from '@/components/NotificationsBell'
+import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 const PROFILE_AVATAR_BUCKET = 'profile-images'
@@ -429,6 +430,9 @@ if (clientError) {
   useEffect(() => {
     if (!currentUserAuthId || accountType !== 'employee') return
 
+    let cancelled = false
+    let retryTimeoutId: number | null = null
+
     const channel = supabase.channel('dashboard-employee-presence', {
       config: {
         presence: {
@@ -442,6 +446,33 @@ if (clientError) {
       setOnlineAuthIds(Object.keys(state).filter(Boolean))
     }
 
+    const trackPresence = async (attempt = 0) => {
+      const trackStatus = await channel.track({
+        online_at: new Date().toISOString(),
+      })
+
+      if (cancelled) return
+
+      if (trackStatus === 'ok') {
+        syncPresence()
+        return
+      }
+
+      if (trackStatus === 'timed out' && attempt < 2) {
+        retryTimeoutId = window.setTimeout(() => {
+          void trackPresence(attempt + 1)
+        }, 400)
+        return
+      }
+
+      if (trackStatus === 'timed out') {
+        console.warn('Employee presence tracking timed out')
+        return
+      }
+
+      console.error('Failed to track employee presence', trackStatus)
+    }
+
     channel
       .on('presence', { event: 'sync' }, syncPresence)
       .on('presence', { event: 'join' }, syncPresence)
@@ -449,19 +480,14 @@ if (clientError) {
       .subscribe(async (status) => {
         if (status !== 'SUBSCRIBED') return
 
-        const trackStatus = await channel.track({
-          online_at: new Date().toISOString(),
-        })
-
-        if (trackStatus !== 'ok') {
-          console.error('Failed to track employee presence', trackStatus)
-          return
-        }
-
-        syncPresence()
+        await trackPresence()
       })
 
     return () => {
+      cancelled = true
+      if (retryTimeoutId !== null) {
+        window.clearTimeout(retryTimeoutId)
+      }
       void channel.untrack()
       void supabase.removeChannel(channel)
     }
@@ -849,7 +875,13 @@ if (clientError) {
                 Update your own name, email, and profile image.
               </p>
 
-              <form onSubmit={handleProfileSubmit} className="mt-5 flex flex-col gap-4">
+              <form
+                onSubmit={handleProfileSubmit}
+                onInvalidCapture={handleRequiredFieldInvalid}
+                onInputCapture={clearRequiredFieldInvalid}
+                onChangeCapture={clearRequiredFieldInvalid}
+                className="mt-5 flex flex-col gap-4"
+              >
                 <div className="flex items-center gap-4 rounded-xl border border-slate-700 bg-slate-900/50 p-4">
                   <img
                     src={profileAvatarPreviewUrl || displayAvatarUrl || 'https://placehold.co/80x80'}

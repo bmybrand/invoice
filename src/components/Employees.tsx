@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Plus_Jakarta_Sans } from 'next/font/google'
 import { supabase } from '@/lib/supabase'
 import { useDashboardProfile } from '@/components/DashboardLayout'
+import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
@@ -811,7 +812,13 @@ export default function Employees() {
             </button>
             <h2 className="text-lg font-bold text-white">Edit Employee</h2>
             <p className="mt-1 text-sm text-slate-400">Update employee details.</p>
-            <form onSubmit={handleEditSubmit} className="mt-4 flex flex-col gap-4">
+            <form
+              onSubmit={handleEditSubmit}
+              onInvalidCapture={handleRequiredFieldInvalid}
+              onInputCapture={clearRequiredFieldInvalid}
+              onChangeCapture={clearRequiredFieldInvalid}
+              className="mt-4 flex flex-col gap-4"
+            >
               <div>
                 <label htmlFor="edit-name" className="block text-sm font-medium text-slate-300">Employee name</label>
                 <input
@@ -939,7 +946,13 @@ export default function Employees() {
             </button>
             <h2 className="text-lg font-bold text-white">Add New Employee</h2>
             <p className="mt-1 text-sm text-slate-400">Create a user or admin. Super Admin is set separately (one only).</p>
-            <form onSubmit={handleAddSubmit} className="mt-4 flex flex-col gap-4">
+            <form
+              onSubmit={handleAddSubmit}
+              onInvalidCapture={handleRequiredFieldInvalid}
+              onInputCapture={clearRequiredFieldInvalid}
+              onChangeCapture={clearRequiredFieldInvalid}
+              className="mt-4 flex flex-col gap-4"
+            >
               <div>
                 <label htmlFor="add-name" className="block text-sm font-medium text-slate-300">Employee name</label>
                 <input

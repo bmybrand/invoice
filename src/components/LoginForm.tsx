@@ -5,6 +5,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
 
 function EnvelopeIcon() {
   return (
@@ -78,7 +79,13 @@ export function LoginForm() {
             Enter your credentials to access your dashboard.
           </p>
 
-          <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-4 sm:mt-6 sm:gap-5 lg:gap-6">
+          <form
+            onSubmit={handleSubmit}
+            onInvalidCapture={handleRequiredFieldInvalid}
+            onInputCapture={clearRequiredFieldInvalid}
+            onChangeCapture={clearRequiredFieldInvalid}
+            className="mt-4 flex flex-col gap-4 sm:mt-6 sm:gap-5 lg:gap-6"
+          >
             <div className="flex flex-col gap-1.5 sm:gap-2">
               <label htmlFor="email" className="text-sm font-medium text-slate-300 sm:text-base lg:text-lg">
                 Email

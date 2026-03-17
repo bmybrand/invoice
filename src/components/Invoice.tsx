@@ -8,6 +8,7 @@ import { useDashboardProfile } from '@/components/DashboardLayout'
 import { useClientDashboardData } from '@/context/ClientDashboardDataContext'
 import { getInvoiceLink } from '@/lib/invoice-token'
 import { formatInvoiceCode } from '@/lib/invoice-code'
+import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
@@ -792,6 +793,10 @@ export default function Invoice() {
     setOpenActionMenu({ id, top, left })
   }
 
+  function openInvoiceRecord(invoiceId: number) {
+    router.push(getInvoiceLink(invoiceId))
+  }
+
   function validateServiceLines(lines: ServiceLine[]): { valid: boolean; message: string } {
     if (lines.length === 0) return { valid: false, message: 'At least one service is required.' }
     const hasIncomplete = lines.some((line) => !line.description.trim() || !line.price.trim() || (Number(line.qty) || 0) <= 0)
@@ -1263,16 +1268,44 @@ export default function Invoice() {
                   style={{ gridTemplateColumns: INVOICE_GRID }}
                 >
                   <div className="px-4 sm:px-6 py-4 min-w-0">
-                    <span className="text-white text-sm font-bold font-mono block truncate whitespace-nowrap" title={`Row ${start + rowIndex + 1}`}>{start + rowIndex + 1}</span>
+                    <button
+                      type="button"
+                      onClick={() => openInvoiceRecord(inv.id)}
+                      className="block w-full truncate whitespace-nowrap text-left font-mono text-sm font-bold text-white transition hover:text-blue-300 focus:outline-none focus:text-blue-300"
+                      title={`Row ${start + rowIndex + 1}`}
+                    >
+                      {start + rowIndex + 1}
+                    </button>
                   </div>
                   <div className="px-4 sm:px-6 py-4 min-w-0">
-                    <span className="text-white text-sm block truncate whitespace-nowrap" title={inv.invoice_date || '--'}>{inv.invoice_date || '--'}</span>
+                    <button
+                      type="button"
+                      onClick={() => openInvoiceRecord(inv.id)}
+                      className="block w-full truncate whitespace-nowrap text-left text-sm text-white transition hover:text-blue-300 focus:outline-none focus:text-blue-300"
+                      title={inv.invoice_date || '--'}
+                    >
+                      {inv.invoice_date || '--'}
+                    </button>
                   </div>
                   <div className="px-4 sm:px-6 py-4 min-w-0">
-                    <span className="text-white text-sm block truncate whitespace-nowrap" title={inv.invoice_creator || '--'}>{inv.invoice_creator || '--'}</span>
+                    <button
+                      type="button"
+                      onClick={() => openInvoiceRecord(inv.id)}
+                      className="block w-full truncate whitespace-nowrap text-left text-sm text-white transition hover:text-blue-300 focus:outline-none focus:text-blue-300"
+                      title={inv.invoice_creator || '--'}
+                    >
+                      {inv.invoice_creator || '--'}
+                    </button>
                   </div>
                   <div className="px-4 sm:px-6 py-4 min-w-0">
-                    <span className="text-white text-sm block truncate whitespace-nowrap" title={inv.client_name || '--'}>{inv.client_name || '--'}</span>
+                    <button
+                      type="button"
+                      onClick={() => openInvoiceRecord(inv.id)}
+                      className="block w-full truncate whitespace-nowrap text-left text-sm text-white transition hover:text-blue-300 focus:outline-none focus:text-blue-300"
+                      title={inv.client_name || '--'}
+                    >
+                      {inv.client_name || '--'}
+                    </button>
                   </div>
                   <div className="px-4 sm:px-6 py-4 min-w-0">
                     <span className="text-white text-sm block truncate whitespace-nowrap" title={inv.brand_name || '--'}>{inv.brand_name || '--'}</span>
@@ -1310,7 +1343,10 @@ export default function Invoice() {
                   <div className="px-4 sm:px-6 py-4 flex justify-end">
                     <button
                       type="button"
-                      onClick={(e) => toggleActionMenu(inv.id, e.currentTarget)}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        toggleActionMenu(inv.id, e.currentTarget)
+                      }}
                       className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-slate-300"
                       aria-label="Actions"
                       aria-haspopup="menu"
@@ -1327,11 +1363,10 @@ export default function Invoice() {
                         >
                           <button
                             type="button"
-                            onClick={async () => {
+                            onClick={(e) => {
+                              e.stopPropagation()
                               setOpenActionMenu(null)
-                              const { getInvoiceLink } = await import('@/app/actions/invoice-link')
-                              const url = await getInvoiceLink(inv.id)
-                              router.push(url)
+                              openInvoiceRecord(inv.id)
                             }}
                             className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-blue-400 transition hover:bg-slate-800"
                           >
@@ -1340,7 +1375,8 @@ export default function Invoice() {
                           </button>
                           <button
                             type="button"
-                            onClick={async () => {
+                            onClick={async (e) => {
+                              e.stopPropagation()
                               setOpenActionMenu(null)
                               const invoiceUrl = `${window.location.origin}${getInvoiceLink(inv.id)}`
 
@@ -1358,7 +1394,8 @@ export default function Invoice() {
                           {canEditInvoice(inv) && (
                             <button
                               type="button"
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation()
                                 setOpenActionMenu(null)
                                 openEditModal(inv)
                               }}
@@ -1371,7 +1408,8 @@ export default function Invoice() {
                           {canDeleteInvoice(inv) && (
                             <button
                               type="button"
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation()
                                 setOpenActionMenu(null)
                                 setDeletingInvoice(inv)
                               }}
@@ -1492,7 +1530,13 @@ export default function Invoice() {
             <div className="max-h-[92vh] overflow-y-auto scrollbar-thin rounded-2xl bg-neutral-100 p-6 shadow-2xl text-slate-800">
               {(() => {
                 return (
-                  <form onSubmit={handleAddSubmit} className="rounded-xl bg-white shadow-2xl outline outline-1 outline-slate-200">
+                  <form
+                    onSubmit={handleAddSubmit}
+                    onInvalidCapture={handleRequiredFieldInvalid}
+                    onInputCapture={clearRequiredFieldInvalid}
+                    onChangeCapture={clearRequiredFieldInvalid}
+                    className="rounded-xl bg-white shadow-2xl outline outline-1 outline-slate-200"
+                  >
                   {(() => {
                     const addBrandMeta = getInvoiceBrandMeta(addBrand)
                     return (
@@ -1675,16 +1719,21 @@ export default function Invoice() {
                                 <>
                                   <div className="rounded-xl bg-orange-600 p-4 text-white">
                                     <label htmlFor="add-payable-amount" className="block text-xs font-bold uppercase tracking-wide text-orange-100">Payable Amount</label>
-                                    <input
-                                      id="add-payable-amount"
-                                      type="text"
-                                      value={addPayableAmount}
-                                      onChange={(e) => setAddPayableAmount(sanitizeCurrencyInput(e.target.value))}
-                                      placeholder="$0.00"
-                                      inputMode="decimal"
-                                      pattern="^\d+(\.\d{1,2})?$"
-                                      className="mt-2 w-full rounded-md border border-white/15 bg-transparent px-2.5 py-1.5 text-2xl font-black text-white placeholder:text-orange-100/80 focus:border-white/30 focus:outline-none focus:ring-0"
-                                    />
+                                    <div className="mt-2 flex items-center rounded-xl border border-white/70 bg-white px-5 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_10px_24px_rgba(124,45,18,0.18)] focus-within:border-white focus-within:ring-4 focus-within:ring-white/25">
+                                      <span className="shrink-0 pr-3 text-xl font-black text-slate-500" aria-hidden="true">
+                                        $
+                                      </span>
+                                      <input
+                                        id="add-payable-amount"
+                                        type="text"
+                                        value={addPayableAmount}
+                                        onChange={(e) => setAddPayableAmount(sanitizeCurrencyInput(e.target.value))}
+                                        placeholder="0.00"
+                                        inputMode="decimal"
+                                        pattern="^\d+(\.\d{1,2})?$"
+                                        className="min-w-0 flex-1 bg-transparent text-2xl font-black text-slate-900 placeholder:text-slate-400 focus:outline-none"
+                                      />
+                                    </div>
                                   </div>
                                   <div className="flex justify-between">
                                     <span className="text-slate-600">Remaining</span>
@@ -1783,7 +1832,13 @@ export default function Invoice() {
             <div className="max-h-[92vh] overflow-y-auto scrollbar-thin rounded-2xl bg-neutral-100 p-6 shadow-2xl text-slate-800">
               {(() => {
                 return (
-                  <form onSubmit={handleEditSubmit} className="rounded-xl bg-white shadow-2xl outline outline-1 outline-slate-200">
+                  <form
+                    onSubmit={handleEditSubmit}
+                    onInvalidCapture={handleRequiredFieldInvalid}
+                    onInputCapture={clearRequiredFieldInvalid}
+                    onChangeCapture={clearRequiredFieldInvalid}
+                    className="rounded-xl bg-white shadow-2xl outline outline-1 outline-slate-200"
+                  >
                   {(() => {
                     const editBrandMeta = getInvoiceBrandMeta(editBrand)
                     return (
@@ -1969,16 +2024,21 @@ export default function Invoice() {
                                 <>
                                   <div className="rounded-xl bg-orange-600 p-4 text-white">
                                     <label htmlFor="edit-payable-amount" className="block text-xs font-bold uppercase tracking-wide text-orange-100">Payable Amount</label>
-                                    <input
-                                      id="edit-payable-amount"
-                                      type="text"
-                                      value={editPayableAmount}
-                                      onChange={(e) => setEditPayableAmount(sanitizeCurrencyInput(e.target.value))}
-                                      placeholder="$0.00"
-                                      inputMode="decimal"
-                                      pattern="^\d+(\.\d{1,2})?$"
-                                      className="mt-2 w-full rounded-md border border-white/15 bg-transparent px-2.5 py-1.5 text-2xl font-black text-white placeholder:text-orange-100/80 focus:border-white/30 focus:outline-none focus:ring-0"
-                                    />
+                                    <div className="mt-2 flex items-center rounded-xl border border-white/70 bg-white px-5 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_10px_24px_rgba(124,45,18,0.18)] focus-within:border-white focus-within:ring-4 focus-within:ring-white/25">
+                                      <span className="shrink-0 pr-3 text-xl font-black text-slate-500" aria-hidden="true">
+                                        $
+                                      </span>
+                                      <input
+                                        id="edit-payable-amount"
+                                        type="text"
+                                        value={editPayableAmount}
+                                        onChange={(e) => setEditPayableAmount(sanitizeCurrencyInput(e.target.value))}
+                                        placeholder="0.00"
+                                        inputMode="decimal"
+                                        pattern="^\d+(\.\d{1,2})?$"
+                                        className="min-w-0 flex-1 bg-transparent text-2xl font-black text-slate-900 placeholder:text-slate-400 focus:outline-none"
+                                      />
+                                    </div>
                                   </div>
                                   <div className="flex justify-between">
                                     <span className="text-slate-600">Remaining</span>

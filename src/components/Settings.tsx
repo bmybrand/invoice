@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Plus_Jakarta_Sans } from 'next/font/google'
 import { supabase } from '@/lib/supabase'
 import { useDashboardProfile } from '@/components/DashboardLayout'
+import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
@@ -476,7 +477,13 @@ export default function Settings() {
                 </button>
               </div>
 
-              <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+              <form
+                onSubmit={handleSubmit}
+                onInvalidCapture={handleRequiredFieldInvalid}
+                onInputCapture={clearRequiredFieldInvalid}
+                onChangeCapture={clearRequiredFieldInvalid}
+                className="mt-6 space-y-4"
+              >
                 <div>
                   <label htmlFor="gateway-name" className="block text-[13px] font-medium text-slate-300">
                     Name

@@ -12,6 +12,7 @@ import {
   useStripe,
 } from '@stripe/react-stripe-js'
 import { supabase } from '@/lib/supabase'
+import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
 
 const inputClass =
   'mt-2 h-12 w-full rounded-[10px] border border-[#252d41] bg-[#262b40] px-4 text-sm font-medium text-white placeholder:text-[#6f7ca0] focus:border-[#ff6400] focus:outline-none focus:ring-2 focus:ring-[#ff6400]/20'
@@ -128,6 +129,7 @@ function ContactFields({
         <input
           id="pay-full-name"
           type="text"
+          required
           value={fullName}
           onChange={(e) => setFullName(e.target.value)}
           className={inputClass}
@@ -141,6 +143,7 @@ function ContactFields({
         <input
           id="pay-phone"
           type="tel"
+          required
           value={phoneNumber}
           onChange={(e) => setPhoneNumber(e.target.value)}
           className={inputClass}
@@ -154,6 +157,7 @@ function ContactFields({
         <input
           id="pay-email"
           type="email"
+          required
           value={emailAddress}
           onChange={(e) => setEmailAddress(e.target.value)}
           className={inputClass}
@@ -166,6 +170,7 @@ function ContactFields({
         </label>
         <textarea
           id="pay-address"
+          required
           value={streetAddress}
           onChange={(e) => setStreetAddress(e.target.value)}
           rows={3}
@@ -180,6 +185,7 @@ function ContactFields({
         <input
           id="pay-city"
           type="text"
+          required
           value={city}
           onChange={(e) => setCity(e.target.value)}
           className={inputClass}
@@ -194,6 +200,7 @@ function ContactFields({
           <input
             id="pay-state"
             type="text"
+            required
             value={stateRegion}
             onChange={(e) => setStateRegion(e.target.value)}
             className={inputClass}
@@ -207,6 +214,7 @@ function ContactFields({
           <input
             id="pay-zip"
             type="text"
+            required
             value={zipCode}
             onChange={(e) => setZipCode(e.target.value)}
             className={inputClass}
@@ -321,17 +329,9 @@ function PaymentFormInner({
       return
     }
 
-    if (
-      !fullName.trim() ||
-      !phoneNumber.trim() ||
-      !emailAddress.trim() ||
-      !streetAddress.trim() ||
-      !city.trim() ||
-      !country.trim() ||
-      !stateRegion.trim() ||
-      !zipCode.trim()
-    ) {
-      setPaymentError('Please fill in all contact and address fields.')
+    setPaymentError(null)
+
+    if (!e.currentTarget.reportValidity()) {
       return
     }
 
@@ -493,7 +493,13 @@ function PaymentFormInner({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-7">
+    <form
+      onSubmit={handleSubmit}
+      onInvalidCapture={handleRequiredFieldInvalid}
+      onInputCapture={clearRequiredFieldInvalid}
+      onChangeCapture={clearRequiredFieldInvalid}
+      className="space-y-7"
+    >
       <div className="grid items-stretch gap-8 lg:grid-cols-2">
         <div>
           <ContactFields
@@ -579,6 +585,7 @@ function PaymentFormInner({
               <div className="relative">
                 <select
                   id="pay-country"
+                  required
                   value={country}
                   onChange={(e) => setCountry(normalizeCountryCode(e.target.value))}
                   className={`${inputClass} appearance-none pr-10`}

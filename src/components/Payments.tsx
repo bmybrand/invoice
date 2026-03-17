@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { useDashboardProfile } from '@/components/DashboardLayout'
 import { useClientDashboardData } from '@/context/ClientDashboardDataContext'
 import { formatInvoiceCode } from '@/lib/invoice-code'
+import { getInvoiceLink } from '@/lib/invoice-token'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
@@ -320,6 +321,11 @@ export default function Payments() {
   const end = start + PAGE_SIZE
   const paginatedPayments = filteredPayments.slice(start, end)
 
+  function openPaymentInvoice(invoiceId: number | null) {
+    if (invoiceId == null) return
+    router.push(getInvoiceLink(invoiceId))
+  }
+
   return (
     <div className={`${plusJakarta.className} flex w-full flex-col text-white`}>
       <div className="w-full pb-6">
@@ -461,12 +467,9 @@ export default function Payments() {
                   <div className="flex justify-end px-4 py-4 sm:px-6">
                     <button
                       type="button"
-                      onClick={async () => {
-                        if (payment.invoiceId != null) {
-                          const { getInvoiceLink } = await import('@/app/actions/invoice-link')
-                          const url = await getInvoiceLink(payment.invoiceId)
-                          router.push(url)
-                        }
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        openPaymentInvoice(payment.invoiceId)
                       }}
                       disabled={payment.invoiceId == null}
                       className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-blue-400 disabled:cursor-not-allowed disabled:opacity-40"

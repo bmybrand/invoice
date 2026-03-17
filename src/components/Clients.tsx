@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Plus_Jakarta_Sans } from 'next/font/google'
 import { supabase } from '@/lib/supabase'
 import { useDashboardProfile } from '@/components/DashboardLayout'
+import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
@@ -517,7 +518,13 @@ export default function Clients() {
                 </button>
               </div>
 
-              <form onSubmit={handleEditSubmit} className="flex flex-col gap-4">
+              <form
+                onSubmit={handleEditSubmit}
+                onInvalidCapture={handleRequiredFieldInvalid}
+                onInputCapture={clearRequiredFieldInvalid}
+                onChangeCapture={clearRequiredFieldInvalid}
+                className="flex flex-col gap-4"
+              >
                 <div>
                   <label htmlFor="edit-name" className="block text-sm font-medium text-slate-300 mb-1">Name</label>
                   <input
@@ -649,7 +656,13 @@ export default function Clients() {
                 </button>
               </div>
 
-              <form onSubmit={handleAddSubmit} className="flex flex-col gap-4">
+              <form
+                onSubmit={handleAddSubmit}
+                onInvalidCapture={handleRequiredFieldInvalid}
+                onInputCapture={clearRequiredFieldInvalid}
+                onChangeCapture={clearRequiredFieldInvalid}
+                className="flex flex-col gap-4"
+              >
                 <div>
                   <label htmlFor="add-name" className="block text-sm font-medium text-slate-300 mb-1">Name</label>
                   <input

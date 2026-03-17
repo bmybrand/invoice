@@ -5,6 +5,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
 
 function EnvelopeIcon() {
   return (
@@ -122,7 +123,13 @@ export function RegisterForm() {
               Register to start managing your invoices.
             </p>
 
-            <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-3 sm:mt-5 sm:gap-4 lg:gap-4 xl:gap-5">
+            <form
+              onSubmit={handleSubmit}
+              onInvalidCapture={handleRequiredFieldInvalid}
+              onInputCapture={clearRequiredFieldInvalid}
+              onChangeCapture={clearRequiredFieldInvalid}
+              className="mt-4 flex flex-col gap-3 sm:mt-5 sm:gap-4 lg:gap-4 xl:gap-5"
+            >
               <div className="flex flex-col gap-1">
                 <label htmlFor="name" className="text-sm font-medium text-slate-300 sm:text-base lg:text-base xl:text-lg">
                   Name
