@@ -114,20 +114,20 @@ export function RegisterForm() {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-gray-900 p-4 sm:p-6 lg:p-8">
-      <div className="flex min-h-[720px] w-full max-w-6xl overflow-hidden rounded-2xl border border-slate-700 shadow-xl sm:rounded-3xl">
-        <div className="flex w-full flex-col justify-center bg-slate-800/80 px-5 py-8 sm:w-1/2 sm:px-8 sm:py-12 md:px-10 lg:px-20 lg:py-16 xl:px-24 xl:py-20">
+      <div className="flex min-h-175 w-full max-w-6xl overflow-hidden rounded-2xl border border-slate-700 shadow-xl sm:rounded-3xl">
+        <div className="flex w-full flex-col justify-center bg-slate-800/80 px-5 py-8 sm:w-1/2 sm:px-8 sm:py-12 md:px-10 lg:px-20 lg:py-12 xl:px-24 xl:py-14">
           <div className="mx-auto w-full max-w-md sm:max-w-lg lg:max-w-xl">
-            <h1 className="text-3xl font-bold text-white sm:text-4xl lg:text-5xl">Create Account</h1>
-            <p className="mt-2 text-sm text-slate-400 sm:mt-3 sm:text-base lg:text-lg">
+            <h1 className="text-3xl font-bold text-white sm:text-4xl lg:text-4xl xl:text-5xl">Create Account</h1>
+            <p className="mt-2 text-sm text-slate-400 sm:mt-3 sm:text-base lg:text-base xl:text-lg">
               Register to start managing your invoices.
             </p>
 
-            <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-3 sm:mt-5 sm:gap-4 lg:gap-5">
+            <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-3 sm:mt-5 sm:gap-4 lg:gap-4 xl:gap-5">
               <div className="flex flex-col gap-1">
-                <label htmlFor="name" className="text-sm font-medium text-slate-300 sm:text-base lg:text-lg">
+                <label htmlFor="name" className="text-sm font-medium text-slate-300 sm:text-base lg:text-base xl:text-lg">
                   Name
                 </label>
-                <div className="flex items-center gap-3 rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-3 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 sm:rounded-xl sm:px-5 sm:py-4 lg:px-6 lg:py-[19px]">
+                <div className="flex items-center gap-3 rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-3 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 sm:rounded-xl sm:px-5 sm:py-4 lg:px-6 lg:py-4 xl:py-[18px]">
                   <UserIcon />
                   <input
                     id="name"
@@ -137,23 +137,23 @@ export function RegisterForm() {
                     placeholder="John Doe"
                     required
                     autoComplete="name"
-                    className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none sm:text-base lg:text-lg"
+                    className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none sm:text-base lg:text-base xl:text-lg"
                   />
                 </div>
               </div>
 
               <div className="flex flex-col gap-1">
-                <label htmlFor="brand" className="text-sm font-medium text-slate-300 sm:text-base lg:text-lg">
+                <label htmlFor="brand" className="text-sm font-medium text-slate-300 sm:text-base lg:text-base xl:text-lg">
                   Brand
                 </label>
-                <div className="flex items-center gap-3 rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-3 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 sm:rounded-xl sm:px-5 sm:py-4 lg:px-6 lg:py-[19px]">
+                <div className="flex items-center gap-3 rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-3 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 sm:rounded-xl sm:px-5 sm:py-4 lg:px-6 lg:py-4 xl:py-[18px]">
                   <BuildingIcon />
                   <select
                     id="brand"
                     value={brandId ?? ''}
                     onChange={(e) => setBrandId(e.target.value ? Number(e.target.value) : null)}
                     required
-                    className="min-w-0 flex-1 bg-transparent text-sm text-white focus:outline-none sm:text-base lg:text-lg"
+                    className="min-w-0 flex-1 bg-transparent text-sm text-white focus:outline-none sm:text-base lg:text-base xl:text-lg"
                   >
                     <option value="" className="bg-slate-900 text-slate-400">
                       Select a brand
@@ -168,10 +168,10 @@ export function RegisterForm() {
               </div>
 
               <div className="flex flex-col gap-1">
-                <label htmlFor="email" className="text-sm font-medium text-slate-300 sm:text-base lg:text-lg">
+                <label htmlFor="email" className="text-sm font-medium text-slate-300 sm:text-base lg:text-base xl:text-lg">
                   Email
                 </label>
-                <div className="flex items-center gap-3 rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-3 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 sm:rounded-xl sm:px-5 sm:py-4 lg:px-6 lg:py-[19px]">
+                <div className="flex items-center gap-3 rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-3 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 sm:rounded-xl sm:px-5 sm:py-4 lg:px-6 lg:py-4 xl:py-[18px]">
                   <EnvelopeIcon />
                   <input
                     id="email"
@@ -181,16 +181,16 @@ export function RegisterForm() {
                     placeholder="name@company.com"
                     required
                     autoComplete="email"
-                    className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none sm:text-base lg:text-lg"
+                    className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none sm:text-base lg:text-base xl:text-lg"
                   />
                 </div>
               </div>
 
               <div className="flex flex-col gap-1">
-                <label htmlFor="password" className="text-sm font-medium text-slate-300 sm:text-base lg:text-lg">
+                <label htmlFor="password" className="text-sm font-medium text-slate-300 sm:text-base lg:text-base xl:text-lg">
                   Password
                 </label>
-                <div className="flex items-center gap-3 rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-3 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 sm:rounded-xl sm:px-5 sm:py-4 lg:px-6 lg:py-[19px]">
+                <div className="flex items-center gap-3 rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-3 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 sm:rounded-xl sm:px-5 sm:py-4 lg:px-6 lg:py-4 xl:py-[18px]">
                   <LockIcon />
                   <input
                     id="password"
@@ -200,7 +200,7 @@ export function RegisterForm() {
                     placeholder="********"
                     required
                     autoComplete="new-password"
-                    className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none sm:text-base lg:text-lg"
+                    className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none sm:text-base lg:text-base xl:text-lg"
                   />
                 </div>
               </div>
@@ -214,7 +214,7 @@ export function RegisterForm() {
               <button
                 type="submit"
                 disabled={loading}
-                className="mt-1 flex items-center justify-center gap-2 rounded-lg bg-orange-500 px-4 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-orange-600 disabled:opacity-50 sm:mt-2 sm:rounded-xl sm:px-5 sm:py-4 sm:text-base lg:py-5 lg:px-6 lg:text-lg"
+                className="mt-1 flex items-center justify-center gap-2 rounded-lg bg-orange-500 px-4 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-orange-600 disabled:opacity-50 sm:mt-2 sm:rounded-xl sm:px-5 sm:py-4 sm:text-base lg:px-6 lg:py-4 lg:text-base xl:py-5 xl:text-lg"
               >
                 {loading ? 'Creating Account...' : 'Create Account'}
               </button>
