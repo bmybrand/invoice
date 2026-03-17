@@ -7,7 +7,7 @@ import ClientDashboard from '@/components/clientdashboard'
 
 export default function ClientPage() {
   const router = useRouter()
-  const { accountType } = useDashboardProfile()
+  const { accountType, profileLoaded } = useDashboardProfile()
 
   useEffect(() => {
     if (accountType === 'employee') {
@@ -15,18 +15,18 @@ export default function ClientPage() {
     }
   }, [accountType, router])
 
-  if (accountType === 'employee') {
+  if (!profileLoaded || accountType === null) {
     return (
       <div className="flex min-h-[200px] items-center justify-center text-slate-400">
-        Redirecting…
+        Loading...
       </div>
     )
   }
 
-  if (accountType === null) {
+  if (accountType === 'employee') {
     return (
       <div className="flex min-h-[200px] items-center justify-center text-slate-400">
-        Loading…
+        Redirecting...
       </div>
     )
   }

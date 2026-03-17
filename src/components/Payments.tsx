@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useDashboardProfile } from '@/components/DashboardLayout'
 import { useClientDashboardData } from '@/context/ClientDashboardDataContext'
+import { formatInvoiceCode } from '@/lib/invoice-code'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
@@ -295,7 +296,8 @@ export default function Payments() {
     if (!q) return payments
     return payments.filter((payment) =>
       [
-        payment.invoiceId == null ? '' : String(payment.invoiceId),
+        payment.invoiceId == null ? '' : formatInvoiceCode(payment.invoiceId),
+        payment.invoiceId == null ? '' : `#${formatInvoiceCode(payment.invoiceId)}`,
         payment.invoiceCreator,
         payment.customer,
         payment.email,
@@ -341,7 +343,7 @@ export default function Payments() {
                   setSearchQuery(e.target.value)
                   setCurrentPage(1)
                 }}
-                placeholder="Search by invoice, creator, customer, email, source or status..."
+                placeholder="Search by invoice number, creator, customer, email, source or status..."
                 className="h-full min-w-0 flex-1 bg-transparent text-sm text-slate-300 placeholder:text-slate-500 focus:outline-none"
               />
             </div>
@@ -354,7 +356,7 @@ export default function Payments() {
           <div className="w-full" style={{ minWidth: '1880px' }}>
             <div className="grid w-full border-b border-slate-700 bg-slate-900/50" style={{ gridTemplateColumns: PAYMENT_GRID }}>
               {[
-                'Invoice ID',
+                'No.',
                 'Invoice Creator',
                 'Customer',
                 'Email',
@@ -386,7 +388,7 @@ export default function Payments() {
                 {searchQuery.trim() ? 'No matching payments found.' : 'No payments recorded yet.'}
               </div>
             ) : (
-              paginatedPayments.map((payment) => (
+              paginatedPayments.map((payment, index) => (
                 <div
                   key={payment.id}
                   className="grid w-full items-center border-t border-slate-700"
@@ -395,9 +397,9 @@ export default function Payments() {
                   <div className="min-w-0 px-4 py-4 sm:px-6">
                     <span
                       className="block truncate whitespace-nowrap font-mono text-sm font-bold text-white"
-                      title={payment.invoiceId == null ? '--' : `#${payment.invoiceId}`}
+                      title={`Row ${start + index + 1}`}
                     >
-                      {payment.invoiceId == null ? '--' : `#${payment.invoiceId}`}
+                      {start + index + 1}
                     </span>
                   </div>
                   <div className="min-w-0 px-4 py-4 sm:px-6">

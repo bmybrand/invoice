@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { useDashboardProfile } from '@/components/DashboardLayout'
 import { useClientDashboardData } from '@/context/ClientDashboardDataContext'
 import { getInvoiceLink } from '@/lib/invoice-token'
+import { formatInvoiceCode } from '@/lib/invoice-code'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
@@ -262,12 +263,6 @@ function GatewayLimitAlert({
       ) : null}
     </div>
   )
-}
-
-function formatInvoiceCode(id: number): string {
-  const mixed = (id * 7919 + 12345) % 100000
-  const normalized = Math.abs(mixed)
-  return String(normalized).padStart(5, '0')
 }
 
 function addDaysToISODate(dateStr: string, days: number): string {
@@ -746,12 +741,13 @@ export default function Invoice() {
       const q = searchQuery.trim().toLowerCase()
       list = list.filter(
         (i) =>
+          formatInvoiceCode(i.id).includes(q) ||
+          `#${formatInvoiceCode(i.id)}`.toLowerCase().includes(q) ||
           (i.invoice_creator || '').toLowerCase().includes(q) ||
           (i.client_name || '').toLowerCase().includes(q) ||
           (i.email || '').toLowerCase().includes(q) ||
           i.service.some((s) => (s.description || '').toLowerCase().includes(q)) ||
-          (i.status || '').toLowerCase().includes(q) ||
-          String(i.id).includes(searchQuery.trim())
+          (i.status || '').toLowerCase().includes(q)
       )
     }
     if (statusFilter === 'paid') {
@@ -1163,7 +1159,7 @@ export default function Invoice() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search by ID, creator, client, email, service or status..."
+                placeholder="Search by invoice number, creator, client, email, service or status..."
                 className="flex-1 min-w-0 h-full bg-transparent text-slate-300 text-sm placeholder:text-slate-500 focus:outline-none"
               />
             </div>
@@ -1217,7 +1213,7 @@ export default function Invoice() {
             {/* Table header */}
             <div className="w-full grid bg-slate-900/50 border-b border-slate-700" style={{ gridTemplateColumns: INVOICE_GRID }}>
               <div className="flex min-w-0 items-center px-4 sm:px-6 py-4">
-                <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Invoice ID</span>
+                <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">No.</span>
               </div>
               <div className="flex min-w-0 items-center px-4 sm:px-6 py-4">
                 <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Invoice Date</span>
@@ -1267,7 +1263,7 @@ export default function Invoice() {
                   style={{ gridTemplateColumns: INVOICE_GRID }}
                 >
                   <div className="px-4 sm:px-6 py-4 min-w-0">
-                    <span className="text-white text-sm font-bold font-mono block truncate whitespace-nowrap" title={`#${start + rowIndex + 1}`}>#{start + rowIndex + 1}</span>
+                    <span className="text-white text-sm font-bold font-mono block truncate whitespace-nowrap" title={`Row ${start + rowIndex + 1}`}>{start + rowIndex + 1}</span>
                   </div>
                   <div className="px-4 sm:px-6 py-4 min-w-0">
                     <span className="text-white text-sm block truncate whitespace-nowrap" title={inv.invoice_date || '--'}>{inv.invoice_date || '--'}</span>

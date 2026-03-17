@@ -149,35 +149,35 @@ export default function Clients() {
   }, [])
 
   useEffect(() => {
-    fetchClients()
+    const timeoutId = window.setTimeout(() => {
+      void fetchClients()
+    }, 0)
+
+    return () => window.clearTimeout(timeoutId)
   }, [fetchClients])
 
   useEffect(() => {
-    fetchBrands()
-  }, [fetchBrands])
+    const timeoutId = window.setTimeout(() => {
+      void fetchBrands()
+    }, 0)
 
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [searchQuery])
+    return () => window.clearTimeout(timeoutId)
+  }, [fetchBrands])
 
   const filteredClients = searchQuery.trim()
     ? clients.filter(
         (c) =>
           (c.name || '').toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
           (c.email || '').toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
-          (c.brand_name || '').toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
-          String(c.id).includes(searchQuery.trim())
+          (c.brand_name || '').toLowerCase().includes(searchQuery.trim().toLowerCase())
       )
     : clients
 
   const totalPages = Math.max(1, Math.ceil(filteredClients.length / PAGE_SIZE))
-  const start = (currentPage - 1) * PAGE_SIZE
+  const effectivePage = Math.min(currentPage, totalPages)
+  const start = (effectivePage - 1) * PAGE_SIZE
   const end = start + PAGE_SIZE
   const paginatedClients = filteredClients.slice(start, end)
-
-  useEffect(() => {
-    if (currentPage > totalPages) setCurrentPage(1)
-  }, [currentPage, totalPages])
 
   async function getCurrentAuthToken() {
     const { data: { session } } = await supabase.auth.getSession()
@@ -345,8 +345,11 @@ export default function Clients() {
               <input
                 type="text"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search by name, email, brand or ID..."
+                onChange={(e) => {
+                  setSearchQuery(e.target.value)
+                  setCurrentPage(1)
+                }}
+                placeholder="Search by name, email or brand..."
                 className="flex-1 min-w-0 h-full bg-transparent text-slate-300 text-sm placeholder:text-slate-500 focus:outline-none"
               />
             </div>
@@ -361,7 +364,7 @@ export default function Clients() {
             <thead>
               <tr className="bg-slate-900/50 border-b border-slate-700">
                 <th className="w-[72px] px-4 sm:px-6 py-4 text-left">
-                  <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">ID</span>
+                  <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">No.</span>
                 </th>
                 <th className="px-4 sm:px-6 py-4 text-left">
                   <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Client</span>
@@ -396,7 +399,7 @@ export default function Clients() {
                 paginatedClients.map((c, rowIndex) => (
                   <tr key={c.id} className="border-t border-slate-700">
                     <td className="w-[72px] px-4 sm:px-6 py-4">
-                      <span className="text-white text-sm font-bold font-mono block truncate whitespace-nowrap" title={`#${start + rowIndex + 1}`}>#{start + rowIndex + 1}</span>
+                      <span className="text-white text-sm font-bold font-mono block truncate whitespace-nowrap" title={`Row ${start + rowIndex + 1}`}>{start + rowIndex + 1}</span>
                     </td>
                     <td className="px-4 sm:px-6 py-4 min-w-0">
                       <span className="text-white text-sm font-bold truncate block whitespace-nowrap" title={c.name || '-'}>{c.name || '-'}</span>
@@ -452,7 +455,7 @@ export default function Clients() {
             <button
               type="button"
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage <= 1}
+              disabled={effectivePage <= 1}
               className="w-8 h-8 rounded-lg border border-slate-700 flex justify-center items-center text-slate-400 hover:bg-slate-700/50 transition disabled:opacity-40 disabled:cursor-not-allowed"
               aria-label="Previous page"
             >
@@ -474,7 +477,7 @@ export default function Clients() {
                     type="button"
                     onClick={() => setCurrentPage(page)}
                     className={`w-8 h-8 rounded-lg flex justify-center items-center text-xs font-medium transition ${
-                      currentPage === page
+                      effectivePage === page
                         ? 'bg-orange-500 text-white'
                         : 'border border-slate-700 text-slate-400 hover:bg-slate-700/50'
                     }`}
@@ -487,7 +490,7 @@ export default function Clients() {
             <button
               type="button"
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              disabled={currentPage >= totalPages}
+              disabled={effectivePage >= totalPages}
               className="w-8 h-8 rounded-lg border border-slate-700 flex justify-center items-center text-slate-400 hover:bg-slate-700/50 transition disabled:opacity-40 disabled:cursor-not-allowed"
               aria-label="Next page"
             >

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
@@ -67,16 +68,12 @@ export function LoginForm() {
   }
 
   return (
-    <main className="flex h-screen min-h-screen flex-col items-center justify-center bg-gray-900 p-4 sm:p-6 lg:p-8">
-      <div className="flex min-h-0 w-full flex-1 max-w-6xl overflow-hidden rounded-2xl border border-slate-700 shadow-xl sm:rounded-3xl">
+    <main className="flex min-h-screen flex-col items-center justify-center bg-gray-900 p-4 sm:p-6 lg:p-8">
+      <div className="flex min-h-[720px] w-full max-w-6xl overflow-hidden rounded-2xl border border-slate-700 shadow-xl sm:rounded-3xl">
         {/* Left column - form */}
-        <div className="flex w-full flex-col justify-center bg-slate-800/80 px-5 py-8 sm:w-1/2 sm:px-12 sm:py-12 md:px-16 lg:px-20 lg:py-16 xl:px-24 xl:py-20">
+        <div className="flex w-full flex-col justify-center bg-slate-800/80 px-5 py-8 sm:w-1/2 sm:px-8 sm:py-12 md:px-10 lg:px-20 lg:py-16 xl:px-24 xl:py-20">
         <div className="mx-auto w-full max-w-md sm:max-w-lg lg:max-w-xl">
-          <Link href="/" className="text-2xl font-bold tracking-tight sm:text-3xl lg:text-4xl">
-            <span className="text-white">Invoice</span> <span className="text-orange-500">CRM</span>
-          </Link>
-
-          <h1 className="mt-6 text-3xl font-bold text-white sm:mt-8 sm:text-4xl lg:text-5xl">Welcome Back</h1>
+          <h1 className="text-3xl font-bold text-white sm:text-4xl lg:text-5xl">Welcome Back</h1>
           <p className="mt-2 text-sm text-slate-400 sm:mt-3 sm:text-base lg:text-lg">
             Enter your credentials to access your dashboard.
           </p>
@@ -158,20 +155,26 @@ export function LoginForm() {
         {/* Soft glows */}
         <div className="absolute -left-20 -top-20 h-64 w-64 rounded-full bg-orange-500/20 blur-3xl" />
         <div className="absolute bottom-1/4 right-0 h-48 w-48 rounded-full bg-orange-500/10 blur-3xl" />
-        {/* Center: I, Power Your Brand, Creative Agency Solutions */}
+        {/* Center: logo, Invoice CRM, Creative Agency Solutions */}
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <div className="relative flex items-center justify-center">
             <div className="absolute z-0 h-44 w-56 rounded-xl border border-white/10 bg-white/5 shadow-2xl backdrop-blur-sm" style={{ transform: 'rotate(-12deg) translateX(-80px)' }} />
             <div className="absolute z-0 h-56 w-28 rounded-2xl border border-white/10 bg-white/5 shadow-2xl backdrop-blur-sm" style={{ transform: 'rotate(8deg) translateX(60px)' }} />
-            <div className="relative z-10 flex h-40 w-40 shrink-0 items-center justify-center rounded-full bg-orange-500 shadow-2xl shadow-orange-500/30">
-              <span className="text-6xl font-bold text-white">I</span>
+            <div className="relative z-10 flex h-44 w-44 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/95 shadow-2xl shadow-orange-500/20 lg:h-48 lg:w-48">
+              <Image
+                src="/bmybrand-B.svg"
+                alt="Invoice CRM logo"
+                width={136}
+                height={136}
+                className="h-28 w-28 object-contain lg:h-32 lg:w-32"
+                priority
+              />
             </div>
           </div>
-          <h2 className="mt-8 text-3xl font-bold uppercase tracking-wider z-10 text-white lg:text-4xl">
-            Power Your Brand
-          </h2>
-          <div className="mt-2 h-1 w-16 rounded-full bg-orange-500" />
-          <p className="mt-3 text-sm font-medium uppercase tracking-widest text-white/90 z-10">
+          <Link href="/" className="z-10 mt-8 text-4xl font-black tracking-tight text-white lg:text-5xl">
+            <span className="text-white">Invoice</span> <span className="text-orange-500">CRM</span>
+          </Link>
+          <p className="mt-4 text-sm font-medium uppercase tracking-widest text-white/90 z-10">
             Creative Agency Solutions
           </p>
         </div>

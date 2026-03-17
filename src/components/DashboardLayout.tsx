@@ -16,6 +16,7 @@ type DashboardProfile = {
   displayRole: string
   onlineAuthIds: string[]
   accountType: 'employee' | 'client' | null
+  profileLoaded: boolean
 }
 
 const DashboardProfileContext = createContext<DashboardProfile>({
@@ -23,6 +24,7 @@ const DashboardProfileContext = createContext<DashboardProfile>({
   displayRole: '',
   onlineAuthIds: [],
   accountType: null,
+  profileLoaded: false,
 })
 
 export function useDashboardProfile() {
@@ -212,6 +214,17 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
 
   const profileObjectUrlRef = useRef<string | null>(null)
 
+  const resetDashboardProfile = useCallback((nextProfileLoaded: boolean) => {
+    setCurrentUserAuthId(null)
+    setCurrentUserEmail('')
+    setDisplayName('')
+    setDisplayRole('')
+    setDisplayAvatarUrl('')
+    setOnlineAuthIds([])
+    setAccountType(null)
+    setProfileLoaded(nextProfileLoaded)
+  }, [])
+
   const visibleNavItems =
     accountType === 'client'
       ? [
@@ -271,14 +284,7 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
     } = await supabase.auth.getUser()
 
     if (userError || !serverUser?.id) {
-      setCurrentUserAuthId(null)
-      setCurrentUserEmail('')
-      setDisplayName('')
-      setDisplayRole('')
-      setDisplayAvatarUrl('')
-      setOnlineAuthIds([])
-      setAccountType(null)
-      setProfileLoaded(true)
+      resetDashboardProfile(false)
       await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
       router.replace('/login')
       return
@@ -358,7 +364,7 @@ if (clientError) {
     setDisplayRole('')
     setAccountType(null)
     setProfileLoaded(true)
-  }, [router])
+  }, [resetDashboardProfile, router])
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -369,24 +375,13 @@ if (clientError) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
+        setProfileLoaded(false)
         void loadProfile()
       } else if (event === 'SIGNED_OUT') {
-        setCurrentUserAuthId(null)
-        setCurrentUserEmail('')
-        setDisplayName('')
-        setDisplayRole('')
-        setDisplayAvatarUrl('')
-        setOnlineAuthIds([])
-        setAccountType(null)
+        resetDashboardProfile(false)
         router.replace('/login')
       } else {
-        setCurrentUserAuthId(null)
-        setCurrentUserEmail('')
-        setDisplayName('')
-        setDisplayRole('')
-        setDisplayAvatarUrl('')
-        setOnlineAuthIds([])
-        setAccountType(null)
+        resetDashboardProfile(false)
       }
     })
 
@@ -414,7 +409,7 @@ if (clientError) {
       window.removeEventListener('pageshow', onPageShow)
       window.clearInterval(pollInterval)
     }
-  }, [loadProfile, router])
+  }, [loadProfile, resetDashboardProfile, router])
 
   useEffect(() => {
     if (!accountType) return
@@ -432,10 +427,7 @@ if (clientError) {
   }, [accountType, pathname, router])
 
   useEffect(() => {
-    if (!currentUserAuthId || accountType !== 'employee') {
-      setOnlineAuthIds([])
-      return
-    }
+    if (!currentUserAuthId || accountType !== 'employee') return
 
     const channel = supabase.channel('dashboard-employee-presence', {
       config: {
@@ -476,8 +468,19 @@ if (clientError) {
   }, [currentUserAuthId, accountType])
 
   async function handleLogout() {
-    await supabase.auth.signOut({ scope: 'local' })
-    router.push('/login')
+    setProfileModalOpen(false)
+    setProfileLoaded(false)
+
+    const { error } = await supabase.auth.signOut({ scope: 'local' })
+
+    if (error) {
+      console.error('Failed to sign out', error)
+      setProfileLoaded(true)
+      return
+    }
+
+    resetDashboardProfile(false)
+    router.replace('/login')
   }
 
   function resetProfileImageState(nextPreviewUrl: string) {
@@ -655,7 +658,13 @@ if (clientError) {
 
   return (
     <DashboardProfileContext.Provider
-      value={{ displayName, displayRole, onlineAuthIds, accountType }}
+      value={{
+        displayName,
+        displayRole,
+        onlineAuthIds: accountType === 'employee' ? onlineAuthIds : [],
+        accountType,
+        profileLoaded,
+      }}
     >
       <ClientDashboardDataProvider>
       <div
