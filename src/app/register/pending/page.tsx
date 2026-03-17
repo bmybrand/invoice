@@ -1,8 +1,64 @@
 'use client'
 
-import Link from 'next/link'
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
 
 export default function RegisterPendingPage() {
+  const router = useRouter()
+
+  useEffect(() => {
+    let active = true
+
+    const timeoutId = window.setTimeout(async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+
+      if (!active || !session?.user) return
+
+      const authId = session.user.id
+      const normalizedEmail = (session.user.email ?? '').trim()
+
+      const [
+        { data: employeeData, error: employeeError },
+        { data: clientData, error: clientError },
+        { data: latestRequest, error: requestError },
+      ] = await Promise.all([
+        supabase.from('employees').select('id').eq('auth_id', authId).maybeSingle(),
+        supabase.from('clients').select('id').eq('email', normalizedEmail).maybeSingle(),
+        supabase
+          .from('client_registration_requests')
+          .select('status')
+          .eq('email', normalizedEmail)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ])
+
+      if (!active || employeeError || clientError || requestError) return
+
+      if (employeeData || clientData) {
+        router.replace('/dashboard')
+        router.refresh()
+        return
+      }
+
+      const requestStatus = (latestRequest as { status?: string } | null)?.status?.trim().toLowerCase()
+
+      if (requestStatus === 'rejected') {
+        await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+        if (!active) return
+        router.replace('/login?reason=rejected')
+      }
+    }, 0)
+
+    return () => {
+      active = false
+      window.clearTimeout(timeoutId)
+    }
+  }, [router])
+
   return (
     <main className="flex h-screen min-h-screen flex-col items-center justify-center bg-gray-900 p-4">
       <div className="mx-auto max-w-md rounded-2xl border border-slate-700 bg-slate-800/80 p-8 text-center shadow-xl">
@@ -16,12 +72,13 @@ export default function RegisterPendingPage() {
           Your registration has been submitted. An administrator will review and approve your account shortly.
           You will receive access to the dashboard once approved.
         </p>
-        <Link
-          href="/login"
+        <button
+          type="button"
+          onClick={() => router.replace('/login')}
           className="mt-6 inline-block rounded-xl bg-orange-500 px-6 py-3 text-sm font-semibold text-white hover:bg-orange-600 transition"
         >
           Back to Sign In
-        </Link>
+        </button>
       </div>
     </main>
   )

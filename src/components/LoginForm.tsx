@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
 
@@ -25,10 +25,66 @@ function LockIcon() {
 
 export function LoginForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const reasonError =
+    searchParams.get('reason') === 'rejected'
+      ? 'Your registration request was rejected. Contact an administrator or register again.'
+      : null
+
+  useEffect(() => {
+    let active = true
+
+    const timeoutId = window.setTimeout(async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+
+      if (!active || !session?.user) return
+
+      const authId = session.user.id
+      const normalizedEmail = (session.user.email ?? '').trim()
+
+      const [
+        { data: employeeData, error: employeeError },
+        { data: clientData, error: clientError },
+        { data: latestRequest, error: requestError },
+      ] = await Promise.all([
+        supabase.from('employees').select('id').eq('auth_id', authId).maybeSingle(),
+        supabase.from('clients').select('id').eq('email', normalizedEmail).maybeSingle(),
+        supabase
+          .from('client_registration_requests')
+          .select('status')
+          .eq('email', normalizedEmail)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ])
+
+      if (!active || employeeError || clientError || requestError) return
+
+      if (employeeData || clientData) {
+        router.replace('/dashboard')
+        router.refresh()
+        return
+      }
+
+      const requestStatus = (latestRequest as { status?: string } | null)?.status?.trim().toLowerCase()
+
+      if (requestStatus === 'pending') {
+        router.replace('/register/pending')
+        router.refresh()
+      }
+    }, 0)
+
+    return () => {
+      active = false
+      window.clearTimeout(timeoutId)
+    }
+  }, [router])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -64,8 +120,84 @@ export function LoginForm() {
       return
     }
 
-    router.replace('/dashboard')
-    router.refresh()
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) {
+      await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+      setLoading(false)
+      setError('Unable to verify your account. Please try again.')
+      return
+    }
+
+    const authId = user.id
+    const normalizedEmail = (user.email ?? '').trim()
+
+    const [
+      { data: employeeData, error: employeeError },
+      { data: clientData, error: clientError },
+      { data: latestRequest, error: requestError },
+    ] = await Promise.all([
+      supabase.from('employees').select('id').eq('auth_id', authId).maybeSingle(),
+      supabase.from('clients').select('id').eq('email', normalizedEmail).maybeSingle(),
+      supabase
+        .from('client_registration_requests')
+        .select('status')
+        .eq('email', normalizedEmail)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ])
+
+    if (employeeError || clientError || requestError) {
+      await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+      setLoading(false)
+      setError(
+        employeeError?.message ||
+          clientError?.message ||
+          requestError?.message ||
+          'Unable to verify your account.'
+      )
+      return
+    }
+
+    if (employeeData || clientData) {
+      router.replace('/dashboard')
+      router.refresh()
+      return
+    }
+
+    const requestStatus = (latestRequest as { status?: string } | null)?.status?.trim().toLowerCase()
+
+    if (requestStatus === 'pending') {
+      router.replace('/register/pending')
+      router.refresh()
+      return
+    }
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    const token = session?.access_token?.trim() || ''
+
+    if (requestStatus === 'rejected' && token) {
+      await fetch('/api/auth/cleanup-rejected', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {})
+    }
+
+    await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+    setLoading(false)
+
+    if (requestStatus === 'rejected') {
+      setError('Your registration request was rejected. Contact an administrator or register again.')
+      return
+    }
+
+    setError('Your account is not approved for dashboard access.')
   }
 
   return (
@@ -124,9 +256,9 @@ export function LoginForm() {
               </div>
             </div>
 
-            {error && (
+            {(error || reasonError) && (
               <p className="rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-400 sm:rounded-xl sm:text-base">
-                {error}
+                {error || reasonError}
               </p>
             )}
 

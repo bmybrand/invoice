@@ -348,16 +348,28 @@ if (clientError) {
   console.error('Client lookup error:', clientError.message)
 }
 
-    const { data: pendingRequest } = await supabase
+    const { data: latestRequest } = await supabase
       .from('client_registration_requests')
-      .select('id')
+      .select('id, status')
       .eq('email', user.email ?? '')
-      .eq('status', 'pending')
+      .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle()
 
-    if (pendingRequest) {
+    const requestStatus = (latestRequest as { id?: number; status?: string } | null)?.status
+      ?.trim()
+      .toLowerCase()
+
+    if (requestStatus === 'pending') {
       setProfileLoaded(true)
       router.replace('/register/pending')
+      return
+    }
+
+    if (requestStatus === 'rejected') {
+      resetDashboardProfile(false)
+      await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+      router.replace('/login?reason=rejected')
       return
     }
 
@@ -375,29 +387,15 @@ if (clientError) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session?.user) {
-        setProfileLoaded(false)
-        void loadProfile()
-      } else if (event === 'SIGNED_OUT') {
+      if (event === 'SIGNED_OUT') {
         resetDashboardProfile(false)
         router.replace('/login')
+      } else if (session?.user) {
+        void loadProfile()
       } else {
         resetDashboardProfile(false)
       }
     })
-
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        void loadProfile()
-      }
-    }
-
-    const onPageShow = (e: PageTransitionEvent) => {
-      if (e.persisted) void loadProfile()
-    }
-
-    document.addEventListener('visibilitychange', onVisibilityChange)
-    window.addEventListener('pageshow', onPageShow)
 
     const pollInterval = window.setInterval(() => {
       void loadProfile()
@@ -406,8 +404,6 @@ if (clientError) {
     return () => {
       window.clearTimeout(timeoutId)
       subscription.unsubscribe()
-      document.removeEventListener('visibilitychange', onVisibilityChange)
-      window.removeEventListener('pageshow', onPageShow)
       window.clearInterval(pollInterval)
     }
   }, [loadProfile, resetDashboardProfile, router])
@@ -692,7 +688,7 @@ if (clientError) {
         profileLoaded,
       }}
     >
-      <ClientDashboardDataProvider>
+      <ClientDashboardDataProvider key={`${currentUserAuthId ?? 'anonymous'}:${accountType ?? 'none'}`}>
       <div
         id="dashboard-root-shell"
         className={`${plusJakarta.className} relative flex min-h-screen w-full bg-gray-900 text-white`}

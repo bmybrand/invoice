@@ -41,33 +41,104 @@ export function NotificationsBell() {
   const [loading, setLoading] = useState(false)
   const [processingId, setProcessingId] = useState<number | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const hasLoadedRequestsRef = useRef(false)
+  const isFetchingRef = useRef(false)
+  const queuedRefreshRef = useRef(false)
 
-  const fetchRequests = useCallback(async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    const token = session?.access_token?.trim()
-    if (!token) return
+  const getAccessToken = useCallback(async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
 
-    setLoading(true)
+    return session?.access_token?.trim() || ''
+  }, [])
+
+  const fetchRequests = useCallback(async (options?: { showLoading?: boolean }) => {
+    if (isFetchingRef.current) {
+      queuedRefreshRef.current = true
+      return
+    }
+
+    const token = await getAccessToken()
+
+    if (!token) {
+      setRequests([])
+      hasLoadedRequestsRef.current = false
+      setLoading(false)
+      return
+    }
+
+    const showLoading = options?.showLoading ?? !hasLoadedRequestsRef.current
+    isFetchingRef.current = true
+
+    if (showLoading) {
+      setLoading(true)
+    }
+
     try {
       const res = await fetch('/api/clients/registration-requests', {
         headers: { Authorization: `Bearer ${token}` },
       })
+
       if (res.ok) {
         const json = await res.json()
         setRequests(json.requests ?? [])
+        hasLoadedRequestsRef.current = true
       }
     } catch {
-      setRequests([])
+      // Keep the last successful list visible during transient refresh failures.
     } finally {
-      setLoading(false)
+      isFetchingRef.current = false
+
+      if (showLoading) {
+        setLoading(false)
+      }
+
+      if (queuedRefreshRef.current) {
+        queuedRefreshRef.current = false
+        void fetchRequests()
+      }
     }
-  }, [])
+  }, [getAccessToken])
 
   useEffect(() => {
-    fetchRequests()
-    const interval = setInterval(fetchRequests, 30000)
-    return () => clearInterval(interval)
+    void fetchRequests({ showLoading: true })
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void fetchRequests()
+      }
+    }, 5000)
+
+    const channel = supabase
+      .channel('admin-registration-requests')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'client_registration_requests',
+        },
+        () => {
+          void fetchRequests()
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          void fetchRequests()
+        }
+      })
+
+    return () => {
+      window.clearInterval(intervalId)
+      void supabase.removeChannel(channel)
+    }
   }, [fetchRequests])
+
+  useEffect(() => {
+    if (!open) return
+    void fetchRequests({ showLoading: !hasLoadedRequestsRef.current })
+  }, [open, fetchRequests])
 
   useEffect(() => {
     if (!open) return
@@ -81,8 +152,7 @@ export function NotificationsBell() {
   }, [open])
 
   async function handleApprove(id: number) {
-    const { data: { session } } = await supabase.auth.getSession()
-    const token = session?.access_token?.trim()
+    const token = await getAccessToken()
     if (!token) return
 
     setProcessingId(id)
@@ -93,6 +163,7 @@ export function NotificationsBell() {
       })
       if (res.ok) {
         setRequests((prev) => prev.filter((r) => r.id !== id))
+        void fetchRequests()
       }
     } finally {
       setProcessingId(null)
@@ -100,8 +171,7 @@ export function NotificationsBell() {
   }
 
   async function handleReject(id: number) {
-    const { data: { session } } = await supabase.auth.getSession()
-    const token = session?.access_token?.trim()
+    const token = await getAccessToken()
     if (!token) return
 
     setProcessingId(id)
@@ -112,6 +182,7 @@ export function NotificationsBell() {
       })
       if (res.ok) {
         setRequests((prev) => prev.filter((r) => r.id !== id))
+        void fetchRequests()
       }
     } finally {
       setProcessingId(null)
@@ -146,7 +217,7 @@ export function NotificationsBell() {
           </div>
           <div className="max-h-72 overflow-y-auto">
             {loading ? (
-              <div className="px-4 py-6 text-center text-slate-400 text-sm">Loading…</div>
+              <div className="px-4 py-6 text-center text-slate-400 text-sm">Loading...</div>
             ) : requests.length === 0 ? (
               <div className="px-4 py-6 text-center text-slate-400 text-sm">All caught up</div>
             ) : (

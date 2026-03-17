@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useCallback, useEffect, useState } from 'react'
+import { createContext, useContext, useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useDashboardProfile } from '@/components/DashboardLayout'
 
@@ -57,12 +57,32 @@ export function ClientDashboardDataProvider({ children }: { children: React.Reac
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [hasFetched, setHasFetched] = useState(false)
+  const hasFetchedRef = useRef(false)
+  const isFetchingRef = useRef(false)
+  const queuedRefreshRef = useRef(false)
+  const loadDataRef = useRef<((options?: { background?: boolean }) => Promise<void>) | null>(null)
 
-  const loadData = useCallback(async () => {
+  const markFetched = useCallback(() => {
+    if (hasFetchedRef.current) return
+    hasFetchedRef.current = true
+    setHasFetched(true)
+  }, [])
+
+  const loadData = useCallback(async (options?: { background?: boolean }) => {
     if (accountType !== 'client') return
 
-    setLoading(true)
-    setError(null)
+    if (isFetchingRef.current) {
+      queuedRefreshRef.current = true
+      return
+    }
+
+    const isBackgroundRefresh = options?.background ?? hasFetchedRef.current
+    isFetchingRef.current = true
+
+    if (!isBackgroundRefresh) {
+      setLoading(true)
+      setError(null)
+    }
 
     const {
       data: { user },
@@ -70,8 +90,18 @@ export function ClientDashboardDataProvider({ children }: { children: React.Reac
     } = await supabase.auth.getUser()
 
     if (userError || !user) {
-      setError('Unable to load your account.')
-      setLoading(false)
+      if (!isBackgroundRefresh) {
+        setError('Unable to load your account.')
+        setLoading(false)
+      }
+      markFetched()
+      isFetchingRef.current = false
+
+      if (queuedRefreshRef.current) {
+        queuedRefreshRef.current = false
+        void loadDataRef.current?.({ background: true })
+      }
+
       return
     }
 
@@ -87,8 +117,18 @@ export function ClientDashboardDataProvider({ children }: { children: React.Reac
 
     if (clientError) {
       console.error('Failed to load client profile', clientError)
-      setError(clientError.message)
-      setLoading(false)
+      if (!isBackgroundRefresh) {
+        setError(clientError.message)
+        setLoading(false)
+      }
+      markFetched()
+      isFetchingRef.current = false
+
+      if (queuedRefreshRef.current) {
+        queuedRefreshRef.current = false
+        void loadDataRef.current?.({ background: true })
+      }
+
       return
     }
 
@@ -166,23 +206,96 @@ export function ClientDashboardDataProvider({ children }: { children: React.Reac
     }))
 
     setPayments(mappedPayments)
-    setLoading(false)
-    setHasFetched(true)
-  }, [accountType])
+    markFetched()
+    setError(null)
+
+    if (!isBackgroundRefresh) {
+      setLoading(false)
+    }
+
+    isFetchingRef.current = false
+
+    if (queuedRefreshRef.current) {
+      queuedRefreshRef.current = false
+      void loadDataRef.current?.({ background: true })
+    }
+  }, [accountType, markFetched])
 
   useEffect(() => {
-    if (accountType !== 'client') {
-      setLoading(false)
-      return
-    }
+    loadDataRef.current = loadData
+  }, [loadData])
+
+  useEffect(() => {
+    if (accountType !== 'client') return
+
     if (!hasFetched) {
-      void loadData()
+      const timeoutId = window.setTimeout(() => {
+        void loadData()
+      }, 0)
+
+      return () => {
+        window.clearTimeout(timeoutId)
+      }
     }
   }, [accountType, hasFetched, loadData])
 
+  useEffect(() => {
+    if (accountType !== 'client' || !hasFetched) return
+
+    const refresh = () => {
+      void loadData({ background: true })
+    }
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        refresh()
+      }
+    }, 5000)
+
+    const channelName = `client-dashboard-sync-${client?.id ?? 'unknown'}`
+    const channel = supabase.channel(channelName)
+
+    if (client?.id != null) {
+      channel.on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'invoices',
+          filter: `client_id=eq.${client.id}`,
+        },
+        refresh
+      )
+    }
+
+    if (clientEmail) {
+      channel.on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'payment_submissions',
+          filter: `email=eq.${clientEmail}`,
+        },
+        refresh
+      )
+    }
+
+    channel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        refresh()
+      }
+    })
+
+    return () => {
+      window.clearInterval(intervalId)
+      void supabase.removeChannel(channel)
+    }
+  }, [accountType, client?.id, clientEmail, hasFetched, loadData])
+
   const refetch = useCallback(async () => {
     if (accountType !== 'client') return
-    await loadData()
+    await loadData({ background: true })
   }, [accountType, loadData])
 
   const value: ClientDashboardData = {
