@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { DashboardLayout } from '@/components/DashboardLayout'
 import InvoiceView from '@/components/InvoiceView'
@@ -41,14 +41,18 @@ export default function InvoiceRouteShell({ invoiceId, invoiceToken }: { invoice
   if (isEmployee) {
     return (
       <DashboardLayout title="Invoice">
-        <InvoiceView invoiceId={invoiceId} invoiceToken={invoiceToken} publicView={false} />
+        <Suspense fallback={<div className="p-6 text-sm text-slate-400">Loading invoice...</div>}>
+          <InvoiceView invoiceId={invoiceId} invoiceToken={invoiceToken} publicView={false} />
+        </Suspense>
       </DashboardLayout>
     )
   }
 
   return (
     <div className="min-h-screen bg-white">
-      <InvoiceView invoiceId={invoiceId} invoiceToken={invoiceToken} publicView />
+      <Suspense fallback={<div className="min-h-screen bg-white p-6 text-sm text-slate-500">Loading invoice...</div>}>
+        <InvoiceView invoiceId={invoiceId} invoiceToken={invoiceToken} publicView />
+      </Suspense>
     </div>
   )
 }
