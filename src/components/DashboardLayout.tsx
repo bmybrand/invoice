@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
 import { Plus_Jakarta_Sans } from 'next/font/google'
 import { supabase } from '@/lib/supabase'
-import { ClientDashboardDataProvider } from '@/context/ClientDashboardDataContext'
+import { ClientDashboardDataProvider, useClientDashboardData } from '@/context/ClientDashboardDataContext'
 import { NotificationsBell } from '@/components/NotificationsBell'
 import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
 
@@ -148,8 +148,16 @@ function NavIcon({ label, active }: { label: string; active: boolean }) {
   }
 }
 
-function DashboardOverlay({ profileLoaded }: { profileLoaded: boolean }) {
-  const showOverlay = !profileLoaded
+function DashboardOverlay({
+  profileLoaded,
+  accountType,
+}: {
+  profileLoaded: boolean
+  accountType: 'employee' | 'client' | null
+}) {
+  const clientData = useClientDashboardData()
+  const clientLoading = accountType === 'client' && (clientData?.loading ?? true)
+  const showOverlay = !profileLoaded || clientLoading
 
   return (
     <div
@@ -682,6 +690,7 @@ if (clientError) {
       >
         <DashboardOverlay
           profileLoaded={profileLoaded}
+          accountType={accountType}
         />
 
         <aside

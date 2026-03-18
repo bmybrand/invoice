@@ -16,13 +16,6 @@ import {
   Bar,
 } from 'recharts'
 
-type ClientRow = {
-  id: number
-  name?: string
-  email?: string
-  brand_id?: number | null
-}
-
 type InvoiceRow = {
   id: number
   invoice_date?: string | null
@@ -290,18 +283,7 @@ export default function ClientDashboardPage() {
   const accountName = client?.name?.trim() || clientEmail || 'Client'
 
   if (loading) {
-    return (
-      <div className="flex min-h-[400px] w-full items-center justify-center py-16  ">
-        <div className="relative">
-          <div
-            className="h-20 w-20 animate-spin rounded-full border-4 border-transparent border-t-orange-500"
-            style={{ boxShadow: '0 0 24px rgba(249, 115, 22, 0.4)' }}
-            role="status"
-            aria-label="Loading"
-          />
-        </div>
-      </div>
-    )
+    return null
   }
 
   if (error) {
