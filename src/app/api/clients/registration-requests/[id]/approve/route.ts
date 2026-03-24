@@ -18,29 +18,45 @@ export async function POST(
 
   const { data: reqRow, error: fetchError } = await auth.supabase
     .from('client_registration_requests')
-    .select('id, name, email, brand_id, auth_id')
+    .select('id, name, email, brand_id, auth_id, status')
     .eq('id', reqId)
-    .eq('status', 'pending')
     .single()
 
   if (fetchError || !reqRow) {
     return NextResponse.json(
-      { error: fetchError?.message || 'Request not found or already processed' },
+      { error: fetchError?.message || 'Request not found' },
       { status: 404 }
     )
   }
 
-  const row = reqRow as { name: string; email: string; brand_id: number; auth_id: string }
+  const row = reqRow as { name: string; email: string; brand_id: number; auth_id: string; status?: string }
+  const currentStatus = (row.status || '').trim().toLowerCase()
 
-  const { error: insertError } = await auth.supabase.from('clients').insert({
-    name: row.name,
-    email: row.email,
-    brand_id: row.brand_id,
-    handler_id: row.auth_id,
-  })
+  if (currentStatus !== 'pending' && currentStatus !== 'rejected') {
+    return NextResponse.json({ error: 'Only pending or rejected requests can be approved' }, { status: 409 })
+  }
 
-  if (insertError) {
-    return NextResponse.json({ error: insertError.message }, { status: 500 })
+  const { data: existingClient, error: existingClientError } = await auth.supabase
+    .from('clients')
+    .select('id')
+    .eq('email', row.email)
+    .maybeSingle()
+
+  if (existingClientError) {
+    return NextResponse.json({ error: existingClientError.message }, { status: 500 })
+  }
+
+  if (!existingClient) {
+    const { error: insertError } = await auth.supabase.from('clients').insert({
+      name: row.name,
+      email: row.email,
+      brand_id: row.brand_id,
+      handler_id: row.auth_id,
+    })
+
+    if (insertError) {
+      return NextResponse.json({ error: insertError.message }, { status: 500 })
+    }
   }
 
   const { error: updateError } = await auth.supabase

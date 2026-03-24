@@ -12,6 +12,7 @@ import { getInvoiceLink } from '@/lib/invoice-token'
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
 const PAGE_SIZE = 4
+const TABLE_REFRESH_INTERVAL_MS = 3000
 const PAYMENT_GRID =
   'minmax(88px,0.75fr) minmax(120px,1fr) minmax(140px,1fr) minmax(220px,1.5fr) minmax(110px,0.85fr) minmax(130px,1fr) minmax(130px,0.95fr) minmax(220px,1.7fr) minmax(120px,0.95fr) minmax(160px,1.1fr) minmax(100px,0.9fr) 72px'
 
@@ -145,15 +146,20 @@ export default function Payments() {
   useEffect(() => {
     let active = true
 
-    async function fetchPayments() {
-      setPaymentsLoading(true)
+    async function fetchPayments(options?: { background?: boolean }) {
+      const isBackgroundRefresh = options?.background ?? false
+      if (!isBackgroundRefresh) {
+        setPaymentsLoading(true)
+      }
 
       const isClient = accountType === 'client'
       const clientId = clientData?.client?.id ?? null
 
       if (isClient && (clientData?.loading || !clientId)) {
         setPayments([])
-        setPaymentsLoading(false)
+        if (!isBackgroundRefresh) {
+          setPaymentsLoading(false)
+        }
         return
       }
 
@@ -172,7 +178,9 @@ export default function Payments() {
 
         if (invoiceIds.length === 0) {
           setPayments([])
-          setPaymentsLoading(false)
+          if (!isBackgroundRefresh) {
+            setPaymentsLoading(false)
+          }
           return
         }
 
@@ -203,7 +211,9 @@ export default function Payments() {
       if (submissionError) {
         console.error('Failed to fetch payments', submissionError)
         setPayments([])
-        setPaymentsLoading(false)
+        if (!isBackgroundRefresh) {
+          setPaymentsLoading(false)
+        }
         return
       }
 
@@ -282,12 +292,21 @@ export default function Payments() {
       if (!active) return
 
       setPayments(mappedPayments)
-      setPaymentsLoading(false)
+      if (!isBackgroundRefresh) {
+        setPaymentsLoading(false)
+      }
     }
 
     void fetchPayments()
 
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void fetchPayments({ background: true })
+      }
+    }, TABLE_REFRESH_INTERVAL_MS)
+
     return () => {
+      window.clearInterval(intervalId)
       active = false
     }
   }, [accountType, clientData?.client?.id, clientData?.loading])

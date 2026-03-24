@@ -18,6 +18,7 @@ type BrandRow = {
 }
 
 const PAGE_SIZE = 4
+const TABLE_REFRESH_INTERVAL_MS = 3000
 const BRAND_GRID = 'minmax(68px,0.75fr) minmax(108px,1.15fr) minmax(148px,2.1fr) 128px 96px 100px'
 
 function SearchIcon({ className = 'h-4 w-4' }: { className?: string }) {
@@ -102,13 +103,18 @@ export default function Brand() {
 
   const isSuperAdmin = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '') === 'superadmin'
 
-  const fetchBrands = useCallback(async () => {
-    setBrandsLoading(true)
+  const fetchBrands = useCallback(async (options?: { background?: boolean }) => {
+    const isBackgroundRefresh = options?.background ?? false
+    if (!isBackgroundRefresh) {
+      setBrandsLoading(true)
+    }
     const { data, error } = await supabase
       .from('brands')
       .select('id, brand_name, brand_url, logo_url, favicon_url, created_at')
       .order('created_at', { ascending: false })
-    setBrandsLoading(false)
+    if (!isBackgroundRefresh) {
+      setBrandsLoading(false)
+    }
     if (error) {
       console.error('Failed to fetch brands', error)
       setBrands([])
@@ -118,11 +124,15 @@ export default function Brand() {
   }, [])
 
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      void fetchBrands()
-    }, 0)
+    void fetchBrands()
 
-    return () => window.clearTimeout(timeoutId)
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void fetchBrands({ background: true })
+      }
+    }, TABLE_REFRESH_INTERVAL_MS)
+
+    return () => window.clearInterval(intervalId)
   }, [fetchBrands])
 
   const filteredBrands = searchQuery.trim()

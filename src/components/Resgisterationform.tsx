@@ -108,6 +108,7 @@ export function RegisterForm() {
       }
     }
 
+    await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
     setLoading(false)
     router.replace('/register/pending')
     router.refresh()

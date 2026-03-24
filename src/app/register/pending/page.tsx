@@ -39,8 +39,9 @@ export default function RegisterPendingPage() {
       if (!active || employeeError || clientError || requestError) return
 
       if (employeeData || clientData) {
-        router.replace('/dashboard')
-        router.refresh()
+        await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+        if (!active) return
+        router.replace('/login?reason=approved')
         return
       }
 

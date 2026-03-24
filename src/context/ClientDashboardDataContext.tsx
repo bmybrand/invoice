@@ -41,6 +41,7 @@ type ClientDashboardData = {
 }
 
 const ClientDashboardDataContext = createContext<ClientDashboardData | null>(null)
+const TABLE_REFRESH_INTERVAL_MS = 3000
 
 export function useClientDashboardData() {
   const ctx = useContext(ClientDashboardDataContext)
@@ -250,7 +251,7 @@ export function ClientDashboardDataProvider({ children }: { children: React.Reac
       if (document.visibilityState === 'visible') {
         refresh()
       }
-    }, 5000)
+    }, TABLE_REFRESH_INTERVAL_MS)
 
     const channelName = `client-dashboard-sync-${client?.id ?? 'unknown'}`
     const channel = supabase.channel(channelName)

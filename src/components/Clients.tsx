@@ -9,6 +9,7 @@ import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/for
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
 const PAGE_SIZE = 8
+const TABLE_REFRESH_INTERVAL_MS = 3000
 
 type ClientRow = {
   id: number
@@ -16,6 +17,27 @@ type ClientRow = {
   email: string
   brand_id: number | null
   brand_name?: string
+}
+
+type RegistrationRequestRow = {
+  id: number
+  name: string
+  email: string
+  brand_id: number | null
+  status: string
+  brand_name?: string
+  created_at?: string | null
+}
+
+type ClientTableRow = {
+  rowType: 'client' | 'request'
+  rowKey: string
+  status: 'approved' | 'pending' | 'rejected'
+  name: string
+  email: string
+  brand_name?: string
+  client?: ClientRow
+  request?: RegistrationRequestRow
 }
 
 type BrandOption = { id: number; brand_name: string }
@@ -32,6 +54,14 @@ function PlusIcon({ className = 'h-4 w-3' }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+    </svg>
+  )
+}
+
+function CheckIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.25}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
     </svg>
   )
 }
@@ -80,6 +110,7 @@ export default function Clients() {
   const { displayRole } = useDashboardProfile()
   const [clients, setClients] = useState<ClientRow[]>([])
   const [clientsLoading, setClientsLoading] = useState(true)
+  const [registrationRequests, setRegistrationRequests] = useState<RegistrationRequestRow[]>([])
   const [brands, setBrands] = useState<BrandOption[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
@@ -107,6 +138,8 @@ export default function Clients() {
   const [deletingClient, setDeletingClient] = useState<ClientRow | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [requestActionLoadingId, setRequestActionLoadingId] = useState<number | null>(null)
+  const [requestActionError, setRequestActionError] = useState<string | null>(null)
 
   const fetchBrands = useCallback(async () => {
     const { data, error } = await supabase.from('brands').select('id, brand_name').order('brand_name')
@@ -117,22 +150,58 @@ export default function Clients() {
     setBrands((data as BrandOption[]) ?? [])
   }, [])
 
-  const fetchClients = useCallback(async () => {
-    setClientsLoading(true)
-    const { data: clientsData, error: clientsError } = await supabase
-      .from('clients')
-      .select('id, name, email, brand_id')
-      .order('id', { ascending: false })
+  const fetchClients = useCallback(async (options?: { background?: boolean }) => {
+    const isBackgroundRefresh = options?.background ?? false
+    if (!isBackgroundRefresh) {
+      setClientsLoading(true)
+    }
+    const [
+      { data: clientsData, error: clientsError },
+      { data: requestsData, error: requestsError },
+    ] = await Promise.all([
+      supabase
+        .from('clients')
+        .select('id, name, email, brand_id')
+        .order('id', { ascending: false }),
+      supabase
+        .from('client_registration_requests')
+        .select('id, name, email, brand_id, status, created_at')
+        .order('created_at', { ascending: false }),
+    ])
 
     if (clientsError) {
       console.error('Failed to fetch clients', clientsError)
       setClients([])
-      setClientsLoading(false)
+      setRegistrationRequests([])
+      if (!isBackgroundRefresh) {
+        setClientsLoading(false)
+      }
       return
     }
 
+    if (requestsError) {
+      console.error('Failed to fetch registration requests', requestsError)
+    }
+
     const clientRows = (clientsData as ClientRow[]) ?? []
-    const brandIds = [...new Set(clientRows.map((c) => c.brand_id).filter(Boolean))] as number[]
+    const latestRequestByEmail = new Map<string, RegistrationRequestRow>()
+    ;((requestsData as RegistrationRequestRow[]) ?? []).forEach((row) => {
+      const emailKey = (row.email || '').trim().toLowerCase()
+      if (!emailKey || latestRequestByEmail.has(emailKey)) return
+      latestRequestByEmail.set(emailKey, row)
+    })
+
+    const requestRows = Array.from(latestRequestByEmail.values()).filter((row) => {
+      const status = (row.status || '').trim().toLowerCase()
+      return status === 'pending' || status === 'rejected'
+    })
+
+    const brandIds = [
+      ...new Set([
+        ...clientRows.map((c) => c.brand_id).filter(Boolean),
+        ...requestRows.map((r) => r.brand_id).filter(Boolean),
+      ]),
+    ] as number[]
 
     if (brandIds.length > 0) {
       const { data: brandsData } = await supabase
@@ -143,18 +212,28 @@ export default function Clients() {
       clientRows.forEach((c) => {
         if (c.brand_id) (c as ClientRow).brand_name = brandMap.get(c.brand_id) ?? ''
       })
+      requestRows.forEach((r) => {
+        if (r.brand_id) (r as RegistrationRequestRow).brand_name = brandMap.get(r.brand_id) ?? ''
+      })
     }
 
     setClients(clientRows)
-    setClientsLoading(false)
+    setRegistrationRequests(requestRows)
+    if (!isBackgroundRefresh) {
+      setClientsLoading(false)
+    }
   }, [])
 
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      void fetchClients()
-    }, 0)
+    void fetchClients()
 
-    return () => window.clearTimeout(timeoutId)
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void fetchClients({ background: true })
+      }
+    }, TABLE_REFRESH_INTERVAL_MS)
+
+    return () => window.clearInterval(intervalId)
   }, [fetchClients])
 
   useEffect(() => {
@@ -165,14 +244,49 @@ export default function Clients() {
     return () => window.clearTimeout(timeoutId)
   }, [fetchBrands])
 
+  const tableRows: ClientTableRow[] = [
+    ...registrationRequests
+      .filter((row) => (row.status || '').trim().toLowerCase() === 'pending')
+      .map((row) => ({
+        rowType: 'request' as const,
+        rowKey: `request-${row.id}`,
+        status: 'pending' as const,
+        name: row.name,
+        email: row.email,
+        brand_name: row.brand_name,
+        request: row,
+      })),
+    ...clients.map((client) => ({
+      rowType: 'client' as const,
+      rowKey: `client-${client.id}`,
+      status: 'approved' as const,
+      name: client.name,
+      email: client.email,
+      brand_name: client.brand_name,
+      client,
+    })),
+    ...registrationRequests
+      .filter((row) => (row.status || '').trim().toLowerCase() === 'rejected')
+      .map((row) => ({
+        rowType: 'request' as const,
+        rowKey: `request-${row.id}`,
+        status: 'rejected' as const,
+        name: row.name,
+        email: row.email,
+        brand_name: row.brand_name,
+        request: row,
+      })),
+  ]
+
   const filteredClients = searchQuery.trim()
-    ? clients.filter(
+    ? tableRows.filter(
         (c) =>
           (c.name || '').toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
           (c.email || '').toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
-          (c.brand_name || '').toLowerCase().includes(searchQuery.trim().toLowerCase())
+          (c.brand_name || '').toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
+          c.status.toLowerCase().includes(searchQuery.trim().toLowerCase())
       )
-    : clients
+    : tableRows
 
   const totalPages = Math.max(1, Math.ceil(filteredClients.length / PAGE_SIZE))
   const effectivePage = Math.min(currentPage, totalPages)
@@ -316,6 +430,73 @@ export default function Clients() {
     await fetchClients()
   }
 
+  function getStatusStyle(status: ClientTableRow['status']) {
+    if (status === 'approved') return 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+    if (status === 'pending') return 'border-amber-500/20 bg-amber-500/10 text-amber-400'
+    return 'border-red-500/20 bg-red-500/10 text-red-400'
+  }
+
+  async function handleRequestDecision(requestId: number, decision: 'approve' | 'reject') {
+    if (!canEditDelete) return
+    setRequestActionError(null)
+    setRequestActionLoadingId(requestId)
+
+    const token = await getCurrentAuthToken()
+    if (!token) {
+      setRequestActionLoadingId(null)
+      setRequestActionError('Authentication expired. Sign in again and try again.')
+      return
+    }
+
+    const endpoint = `/api/clients/registration-requests/${requestId}/${decision}`
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+
+    const result = (await response.json().catch(() => null)) as { error?: string } | null
+    setRequestActionLoadingId(null)
+
+    if (!response.ok) {
+      setRequestActionError(result?.error || `Failed to ${decision} request`)
+      return
+    }
+
+    await fetchClients({ background: true })
+  }
+
+  async function handleRequestDelete(requestId: number) {
+    if (!canEditDelete) return
+    setRequestActionError(null)
+    setRequestActionLoadingId(requestId)
+
+    const token = await getCurrentAuthToken()
+    if (!token) {
+      setRequestActionLoadingId(null)
+      setRequestActionError('Authentication expired. Sign in again and try again.')
+      return
+    }
+
+    const response = await fetch(`/api/clients/registration-requests/${requestId}`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+
+    const result = (await response.json().catch(() => null)) as { error?: string } | null
+    setRequestActionLoadingId(null)
+
+    if (!response.ok) {
+      setRequestActionError(result?.error || 'Failed to delete request')
+      return
+    }
+
+    await fetchClients({ background: true })
+  }
+
   return (
     <div className={`${plusJakarta.className} w-full flex flex-col text-white`}>
       <div className="w-full pb-6">
@@ -358,10 +539,16 @@ export default function Clients() {
         </div>
       </div>
 
+      {requestActionError && (
+        <div className="w-full pb-6">
+          <p className="rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-400">{requestActionError}</p>
+        </div>
+      )}
+
       {/* Table */}
       <div className="w-full bg-slate-800/80 rounded-xl border border-slate-700 overflow-hidden">
         <div className="w-full overflow-x-auto scrollbar-thin">
-          <table className="w-full min-w-[560px] table-fixed">
+          <table className="w-full min-w-[760px] table-fixed">
             <thead>
               <tr className="bg-slate-900/50 border-b border-slate-700">
                 <th className="w-[72px] px-4 sm:px-6 py-4 text-left">
@@ -376,8 +563,11 @@ export default function Clients() {
                 <th className="px-4 sm:px-6 py-4 text-left">
                   <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Brand</span>
                 </th>
+                <th className="px-4 sm:px-6 py-4 text-left">
+                  <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Status</span>
+                </th>
                 {canEditDelete && (
-                  <th className="w-[100px] px-4 sm:px-6 py-4 text-right">
+                  <th className="w-[180px] px-4 sm:px-6 py-4 text-right">
                     <span className="text-slate-400 text-xs font-bold uppercase tracking-wide">Actions</span>
                   </th>
                 )}
@@ -386,19 +576,19 @@ export default function Clients() {
             <tbody>
               {clientsLoading ? (
                 <tr>
-                  <td colSpan={canEditDelete ? 5 : 4} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
+                  <td colSpan={canEditDelete ? 6 : 5} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
                     Loading clients…
                   </td>
                 </tr>
               ) : paginatedClients.length === 0 ? (
                 <tr>
-                  <td colSpan={canEditDelete ? 5 : 4} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
+                  <td colSpan={canEditDelete ? 6 : 5} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
                     {searchQuery.trim() ? 'No matching clients' : 'No clients yet. Add a client to get started.'}
                   </td>
                 </tr>
               ) : (
                 paginatedClients.map((c, rowIndex) => (
-                  <tr key={c.id} className="border-t border-slate-700">
+                  <tr key={c.rowKey} className="border-t border-slate-700">
                     <td className="w-[72px] px-4 sm:px-6 py-4">
                       <span className="text-white text-sm font-bold font-mono block truncate whitespace-nowrap" title={`Row ${start + rowIndex + 1}`}>{start + rowIndex + 1}</span>
                     </td>
@@ -411,28 +601,85 @@ export default function Clients() {
                     <td className="px-4 sm:px-6 py-4 min-w-0">
                       <span className="text-slate-300 text-sm truncate block whitespace-nowrap" title={c.brand_name || '-'}>{c.brand_name || '-'}</span>
                     </td>
+                    <td className="px-4 sm:px-6 py-4 min-w-0">
+                      <span className={`inline-flex rounded-lg border px-2 py-1 text-xs font-medium capitalize ${getStatusStyle(c.status)}`}>
+                        {c.status}
+                      </span>
+                    </td>
                     {canEditDelete && (
-                      <td className="w-[100px] px-4 sm:px-6 py-4">
+                      <td className="w-[180px] px-4 sm:px-6 py-4">
                         <div className="flex justify-end gap-1">
-                          <button
-                            type="button"
-                            onClick={() => openEditModal(c)}
-                            className="p-2 rounded-lg text-slate-400 hover:bg-slate-700/50 hover:text-slate-300 transition"
-                            aria-label="Edit"
-                          >
-                            <PencilIcon />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDeleteError(null)
-                              setDeletingClient(c)
-                            }}
-                            className="p-2 rounded-lg text-slate-400 hover:bg-slate-700/50 hover:text-red-400 transition"
-                            aria-label="Delete"
-                          >
-                            <TrashIcon />
-                          </button>
+                          {c.rowType === 'client' && c.client ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => openEditModal(c.client!)}
+                                className="p-2 rounded-lg text-slate-400 hover:bg-slate-700/50 hover:text-slate-300 transition"
+                                aria-label="Edit"
+                              >
+                                <PencilIcon />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDeleteError(null)
+                                  setDeletingClient(c.client!)
+                                }}
+                                className="p-2 rounded-lg text-slate-400 hover:bg-slate-700/50 hover:text-red-400 transition"
+                                aria-label="Delete"
+                              >
+                                <TrashIcon />
+                              </button>
+                            </>
+                          ) : c.rowType === 'request' && c.request && c.status === 'pending' ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => void handleRequestDecision(c.request!.id, 'approve')}
+                                disabled={requestActionLoadingId === c.request.id}
+                                className="group p-2 rounded-lg text-slate-400 hover:bg-slate-700/50 transition disabled:opacity-50"
+                                title="Accept request"
+                                aria-label="Accept request"
+                              >
+                                {requestActionLoadingId === c.request.id ? '...' : <CheckIcon className="h-3.5 w-3.5 text-slate-400 transition-colors group-hover:text-emerald-400" />}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleRequestDecision(c.request!.id, 'reject')}
+                                disabled={requestActionLoadingId === c.request.id}
+                                className="p-2 rounded-lg text-slate-400 hover:bg-slate-700/50 hover:text-red-400 transition disabled:opacity-50"
+                                title="Reject request"
+                                aria-label="Reject request"
+                              >
+                                {requestActionLoadingId === c.request.id ? '...' : <CloseIcon className="h-3.5 w-3.5" />}
+                              </button>
+                            </>
+                          ) : c.rowType === 'request' && c.request && c.status === 'rejected' ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => void handleRequestDecision(c.request!.id, 'approve')}
+                                disabled={requestActionLoadingId === c.request.id}
+                                className="group p-2 rounded-lg text-slate-400 hover:bg-slate-700/50 transition disabled:opacity-50"
+                                title="Accept request"
+                                aria-label="Accept request"
+                              >
+                                {requestActionLoadingId === c.request.id ? '...' : <CheckIcon className="h-3.5 w-3.5 text-slate-400 transition-colors group-hover:text-emerald-400" />}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleRequestDelete(c.request!.id)}
+                                disabled={requestActionLoadingId === c.request.id}
+                                className="p-2 rounded-lg text-slate-400 hover:bg-slate-700/50 hover:text-red-400 transition disabled:opacity-50"
+                                title="Delete request"
+                                aria-label="Delete request"
+                              >
+                                {requestActionLoadingId === c.request.id ? '...' : <TrashIcon className="h-3.5 w-3.5" />}
+                              </button>
+                            </>
+                          ) : (
+                            <span className="text-xs text-slate-500">No actions</span>
+                          )}
                         </div>
                       </td>
                     )}

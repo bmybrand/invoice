@@ -9,6 +9,7 @@ import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/for
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
 const PAGE_SIZE = 4
+const TABLE_REFRESH_INTERVAL_MS = 3000
 const PROFILE_AVATAR_BUCKET = 'profile-images'
 
 type EmployeeRow = {
@@ -262,14 +263,19 @@ export default function Employees() {
     )
   }, [])
 
-  const fetchEmployees = useCallback(async () => {
-    setEmployeesLoading(true)
+  const fetchEmployees = useCallback(async (options?: { background?: boolean }) => {
+    const isBackgroundRefresh = options?.background ?? false
+    if (!isBackgroundRefresh) {
+      setEmployeesLoading(true)
+    }
     const { data, error } = await supabase
       .from('employees')
       .select('id, auth_id, employee_name, email, role, department, created_at')
       .order('created_at', { ascending: false })
 
-    setEmployeesLoading(false)
+    if (!isBackgroundRefresh) {
+      setEmployeesLoading(false)
+    }
     if (error) {
       console.error('Failed to fetch employees', error)
       setEmployees([])
@@ -282,7 +288,15 @@ export default function Employees() {
   }, [fetchEmployeeAvatarUrls])
 
   useEffect(() => {
-    fetchEmployees()
+    void fetchEmployees()
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void fetchEmployees({ background: true })
+      }
+    }, TABLE_REFRESH_INTERVAL_MS)
+
+    return () => window.clearInterval(intervalId)
   }, [fetchEmployees])
 
   async function getCurrentAuthToken() {

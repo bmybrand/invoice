@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireAdminOrSuperAdmin } from '@/lib/server-admin-auth'
 
-export async function POST(
+export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -23,31 +23,23 @@ export async function POST(
     .single()
 
   if (fetchError || !reqRow) {
-    return NextResponse.json(
-      { error: fetchError?.message || 'Request not found' },
-      { status: 404 }
-    )
+    return NextResponse.json({ error: fetchError?.message || 'Request not found' }, { status: 404 })
   }
 
-  const row = reqRow as { id: number; status?: string }
-  const currentStatus = (row.status || '').trim().toLowerCase()
+  const row = reqRow as { status?: string | null }
+  const status = (row.status || '').trim().toLowerCase()
 
-  if (currentStatus === 'approved') {
-    return NextResponse.json({ error: 'Approved requests cannot be rejected from this endpoint' }, { status: 409 })
+  if (status !== 'rejected') {
+    return NextResponse.json({ error: 'Only rejected requests can be deleted' }, { status: 409 })
   }
 
-  if (currentStatus === 'rejected') {
-    return NextResponse.json({ ok: true })
-  }
-
-  const { error } = await auth.supabase
+  const { error: deleteError } = await auth.supabase
     .from('client_registration_requests')
-    .update({ status: 'rejected' })
+    .delete()
     .eq('id', reqId)
-    .eq('status', 'pending')
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  if (deleteError) {
+    return NextResponse.json({ error: deleteError.message }, { status: 500 })
   }
 
   return NextResponse.json({ ok: true })

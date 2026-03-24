@@ -609,20 +609,27 @@ export default function Invoice() {
   }
 
 
-  const fetchInvoices = useCallback(async () => {
+  const fetchInvoices = useCallback(async (options?: { background?: boolean }) => {
+    const isBackgroundRefresh = options?.background ?? false
     const isClient = accountType === 'client'
     const clientId = clientData?.client?.id ?? null
 
     if (isClient && clientData?.loading) return
 
     if (isClient && !clientId) {
-      setInvoicesLoading(true)
+      if (!isBackgroundRefresh) {
+        setInvoicesLoading(true)
+      }
       setInvoices([])
-      setInvoicesLoading(false)
+      if (!isBackgroundRefresh) {
+        setInvoicesLoading(false)
+      }
       return
     }
 
-    setInvoicesLoading(true)
+    if (!isBackgroundRefresh) {
+      setInvoicesLoading(true)
+    }
     let query = supabase
       .from('invoices')
       .select('*, employees!invoice_creator_id(employee_name), clients!client_id(name)')
@@ -633,7 +640,9 @@ export default function Invoice() {
     }
 
     const { data, error } = await query
-    setInvoicesLoading(false)
+    if (!isBackgroundRefresh) {
+      setInvoicesLoading(false)
+    }
     if (error) {
       console.error('Failed to fetch invoices', error)
       setInvoices([])
@@ -706,7 +715,15 @@ export default function Invoice() {
   }, [])
 
   useEffect(() => {
-    fetchInvoices()
+    void fetchInvoices()
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void fetchInvoices({ background: true })
+      }
+    }, TABLE_REFRESH_INTERVAL_MS)
+
+    return () => window.clearInterval(intervalId)
   }, [fetchInvoices])
 
   useEffect(() => {
@@ -731,6 +748,7 @@ export default function Invoice() {
   const statusFilterLabel = statusOptions.find((o) => o.value === statusFilter)?.label ?? 'All Statuses'
 
   const PAGE_SIZE = 4
+  const TABLE_REFRESH_INTERVAL_MS = 3000
 
   useEffect(() => {
     setCurrentPage(1)

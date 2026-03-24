@@ -30,9 +30,14 @@ export function LoginForm() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const reason = searchParams.get('reason')
   const reasonError =
-    searchParams.get('reason') === 'rejected'
+    reason === 'rejected'
       ? 'Your registration request was rejected. Contact an administrator or register again.'
+      : null
+  const reasonInfo =
+    reason === 'approved'
+      ? 'Your registration request was approved. Please sign in with your email and password.'
       : null
 
   useEffect(() => {
@@ -177,18 +182,6 @@ export function LoginForm() {
       return
     }
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-    const token = session?.access_token?.trim() || ''
-
-    if (requestStatus === 'rejected' && token) {
-      await fetch('/api/auth/cleanup-rejected', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      }).catch(() => {})
-    }
-
     await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
     setLoading(false)
 
@@ -259,6 +252,12 @@ export function LoginForm() {
             {(error || reasonError) && (
               <p className="rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-400 sm:rounded-xl sm:text-base">
                 {error || reasonError}
+              </p>
+            )}
+
+            {reasonInfo && !error && !reasonError && (
+              <p className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300 sm:rounded-xl sm:text-base">
+                {reasonInfo}
               </p>
             )}
 
