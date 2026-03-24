@@ -9,7 +9,7 @@ import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/for
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
 const PAGE_SIZE = 4
-const TABLE_REFRESH_INTERVAL_MS = 3000
+const TABLE_REFRESH_INTERVAL_MS = 5000
 const PROFILE_AVATAR_BUCKET = 'profile-images'
 
 type EmployeeRow = {
@@ -146,6 +146,7 @@ export default function Employees() {
   const [deletingEmployee, setDeletingEmployee] = useState<EmployeeRow | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const roleOptions = [
     { value: '', label: 'All Roles' },
@@ -330,6 +331,7 @@ export default function Employees() {
     if (!token) {
       setAddLoading(false)
       setAddError('Authentication expired. Sign in again and try again.')
+      setActionMessage({ type: 'error', text: 'Authentication expired. Sign in again and try again.' })
       return
     }
 
@@ -353,6 +355,7 @@ export default function Employees() {
     setAddLoading(false)
     if (!response.ok) {
       setAddError(result?.error || 'Failed to create user')
+      setActionMessage({ type: 'error', text: result?.error || 'Failed to create user' })
       return
     }
 
@@ -362,6 +365,7 @@ export default function Employees() {
     setAddName('')
     setAddRole('user')
     setAddDepartment('')
+    setActionMessage({ type: 'success', text: `Employee ${addName.trim()} added successfully.` })
     await fetchEmployees()
   }
 
@@ -435,6 +439,7 @@ export default function Employees() {
     if (passwordError) {
       setEditLoading(false)
       setEditError(passwordError)
+      setActionMessage({ type: 'error', text: passwordError })
       return
     }
 
@@ -448,6 +453,7 @@ export default function Employees() {
       if (demoteError) {
         setEditLoading(false)
         setEditError(demoteError.message)
+        setActionMessage({ type: 'error', text: demoteError.message })
         return
       }
       const { error: promoteError } = await supabase
@@ -461,8 +467,10 @@ export default function Employees() {
       setEditLoading(false)
       if (promoteError) {
         setEditError(promoteError.message)
+        setActionMessage({ type: 'error', text: promoteError.message })
         return
       }
+      setActionMessage({ type: 'success', text: `Employee ${editName.trim()} updated successfully.` })
       setEditingEmployee(null)
       await fetchEmployees()
       window.location.reload()
@@ -484,10 +492,12 @@ export default function Employees() {
     setEditLoading(false)
     if (error) {
       setEditError(error.message)
+      setActionMessage({ type: 'error', text: error.message })
       return
     }
 
     setEditingEmployee(null)
+    setActionMessage({ type: 'success', text: `Employee ${editName.trim()} updated successfully.` })
     await fetchEmployees()
   }
 
@@ -500,6 +510,7 @@ export default function Employees() {
     if (!token) {
       setDeleteLoading(false)
       setDeleteError('Authentication expired. Sign in again and try again.')
+      setActionMessage({ type: 'error', text: 'Authentication expired. Sign in again and try again.' })
       return
     }
 
@@ -513,8 +524,10 @@ export default function Employees() {
     setDeleteLoading(false)
     if (!response.ok) {
       setDeleteError(result?.error || 'Failed to delete employee')
+      setActionMessage({ type: 'error', text: result?.error || 'Failed to delete employee' })
       return
     }
+    setActionMessage({ type: 'success', text: `Employee ${deletingEmployee.employee_name} deleted successfully.` })
     setDeletingEmployee(null)
     await fetchEmployees()
   }
@@ -573,6 +586,20 @@ export default function Employees() {
           </div>
         </div>
       </div>
+
+      {actionMessage && (
+        <div className="w-full pb-6">
+          <p
+            className={`rounded-lg border px-4 py-3 text-sm ${
+              actionMessage.type === 'error'
+                ? 'border-red-500/50 bg-red-500/10 text-red-400'
+                : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+            }`}
+          >
+            {actionMessage.text}
+          </p>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="w-full pb-6">

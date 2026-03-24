@@ -26,7 +26,12 @@ export default function RegisterPendingPage() {
         { data: latestRequest, error: requestError },
       ] = await Promise.all([
         supabase.from('employees').select('id').eq('auth_id', authId).maybeSingle(),
-        supabase.from('clients').select('id').eq('email', normalizedEmail).maybeSingle(),
+        supabase
+          .from('clients')
+          .select('id')
+          .eq('status', true)
+          .or(`handler_id.eq.${authId},email.eq.${normalizedEmail}`)
+          .maybeSingle(),
         supabase
           .from('client_registration_requests')
           .select('status')
@@ -75,7 +80,10 @@ export default function RegisterPendingPage() {
         </p>
         <button
           type="button"
-          onClick={() => router.replace('/login')}
+          onClick={async () => {
+            await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+            router.replace('/login')
+          }}
           className="mt-6 inline-block rounded-xl bg-orange-500 px-6 py-3 text-sm font-semibold text-white hover:bg-orange-600 transition"
         >
           Back to Sign In

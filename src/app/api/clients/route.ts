@@ -49,6 +49,7 @@ export async function POST(request: Request) {
       email,
       brand_id: brandId,
       handler_id: createdUser.user.id,
+      status: true,
     })
     .select('id, name, email, brand_id')
     .single()

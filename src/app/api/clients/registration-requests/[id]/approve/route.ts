@@ -52,10 +52,25 @@ export async function POST(
       email: row.email,
       brand_id: row.brand_id,
       handler_id: row.auth_id,
+      status: true,
     })
 
     if (insertError) {
       return NextResponse.json({ error: insertError.message }, { status: 500 })
+    }
+  } else {
+    const { error: reactivateError } = await auth.supabase
+      .from('clients')
+      .update({
+        name: row.name,
+        brand_id: row.brand_id,
+        handler_id: row.auth_id,
+        status: true,
+      })
+      .eq('id', (existingClient as { id: number }).id)
+
+    if (reactivateError) {
+      return NextResponse.json({ error: reactivateError.message }, { status: 500 })
     }
   }
 

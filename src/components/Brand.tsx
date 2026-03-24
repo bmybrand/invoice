@@ -18,7 +18,7 @@ type BrandRow = {
 }
 
 const PAGE_SIZE = 4
-const TABLE_REFRESH_INTERVAL_MS = 3000
+const TABLE_REFRESH_INTERVAL_MS = 5000
 const BRAND_GRID = 'minmax(68px,0.75fr) minmax(108px,1.15fr) minmax(148px,2.1fr) 128px 96px 100px'
 
 function SearchIcon({ className = 'h-4 w-4' }: { className?: string }) {
@@ -100,6 +100,7 @@ export default function Brand() {
   const [editError, setEditError] = useState<string | null>(null)
   const [deletingBrand, setDeletingBrand] = useState<BrandRow | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const isSuperAdmin = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '') === 'superadmin'
 
@@ -172,6 +173,7 @@ export default function Brand() {
     setAddLoading(false)
     if (insertError) {
       setAddError(insertError.message)
+      setActionMessage({ type: 'error', text: insertError.message })
       return
     }
 
@@ -180,6 +182,7 @@ export default function Brand() {
     setAddUrl('')
     setAddLogoUrl('')
     setAddFaviconUrl('')
+    setActionMessage({ type: 'success', text: `Brand ${addName.trim()} added successfully.` })
     await fetchBrands()
   }
 
@@ -211,10 +214,12 @@ export default function Brand() {
     setEditLoading(false)
     if (error) {
       setEditError(error.message)
+      setActionMessage({ type: 'error', text: error.message })
       return
     }
 
     setEditingBrand(null)
+    setActionMessage({ type: 'success', text: `Brand ${editName.trim()} updated successfully.` })
     await fetchBrands()
   }
 
@@ -225,8 +230,10 @@ export default function Brand() {
     setDeleteLoading(false)
     if (error) {
       console.error('Failed to delete brand', error)
+      setActionMessage({ type: 'error', text: error.message || 'Failed to delete brand' })
       return
     }
+    setActionMessage({ type: 'success', text: `Brand ${deletingBrand.brand_name} deleted successfully.` })
     setDeletingBrand(null)
     await fetchBrands()
   }
@@ -254,6 +261,20 @@ export default function Brand() {
           )}
         </div>
       </div>
+
+      {actionMessage && (
+        <div className="w-full pb-6">
+          <p
+            className={`rounded-lg border px-4 py-3 text-sm ${
+              actionMessage.type === 'error'
+                ? 'border-red-500/50 bg-red-500/10 text-red-400'
+                : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+            }`}
+          >
+            {actionMessage.text}
+          </p>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="w-full pb-6">

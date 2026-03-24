@@ -18,19 +18,12 @@ export async function DELETE(
 
   const { data: reqRow, error: fetchError } = await auth.supabase
     .from('client_registration_requests')
-    .select('id, status')
+    .select('id')
     .eq('id', reqId)
     .single()
 
   if (fetchError || !reqRow) {
     return NextResponse.json({ error: fetchError?.message || 'Request not found' }, { status: 404 })
-  }
-
-  const row = reqRow as { status?: string | null }
-  const status = (row.status || '').trim().toLowerCase()
-
-  if (status !== 'rejected') {
-    return NextResponse.json({ error: 'Only rejected requests can be deleted' }, { status: 409 })
   }
 
   const { error: deleteError } = await auth.supabase

@@ -12,7 +12,7 @@ import { getInvoiceLink } from '@/lib/invoice-token'
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
 const PAGE_SIZE = 4
-const TABLE_REFRESH_INTERVAL_MS = 3000
+const TABLE_REFRESH_INTERVAL_MS = 5000
 const PAYMENT_GRID =
   'minmax(88px,0.75fr) minmax(120px,1fr) minmax(140px,1fr) minmax(220px,1.5fr) minmax(110px,0.85fr) minmax(130px,1fr) minmax(130px,0.95fr) minmax(220px,1.7fr) minmax(120px,0.95fr) minmax(160px,1.1fr) minmax(100px,0.9fr) 72px'
 

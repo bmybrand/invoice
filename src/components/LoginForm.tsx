@@ -59,7 +59,12 @@ export function LoginForm() {
         { data: latestRequest, error: requestError },
       ] = await Promise.all([
         supabase.from('employees').select('id').eq('auth_id', authId).maybeSingle(),
-        supabase.from('clients').select('id').eq('email', normalizedEmail).maybeSingle(),
+        supabase
+          .from('clients')
+          .select('id')
+          .eq('status', true)
+          .or(`handler_id.eq.${authId},email.eq.${normalizedEmail}`)
+          .maybeSingle(),
         supabase
           .from('client_registration_requests')
           .select('status')
@@ -96,14 +101,54 @@ export function LoginForm() {
     setError(null)
     setLoading(true)
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
+    // Retry once for transient Supabase gateway/network timeouts.
+    let signedIn = false
+    let signInFailureMessage = ''
 
-    if (signInError) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        })
+
+        if (!signInError) {
+          signedIn = true
+          break
+        }
+
+        signInFailureMessage = signInError.message || 'Unable to sign in.'
+        const retryableError = /504|gateway timeout|timed out|timeout/i.test(signInFailureMessage)
+        if (retryableError && attempt === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 500))
+          continue
+        }
+
+        setLoading(false)
+        setError(signInFailureMessage)
+        return
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unable to sign in.'
+        signInFailureMessage = message
+        const retryableError = /504|gateway timeout|timed out|timeout|fetch failed|network/i.test(message)
+        if (retryableError && attempt === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 500))
+          continue
+        }
+
+        setLoading(false)
+        setError(
+          retryableError
+            ? 'Sign-in request timed out. Please try again in a few seconds.'
+            : message
+        )
+        return
+      }
+    }
+
+    if (!signedIn) {
       setLoading(false)
-      setError(signInError.message)
+      setError(signInFailureMessage || 'Unable to sign in. Please try again.')
       return
     }
 
@@ -146,7 +191,12 @@ export function LoginForm() {
       { data: latestRequest, error: requestError },
     ] = await Promise.all([
       supabase.from('employees').select('id').eq('auth_id', authId).maybeSingle(),
-      supabase.from('clients').select('id').eq('email', normalizedEmail).maybeSingle(),
+      supabase
+        .from('clients')
+        .select('id')
+        .eq('status', true)
+        .or(`handler_id.eq.${authId},email.eq.${normalizedEmail}`)
+        .maybeSingle(),
       supabase
         .from('client_registration_requests')
         .select('status')
@@ -170,15 +220,20 @@ export function LoginForm() {
 
     if (employeeData || clientData) {
       router.replace('/dashboard')
-      router.refresh()
       return
     }
 
     const requestStatus = (latestRequest as { status?: string } | null)?.status?.trim().toLowerCase()
 
+    if (requestStatus === 'approved') {
+      await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+      setLoading(false)
+      setError('Invalid credentials.')
+      return
+    }
+
     if (requestStatus === 'pending') {
       router.replace('/register/pending')
-      router.refresh()
       return
     }
 
@@ -190,7 +245,12 @@ export function LoginForm() {
       return
     }
 
-    setError('Your account is not approved for dashboard access.')
+    if (!latestRequest) {
+      setError('Invalid credentials.')
+      return
+    }
+
+    setError(`Your account (${normalizedEmail}) is not approved for dashboard access.`)
   }
 
   return (

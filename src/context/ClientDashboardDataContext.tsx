@@ -41,7 +41,7 @@ type ClientDashboardData = {
 }
 
 const ClientDashboardDataContext = createContext<ClientDashboardData | null>(null)
-const TABLE_REFRESH_INTERVAL_MS = 3000
+const TABLE_REFRESH_INTERVAL_MS = 5000
 
 export function useClientDashboardData() {
   const ctx = useContext(ClientDashboardDataContext)
@@ -113,7 +113,8 @@ export function ClientDashboardDataProvider({ children }: { children: React.Reac
     const { data: clientData, error: clientError } = await supabase
       .from('clients')
       .select('id, name, email, brand_id')
-      .eq('email', email)
+      .eq('status', true)
+      .or(`handler_id.eq.${user.id},email.eq.${email}`)
       .maybeSingle()
 
     if (clientError) {

@@ -552,6 +552,7 @@ export default function Invoice() {
   const [editGatewayInfoOpen, setEditGatewayInfoOpen] = useState(false)
   const [deletingInvoice, setDeletingInvoice] = useState<InvoiceRow | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   async function validateGatewayAmountForInvoice(amount: number): Promise<{
     error: string | null
@@ -692,6 +693,7 @@ export default function Invoice() {
     const { data, error } = await supabase
       .from('clients')
       .select('id, name, email, brand_id')
+      .eq('status', true)
       .order('name')
     if (error) {
       console.error('Failed to fetch clients', error)
@@ -748,7 +750,7 @@ export default function Invoice() {
   const statusFilterLabel = statusOptions.find((o) => o.value === statusFilter)?.label ?? 'All Statuses'
 
   const PAGE_SIZE = 4
-  const TABLE_REFRESH_INTERVAL_MS = 3000
+  const TABLE_REFRESH_INTERVAL_MS = 5000
 
   useEffect(() => {
     setCurrentPage(1)
@@ -908,6 +910,7 @@ export default function Invoice() {
     if (savedAddInvoiceId !== null) return
     if (!addValidation.valid) {
       setAddError(addValidation.message)
+      setActionMessage({ type: 'error', text: addValidation.message })
       return
     }
     const cleanServices = addServices.map((line) => ({
@@ -923,6 +926,7 @@ export default function Invoice() {
       setAddError(gatewayValidation.error)
       setAddGatewayLimits(gatewayValidation.gateways)
       setAddGatewayInfoOpen(false)
+      setActionMessage({ type: 'error', text: gatewayValidation.error })
       return
     }
     setAddGatewayLimits([])
@@ -951,6 +955,7 @@ export default function Invoice() {
     setAddLoading(false)
     if (insertError) {
       setAddError(insertError.message)
+      setActionMessage({ type: 'error', text: insertError.message })
       return
     }
 
@@ -962,6 +967,9 @@ export default function Invoice() {
     setAddUrlCopied(false)
     if (nextInvoiceId === null) {
       setAddError('Invoice saved, but the share URL could not be prepared.')
+      setActionMessage({ type: 'error', text: 'Invoice saved, but the share URL could not be prepared.' })
+    } else {
+      setActionMessage({ type: 'success', text: `Invoice #${formatInvoiceCode(nextInvoiceId)} created successfully.` })
     }
     await fetchInvoices()
   }
@@ -1046,6 +1054,7 @@ export default function Invoice() {
     if (!editingInvoice || !canEditInvoice(editingInvoice)) return
     if (!editValidation.valid) {
       setEditError(editValidation.message)
+      setActionMessage({ type: 'error', text: editValidation.message })
       return
     }
     const cleanServices = editServices.map((line) => ({
@@ -1061,6 +1070,7 @@ export default function Invoice() {
       setEditGatewayLimits(gatewayValidation.gateways)
       setEditGatewayInfoOpen(false)
       setEditError(gatewayValidation.error)
+      setActionMessage({ type: 'error', text: gatewayValidation.error })
       return
     }
     setEditGatewayLimits([])
@@ -1086,9 +1096,11 @@ export default function Invoice() {
     setEditLoading(false)
     if (error) {
       setEditError(error.message)
+      setActionMessage({ type: 'error', text: error.message })
       return
     }
 
+    setActionMessage({ type: 'success', text: `Invoice #${formatInvoiceCode(editingInvoice.id)} updated successfully.` })
     setEditUrlCopied(false)
     setEditingInvoice(null)
     setEditPayableAmount('')
@@ -1102,8 +1114,10 @@ export default function Invoice() {
     setDeleteLoading(false)
     if (error) {
       console.error('Failed to delete invoice', error)
+      setActionMessage({ type: 'error', text: error.message || 'Failed to delete invoice' })
       return
     }
+    setActionMessage({ type: 'success', text: `Invoice #${formatInvoiceCode(deletingInvoice.id)} deleted successfully.` })
     setDeletingInvoice(null)
     await fetchInvoices()
   }
@@ -1171,6 +1185,20 @@ export default function Invoice() {
           )}
         </div>
       </div>
+
+      {actionMessage && (
+        <div className="w-full pb-6">
+          <p
+            className={`rounded-lg border px-4 py-3 text-sm ${
+              actionMessage.type === 'error'
+                ? 'border-red-500/50 bg-red-500/10 text-red-400'
+                : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+            }`}
+          >
+            {actionMessage.text}
+          </p>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="w-full pb-6">

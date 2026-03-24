@@ -30,6 +30,7 @@ export async function PATCH(
     .from('clients')
     .select('id, name, email, brand_id, handler_id')
     .eq('id', clientId)
+    .eq('status', true)
     .single()
 
   if (fetchError || !client) {
@@ -93,22 +94,20 @@ export async function DELETE(
     .from('clients')
     .select('id, name, email, brand_id, handler_id')
     .eq('id', clientId)
+    .eq('status', true)
     .single()
 
   if (fetchError || !client) {
     return NextResponse.json({ error: fetchError?.message || 'Client not found' }, { status: 404 })
   }
 
-  const row = client as { name: string; email: string; brand_id: number; handler_id: string }
-
-  const { error: deleteError } = await auth.supabase.from('clients').delete().eq('id', clientId)
+  const { error: deleteError } = await auth.supabase
+    .from('clients')
+    .update({ status: false })
+    .eq('id', clientId)
 
   if (deleteError) {
     return NextResponse.json({ error: deleteError.message }, { status: 500 })
-  }
-
-  if (row.handler_id) {
-    await auth.supabase.auth.admin.deleteUser(row.handler_id)
   }
 
   return NextResponse.json({ ok: true })

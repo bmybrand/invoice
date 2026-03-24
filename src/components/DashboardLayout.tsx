@@ -330,7 +330,8 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
   const { data: clientData, error: clientError } = await supabase
   .from('clients')
   .select('name, email, brand_id, handler_id')
-  .eq('email', user.email ?? '')
+  .eq('status', true)
+  .or(`handler_id.eq.${user.id},email.eq.${user.email ?? ''}`)
   .maybeSingle()
 
 if (clientData) {
@@ -363,6 +364,13 @@ if (clientError) {
     if (requestStatus === 'pending') {
       setProfileLoaded(true)
       router.replace('/register/pending')
+      return
+    }
+
+    if (requestStatus === 'approved') {
+      resetDashboardProfile(false)
+      await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+      router.replace('/login')
       return
     }
 
