@@ -28,18 +28,19 @@ type PaymentSubmissionRow = {
   stripe_payment_intent_id: string | null
   stripe_transaction_id: string | null
   created_at?: string | null
-}
-
-type InvoiceMetaRow = {
-  id: number
-  invoice_creator_id: number | null
-  brand_name: string | null
-  status: string | null
-}
-
-type EmployeeMetaRow = {
-  id: number
-  employee_name: string | null
+  invoices?: {
+    id?: number | null
+    invoice_creator_id?: number | null
+    brand_name?: string | null
+    status?: string | null
+    employees?: { employee_name?: string | null } | Array<{ employee_name?: string | null }> | null
+  } | Array<{
+    id?: number | null
+    invoice_creator_id?: number | null
+    brand_name?: string | null
+    status?: string | null
+    employees?: { employee_name?: string | null } | Array<{ employee_name?: string | null }> | null
+  }> | null
 }
 
 type PaymentRow = {
@@ -57,6 +58,8 @@ type PaymentRow = {
   rawCreatedAt: string | null
   status: 'Success' | 'Processing' | 'Recorded'
 }
+
+let paymentsTableCache: PaymentRow[] | null = null
 
 function SearchIcon({ className = 'h-4 w-4' }: { className?: string }) {
   return (
@@ -136,10 +139,12 @@ function formatDateTime(value: string | null | undefined): string {
 
 export default function Payments() {
   const router = useRouter()
-  const { accountType } = useDashboardProfile()
+  const { accountType, displayRole, currentEmployeeId, profileLoaded } = useDashboardProfile()
+  const normalizedRole = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '')
+  const isUserRole = normalizedRole === 'user'
   const clientData = useClientDashboardData()
-  const [payments, setPayments] = useState<PaymentRow[]>([])
-  const [paymentsLoading, setPaymentsLoading] = useState(true)
+  const [payments, setPayments] = useState<PaymentRow[]>(() => paymentsTableCache ?? [])
+  const [paymentsLoading, setPaymentsLoading] = useState(() => !paymentsTableCache)
   const [searchQuery, setSearchQuery] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
 
@@ -148,12 +153,24 @@ export default function Payments() {
 
     async function fetchPayments(options?: { background?: boolean }) {
       const isBackgroundRefresh = options?.background ?? false
-      if (!isBackgroundRefresh) {
+      if (!isBackgroundRefresh && !paymentsTableCache) {
         setPaymentsLoading(true)
       }
 
       const isClient = accountType === 'client'
       const clientId = clientData?.client?.id ?? null
+
+      if (isUserRole && !profileLoaded) {
+        return
+      }
+
+      if (isUserRole && currentEmployeeId == null) {
+        setPayments([])
+        if (!isBackgroundRefresh) {
+          setPaymentsLoading(false)
+        }
+        return
+      }
 
       if (isClient && (clientData?.loading || !clientId)) {
         setPayments([])
@@ -166,30 +183,27 @@ export default function Payments() {
       let submissionData: PaymentSubmissionRow[] | null = null
       let submissionError: Error | null = null
 
+      const baseFields =
+        'id, invoice_id, full_name, phone, email, amount_paid, payment_method, payment_status, stripe_payment_intent_id, stripe_transaction_id, created_at'
+
       if (isClient && clientId) {
-        const { data: invoiceData } = await supabase
-          .from('invoices')
-          .select('id')
-          .eq('client_id', clientId)
-
-        if (!active) return
-
-        const invoiceIds = ((invoiceData ?? []) as { id: number }[]).map((r) => r.id).filter((id) => Number.isFinite(id))
-
-        if (invoiceIds.length === 0) {
-          setPayments([])
-          if (!isBackgroundRefresh) {
-            setPaymentsLoading(false)
-          }
-          return
-        }
-
         const res = await supabase
           .from('payment_submissions')
           .select(
-            'id, invoice_id, full_name, phone, email, amount_paid, payment_method, payment_status, stripe_payment_intent_id, stripe_transaction_id, created_at'
+            `${baseFields}, invoices!inner(id, brand_name, status, invoice_creator_id, client_id, employees:invoice_creator_id(employee_name))`
           )
-          .in('invoice_id', invoiceIds)
+          .eq('invoices.client_id', clientId)
+          .order('created_at', { ascending: false })
+
+        submissionData = (res.data ?? []) as PaymentSubmissionRow[]
+        submissionError = res.error as Error | null
+      } else if (isUserRole && currentEmployeeId != null) {
+        const res = await supabase
+          .from('payment_submissions')
+          .select(
+            `${baseFields}, invoices!inner(id, brand_name, status, invoice_creator_id, client_id, employees:invoice_creator_id(employee_name))`
+          )
+          .eq('invoices.invoice_creator_id', currentEmployeeId)
           .order('created_at', { ascending: false })
 
         submissionData = (res.data ?? []) as PaymentSubmissionRow[]
@@ -198,7 +212,7 @@ export default function Payments() {
         const res = await supabase
           .from('payment_submissions')
           .select(
-            'id, invoice_id, full_name, phone, email, amount_paid, payment_method, payment_status, stripe_payment_intent_id, stripe_transaction_id, created_at'
+            `${baseFields}, invoices:invoice_id(id, brand_name, status, invoice_creator_id, employees:invoice_creator_id(employee_name))`
           )
           .order('created_at', { ascending: false })
 
@@ -210,7 +224,10 @@ export default function Payments() {
 
       if (submissionError) {
         console.error('Failed to fetch payments', submissionError)
-        setPayments([])
+        if (!isBackgroundRefresh) {
+          setPayments([])
+          paymentsTableCache = null
+        }
         if (!isBackgroundRefresh) {
           setPaymentsLoading(false)
         }
@@ -218,61 +235,15 @@ export default function Payments() {
       }
 
       const submissions = (submissionData ?? []) as PaymentSubmissionRow[]
-      const invoiceIds = Array.from(
-        new Set(
-          submissions
-            .map((row) => row.invoice_id)
-            .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
-        )
-      )
-
-      let invoiceMap = new Map<number, InvoiceMetaRow>()
-      if (invoiceIds.length > 0) {
-        const { data: invoiceData, error: invoiceError } = await supabase
-          .from('invoices')
-          .select('id, invoice_creator_id, brand_name, status')
-          .in('id', invoiceIds)
-
-        if (!active) return
-
-        if (invoiceError) {
-          console.error('Failed to fetch invoice metadata for payments', invoiceError)
-        } else {
-          invoiceMap = new Map(((invoiceData ?? []) as InvoiceMetaRow[]).map((row) => [row.id, row]))
-        }
-      }
-
-      const creatorIds = Array.from(
-        new Set(
-          Array.from(invoiceMap.values())
-            .map((row) => row.invoice_creator_id)
-            .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
-        )
-      )
-
-      let employeeMap = new Map<number, EmployeeMetaRow>()
-      if (creatorIds.length > 0) {
-        const { data: employeeData, error: employeeError } = await supabase
-          .from('employees')
-          .select('id, employee_name')
-          .in('id', creatorIds)
-
-        if (!active) return
-
-        if (employeeError) {
-          console.error('Failed to fetch employee metadata for payments', employeeError)
-        } else {
-          employeeMap = new Map(((employeeData ?? []) as EmployeeMetaRow[]).map((row) => [row.id, row]))
-        }
-      }
 
       const mappedPayments: PaymentRow[] = submissions.map((submission) => {
-        const invoice = submission.invoice_id != null ? invoiceMap.get(submission.invoice_id) : undefined
-        const creator = invoice?.invoice_creator_id != null ? employeeMap.get(invoice.invoice_creator_id) : undefined
+        const invoice = Array.isArray(submission.invoices) ? submission.invoices[0] : submission.invoices
+        const employeesRel = invoice?.employees
+        const creatorRecord = Array.isArray(employeesRel) ? employeesRel[0] : employeesRel
         return {
           id: submission.id,
           invoiceId: submission.invoice_id,
-          invoiceCreator: creator?.employee_name?.trim() || '--',
+          invoiceCreator: creatorRecord?.employee_name?.trim() || '--',
           customer: submission.full_name?.trim() || '--',
           email: submission.email?.trim() || '--',
           amount: Number(submission.amount_paid ?? 0),
@@ -292,6 +263,7 @@ export default function Payments() {
       if (!active) return
 
       setPayments(mappedPayments)
+      paymentsTableCache = mappedPayments
       if (!isBackgroundRefresh) {
         setPaymentsLoading(false)
       }
@@ -309,7 +281,7 @@ export default function Payments() {
       window.clearInterval(intervalId)
       active = false
     }
-  }, [accountType, clientData?.client?.id, clientData?.loading])
+  }, [accountType, clientData?.client?.id, clientData?.loading, currentEmployeeId, isUserRole, profileLoaded])
 
   const filteredPayments = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()

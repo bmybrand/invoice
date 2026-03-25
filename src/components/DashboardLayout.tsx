@@ -15,6 +15,7 @@ const PROFILE_AVATAR_BUCKET = 'profile-images'
 type DashboardProfile = {
   displayName: string
   displayRole: string
+  currentEmployeeId: number | null
   onlineAuthIds: string[]
   accountType: 'employee' | 'client' | null
   profileLoaded: boolean
@@ -23,6 +24,7 @@ type DashboardProfile = {
 const DashboardProfileContext = createContext<DashboardProfile>({
   displayName: '',
   displayRole: '',
+  currentEmployeeId: null,
   onlineAuthIds: [],
   accountType: null,
   profileLoaded: false,
@@ -197,6 +199,7 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [displayName, setDisplayName] = useState('')
   const [displayRole, setDisplayRole] = useState('')
+  const [currentEmployeeId, setCurrentEmployeeId] = useState<number | null>(null)
   const [displayAvatarUrl, setDisplayAvatarUrl] = useState('')
   const [currentUserAuthId, setCurrentUserAuthId] = useState<string | null>(null)
   const [currentUserEmail, setCurrentUserEmail] = useState('')
@@ -217,6 +220,7 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
 
   const resetDashboardProfile = useCallback((nextProfileLoaded: boolean) => {
     setCurrentUserAuthId(null)
+    setCurrentEmployeeId(null)
     setCurrentUserEmail('')
     setDisplayName('')
     setDisplayRole('')
@@ -305,14 +309,15 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
 
     const { data: employeeData, error: employeeError } = await supabase
       .from('employees')
-      .select('employee_name, role')
+      .select('id, employee_name, role')
       .eq('auth_id', user.id)
       .maybeSingle()
 
     if (employeeData) {
-      const row = employeeData as { employee_name?: string; role?: string } | null
+      const row = employeeData as { id?: number; employee_name?: string; role?: string } | null
 
       setDisplayName(row?.employee_name?.trim() || metadataDisplayName || user.email || 'User')
+      setCurrentEmployeeId(typeof row?.id === 'number' ? row.id : null)
       setDisplayRole(
         row?.role
           ? String(row.role).charAt(0).toUpperCase() + String(row.role).slice(1).toLowerCase()
@@ -340,6 +345,7 @@ if (clientData) {
   const clientName = row?.name?.trim() || metadataDisplayName || user.email || 'Client'
 
   setDisplayName(clientName)
+  setCurrentEmployeeId(null)
   setDisplayRole('Client')
   setAccountType('client')
   setProfileLoaded(true)
@@ -384,6 +390,7 @@ if (clientError) {
     }
 
     setDisplayName(metadataDisplayName || user.email || 'User')
+    setCurrentEmployeeId(null)
     setDisplayRole('')
     setAccountType(null)
     setProfileLoaded(true)
@@ -688,6 +695,7 @@ if (clientError) {
       value={{
         displayName,
         displayRole,
+        currentEmployeeId,
         onlineAuthIds: accountType === 'employee' ? onlineAuthIds : [],
         accountType,
         profileLoaded,

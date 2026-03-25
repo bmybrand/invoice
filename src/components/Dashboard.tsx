@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useDashboardProfile } from '@/components/DashboardLayout'
+import CountUp from 'react-countup'
 import {
   BarChart,
   Bar,
@@ -42,9 +44,23 @@ type GrowthVelocityPoint = {
   value: number
 }
 
-type InvoiceServiceLine = {
-  qty?: number
-  price?: string | number
+type PaymentSubmissionMetricRow = {
+  id: number
+  invoice_id: number | null
+  amount_paid: number | string | null
+  payment_status: string | null
+  created_at: string | null
+}
+
+type InvoiceMetricRow = {
+  id: number
+  invoice_creator_id: number | null
+  invoice_type: string | null
+}
+
+type EmployeeMetricRow = {
+  id: number
+  employee_name: string | null
 }
 
 type DashboardMetric = {
@@ -59,11 +75,113 @@ type AnnualOverview = {
   upsaleLabel: string
 }
 
+function parseCurrencyAmount(valueLabel: string): number {
+  const parsed = Number(String(valueLabel ?? '').replace(/[^0-9.-]/g, ''))
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function formatCurrencyAmount(amount: number): string {
+  return `$ ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+function AnimatedCurrencyValue({ valueLabel, animate }: { valueLabel: string; animate: boolean }) {
+  const amount = parseCurrencyAmount(valueLabel)
+  if (!animate) {
+    return <>{formatCurrencyAmount(amount)}</>
+  }
+
+  return (
+    <CountUp
+      end={amount}
+      duration={0.75}
+      separator="," 
+      decimals={2}
+      decimal="."
+      prefix="$ "
+      preserveValue
+    />
+  )
+}
+
+type DashboardSnapshot = {
+  topOperatives: Array<{
+    id: number
+    name: string
+    amount: string
+    rank: number
+    color: string
+    opacity?: string
+  }>
+  metrics: {
+    today: DashboardMetric
+    month: DashboardMetric
+    upsale: DashboardMetric
+  }
+  dailyRevenueSeries: {
+    this_week: DailyRevenuePoint[]
+    last_week: DailyRevenuePoint[]
+  }
+  growthVelocitySeries: {
+    paid_revenue: GrowthVelocityPoint[]
+    upsale_revenue: GrowthVelocityPoint[]
+  }
+  annualOverview: AnnualOverview
+}
+
+const createEmptyDailyRevenueSeries = () => ({
+  this_week: WEEK_DAYS.map((day) => ({ day, value: 0, highlight: false })),
+  last_week: WEEK_DAYS.map((day) => ({ day, value: 0, highlight: false })),
+})
+
+const createEmptyGrowthVelocitySeries = () => ({
+  paid_revenue: YEAR_MONTHS.map((month) => ({ month, value: 0 })),
+  upsale_revenue: YEAR_MONTHS.map((month) => ({ month, value: 0 })),
+})
+
+const EMPTY_METRICS: DashboardSnapshot['metrics'] = {
+  today: { changeLabel: '0%', valueLabel: '$ 0.00' },
+  month: { changeLabel: '0%', valueLabel: '$ 0.00' },
+  upsale: { changeLabel: '0%', valueLabel: '$ 0.00' },
+}
+
+const EMPTY_ANNUAL_OVERVIEW: AnnualOverview = {
+  totalLabel: '$ 0.00',
+  subtitle: 'No received payments recorded this year yet.',
+  paidCountLabel: '0 successful payments',
+  upsaleLabel: '$ 0.00 upsale',
+}
+
+const createEmptySnapshot = (): DashboardSnapshot => ({
+  topOperatives: [],
+  metrics: EMPTY_METRICS,
+  dailyRevenueSeries: createEmptyDailyRevenueSeries(),
+  growthVelocitySeries: createEmptyGrowthVelocitySeries(),
+  annualOverview: EMPTY_ANNUAL_OVERVIEW,
+})
+
+let dashboardSnapshotCache: DashboardSnapshot | null = null
+
+function isSuccessfulPaymentStatus(value: string | null | undefined): boolean {
+  const normalized = (value || '').trim().toLowerCase()
+  return (
+    normalized.includes('paid') ||
+    normalized.includes('success') ||
+    normalized.includes('succeed') ||
+    normalized.includes('completed')
+  )
+}
+
 export function Dashboard() {
+  const { displayRole } = useDashboardProfile()
+  const normalizedRole = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '')
+  const canSeeTopOperatives = normalizedRole === 'admin' || normalizedRole === 'superadmin'
+  const isUserRole = normalizedRole === 'user'
   const [dailyRange, setDailyRange] = useState<'this_week' | 'last_week'>('this_week')
   const [dailyRangeOpen, setDailyRangeOpen] = useState(false)
   const [growthMetric, setGrowthMetric] = useState<'paid_revenue' | 'upsale_revenue'>('paid_revenue')
   const [growthMetricOpen, setGrowthMetricOpen] = useState(false)
+  const cachedSnapshot = dashboardSnapshotCache
+  const [shouldAnimateAmounts] = useState(() => !cachedSnapshot)
   const [topOperatives, setTopOperatives] = useState<Array<{
     id: number
     name: string
@@ -71,77 +189,113 @@ export function Dashboard() {
     rank: number
     color: string
     opacity?: string
-  }>>([])
+  }>>(() => cachedSnapshot?.topOperatives ?? [])
   const [metrics, setMetrics] = useState<{
     today: DashboardMetric
     month: DashboardMetric
     upsale: DashboardMetric
-  }>({
-    today: { changeLabel: '0%', valueLabel: '$ 0.00' },
-    month: { changeLabel: '0%', valueLabel: '$ 0.00' },
-    upsale: { changeLabel: '0%', valueLabel: '$ 0.00' },
-  })
+  }>(() => cachedSnapshot?.metrics ?? EMPTY_METRICS)
+  const initialDailySeries = cachedSnapshot?.dailyRevenueSeries ?? createEmptyDailyRevenueSeries()
   const [dailyRevenueData, setDailyRevenueData] = useState<DailyRevenuePoint[]>(
-    WEEK_DAYS.map((day) => ({ day, value: 0, highlight: false }))
+    initialDailySeries.this_week
   )
   const [dailyRevenueSeries, setDailyRevenueSeries] = useState<{
     this_week: DailyRevenuePoint[]
     last_week: DailyRevenuePoint[]
-  }>({
-    this_week: WEEK_DAYS.map((day) => ({ day, value: 0, highlight: false })),
-    last_week: WEEK_DAYS.map((day) => ({ day, value: 0, highlight: false })),
-  })
+  }>(() => initialDailySeries)
+  const initialGrowthSeries = cachedSnapshot?.growthVelocitySeries ?? createEmptyGrowthVelocitySeries()
   const [growthVelocityData, setGrowthVelocityData] = useState<GrowthVelocityPoint[]>(
-    YEAR_MONTHS.map((month) => ({ month, value: 0 }))
+    initialGrowthSeries.paid_revenue
   )
   const [growthVelocitySeries, setGrowthVelocitySeries] = useState<{
     paid_revenue: GrowthVelocityPoint[]
     upsale_revenue: GrowthVelocityPoint[]
-  }>({
-    paid_revenue: YEAR_MONTHS.map((month) => ({ month, value: 0 })),
-    upsale_revenue: YEAR_MONTHS.map((month) => ({ month, value: 0 })),
-  })
-  const [annualOverview, setAnnualOverview] = useState<AnnualOverview>({
-    totalLabel: '$ 0.00',
-    subtitle: 'No paid revenue recorded this year yet.',
-    paidCountLabel: '0 paid invoices',
-    upsaleLabel: '$ 0.00 upsale',
-  })
+  }>(() => initialGrowthSeries)
+  const [annualOverview, setAnnualOverview] = useState<AnnualOverview>(
+    () => cachedSnapshot?.annualOverview ?? EMPTY_ANNUAL_OVERVIEW
+  )
 
   useEffect(() => {
     async function loadDashboardData() {
-      const { data, error } = await supabase
-        .from('invoices')
-        .select('id, status, amount, service, invoice_date, invoice_type, invoice_creator_id, employees!invoice_creator_id(employee_name)')
+      const setEmptyState = () => {
+        const emptySnapshot = createEmptySnapshot()
+        dashboardSnapshotCache = emptySnapshot
+        setTopOperatives(emptySnapshot.topOperatives)
+        setMetrics(emptySnapshot.metrics)
+        setDailyRevenueSeries(emptySnapshot.dailyRevenueSeries)
+        setGrowthVelocitySeries(emptySnapshot.growthVelocitySeries)
+        setAnnualOverview(emptySnapshot.annualOverview)
+      }
 
-      if (error) {
-        console.error('Failed to fetch dashboard invoices', error)
-        setTopOperatives([])
-        setMetrics({
-          today: { changeLabel: '0%', valueLabel: '$ 0.00' },
-          month: { changeLabel: '0%', valueLabel: '$ 0.00' },
-          upsale: { changeLabel: '0%', valueLabel: '$ 0.00' },
-        })
-        setDailyRevenueData(WEEK_DAYS.map((day) => ({ day, value: 0, highlight: false })))
-        setDailyRevenueSeries({
-          this_week: WEEK_DAYS.map((day) => ({ day, value: 0, highlight: false })),
-          last_week: WEEK_DAYS.map((day) => ({ day, value: 0, highlight: false })),
-        })
-        setGrowthVelocityData(YEAR_MONTHS.map((month) => ({ month, value: 0 })))
-        setGrowthVelocitySeries({
-          paid_revenue: YEAR_MONTHS.map((month) => ({ month, value: 0 })),
-          upsale_revenue: YEAR_MONTHS.map((month) => ({ month, value: 0 })),
-        })
-        setAnnualOverview({
-          totalLabel: '$ 0.00',
-          subtitle: 'No paid revenue recorded this year yet.',
-          paidCountLabel: '0 paid invoices',
-          upsaleLabel: '$ 0.00 upsale',
-        })
+      let currentEmployeeId: number | null = null
+
+      if (isUserRole) {
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser()
+
+        if (userError || !user?.id) {
+          setEmptyState()
+          return
+        }
+
+        const { data: employeeRow, error: employeeError } = await supabase
+          .from('employees')
+          .select('id')
+          .eq('auth_id', user.id)
+          .maybeSingle()
+
+        if (employeeError || !employeeRow) {
+          setEmptyState()
+          return
+        }
+
+        currentEmployeeId = (employeeRow as { id: number }).id
+      }
+
+      let allowedInvoiceIds: number[] | null = null
+      if (isUserRole && currentEmployeeId) {
+        const { data: ownedInvoices, error: ownedInvoicesError } = await supabase
+          .from('invoices')
+          .select('id')
+          .eq('invoice_creator_id', currentEmployeeId)
+
+        if (ownedInvoicesError) {
+          console.error('Failed to fetch user invoices for dashboard', ownedInvoicesError)
+          setEmptyState()
+          return
+        }
+
+        const ownedIds = ((ownedInvoices ?? []) as Array<{ id: number }>)
+          .map((row) => Number(row.id))
+          .filter((id) => Number.isFinite(id))
+
+        if (ownedIds.length === 0) {
+          setEmptyState()
+          return
+        }
+
+        allowedInvoiceIds = ownedIds
+      }
+
+      let paymentsQuery = supabase
+        .from('payment_submissions')
+        .select('id, invoice_id, amount_paid, payment_status, created_at')
+
+      if (allowedInvoiceIds) {
+        paymentsQuery = paymentsQuery.in('invoice_id', allowedInvoiceIds)
+      }
+
+      const { data: paymentData, error: paymentError } = await paymentsQuery
+
+      if (paymentError) {
+        console.error('Failed to fetch dashboard payments', paymentError)
+        setEmptyState()
         return
       }
 
-      const invoices = (data as Array<Record<string, unknown>> | null) ?? []
+      const allPayments = (paymentData as PaymentSubmissionMetricRow[] | null) ?? []
       const todayIso = new Date().toISOString().slice(0, 10)
       const currentMonth = todayIso.slice(0, 7)
       const currentYear = todayIso.slice(0, 4)
@@ -157,30 +311,66 @@ export function Dashboard() {
       const lastMonth = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, '0')}`
       const lastYear = String(Number(currentYear) - 1)
 
-      const getInvoiceAmount = (row: Record<string, unknown>) => {
-        const directAmount = Number(String(row.amount ?? '').replace(/[^0-9.-]/g, ''))
-        const serviceLines = Array.isArray(row.service) ? (row.service as InvoiceServiceLine[]) : []
-        const derivedAmount = serviceLines.reduce((sum, line) => {
-          const qty = Number(line.qty ?? 0) || 0
-          const price = Number(String(line.price ?? '').replace(/[^0-9.-]/g, '')) || 0
-          return sum + qty * price
-        }, 0)
-        return directAmount > 0 ? directAmount : derivedAmount
+      const getPaymentAmount = (row: PaymentSubmissionMetricRow) => {
+        const parsed = Number(String(row.amount_paid ?? '').replace(/[^0-9.-]/g, ''))
+        return Number.isFinite(parsed) ? parsed : 0
       }
 
-      const paidInvoices = invoices.filter((row) => {
-        const normalizedStatus = String(row.status ?? '').toLowerCase()
-        return normalizedStatus.includes('paid') || normalizedStatus.includes('completed')
-      })
+      const successfulPayments = allPayments.filter(
+        (row) => isSuccessfulPaymentStatus(row.payment_status) && Number(row.invoice_id) > 0
+      )
+
+      const invoiceIds = Array.from(
+        new Set(
+          successfulPayments
+            .map((row) => Number(row.invoice_id ?? 0))
+            .filter((id) => Number.isFinite(id) && id > 0)
+        )
+      )
+
+      let invoiceMap = new Map<number, InvoiceMetricRow>()
+      if (invoiceIds.length > 0) {
+        const { data: invoiceData, error: invoiceError } = await supabase
+          .from('invoices')
+          .select('id, invoice_creator_id, invoice_type')
+          .in('id', invoiceIds)
+
+        if (invoiceError) {
+          console.error('Failed to fetch dashboard invoice metadata', invoiceError)
+        } else {
+          invoiceMap = new Map(((invoiceData ?? []) as InvoiceMetricRow[]).map((row) => [row.id, row]))
+        }
+      }
+
+      const creatorIds = Array.from(
+        new Set(
+          Array.from(invoiceMap.values())
+            .map((row) => Number(row.invoice_creator_id ?? 0))
+            .filter((id) => Number.isFinite(id) && id > 0)
+        )
+      )
+
+      let employeeMap = new Map<number, EmployeeMetricRow>()
+      if (creatorIds.length > 0) {
+        const { data: employeeData, error: employeeError } = await supabase
+          .from('employees')
+          .select('id, employee_name')
+          .in('id', creatorIds)
+
+        if (employeeError) {
+          console.error('Failed to fetch dashboard employee metadata', employeeError)
+        } else {
+          employeeMap = new Map(((employeeData ?? []) as EmployeeMetricRow[]).map((row) => [row.id, row]))
+        }
+      }
 
       const totalsByCreator = new Map<number, { id: number; name: string; total: number }>()
-      for (const row of paidInvoices) {
-        const creatorId = Number(row.invoice_creator_id ?? 0)
+      for (const row of successfulPayments) {
+        const invoice = invoiceMap.get(Number(row.invoice_id ?? 0))
+        const creatorId = Number(invoice?.invoice_creator_id ?? 0)
         if (!creatorId) continue
-        const employee = row.employees as { employee_name?: string } | { employee_name?: string }[] | null
-        const employeeRecord = Array.isArray(employee) ? employee[0] : employee
-        const creatorName = employeeRecord?.employee_name?.trim() || '--'
-        const invoiceAmount = getInvoiceAmount(row)
+        const creatorName = employeeMap.get(creatorId)?.employee_name?.trim() || '--'
+        const invoiceAmount = getPaymentAmount(row)
         const existing = totalsByCreator.get(creatorId)
         if (existing) {
           existing.total += invoiceAmount
@@ -192,31 +382,32 @@ export function Dashboard() {
       const rankedCreators = Array.from(totalsByCreator.values())
         .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name))
         .slice(0, 5)
-      setTopOperatives(
-        rankedCreators.map((creator, index) => ({
-          id: creator.id,
-          name: creator.name,
-          amount: `$${creator.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          rank: index + 1,
-          color: topOperativeStyles[index]?.color ?? 'text-slate-400',
-          opacity: topOperativeStyles[index]?.opacity,
-        }))
-      )
+      const nextTopOperatives = rankedCreators.map((creator, index) => ({
+        id: creator.id,
+        name: creator.name,
+        amount: `$${creator.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        rank: index + 1,
+        color: topOperativeStyles[index]?.color ?? 'text-slate-400',
+        opacity: topOperativeStyles[index]?.opacity,
+      }))
+      setTopOperatives(nextTopOperatives)
 
-      const sumAmounts = (rows: Array<Record<string, unknown>>) =>
-        rows.reduce((sum, row) => sum + getInvoiceAmount(row), 0)
+      const sumAmounts = (rows: PaymentSubmissionMetricRow[]) =>
+        rows.reduce((sum, row) => sum + getPaymentAmount(row), 0)
 
-      const currentDayPaid = paidInvoices.filter((row) => String(row.invoice_date ?? '').slice(0, 10) === todayIso)
-      const currentMonthPaid = paidInvoices.filter((row) => String(row.invoice_date ?? '').slice(0, 7) === currentMonth)
-      const lastMonthPaid = paidInvoices.filter((row) => String(row.invoice_date ?? '').slice(0, 7) === lastMonth)
-      const currentMonthUpsales = currentMonthPaid.filter(
-        (row) => String(row.invoice_type ?? '').toLowerCase() === 'upsale'
-      )
-      const lastYearPaid = paidInvoices.filter((row) => String(row.invoice_date ?? '').slice(0, 4) === lastYear)
-      const currentYearPaid = paidInvoices.filter((row) => String(row.invoice_date ?? '').slice(0, 4) === currentYear)
-      const currentYearUpsales = currentYearPaid.filter(
-        (row) => String(row.invoice_type ?? '').toLowerCase() === 'upsale'
-      )
+      const currentDayPaid = successfulPayments.filter((row) => String(row.created_at ?? '').slice(0, 10) === todayIso)
+      const currentMonthPaid = successfulPayments.filter((row) => String(row.created_at ?? '').slice(0, 7) === currentMonth)
+      const lastMonthPaid = successfulPayments.filter((row) => String(row.created_at ?? '').slice(0, 7) === lastMonth)
+      const currentMonthUpsales = currentMonthPaid.filter((row) => {
+        const invoice = invoiceMap.get(Number(row.invoice_id ?? 0))
+        return String(invoice?.invoice_type ?? '').toLowerCase() === 'upsale'
+      })
+      const lastYearPaid = successfulPayments.filter((row) => String(row.created_at ?? '').slice(0, 4) === lastYear)
+      const currentYearPaid = successfulPayments.filter((row) => String(row.created_at ?? '').slice(0, 4) === currentYear)
+      const currentYearUpsales = currentYearPaid.filter((row) => {
+        const invoice = invoiceMap.get(Number(row.invoice_id ?? 0))
+        return String(invoice?.invoice_type ?? '').toLowerCase() === 'upsale'
+      })
 
       const formatCurrency = (value: number) =>
         `$ ${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -231,7 +422,7 @@ export function Dashboard() {
       const upsaleTotal = sumAmounts(currentMonthUpsales)
       const lastYearTotal = sumAmounts(lastYearPaid)
 
-      setMetrics({
+      const nextMetrics = {
         today: {
           changeLabel: formatChange(todayTotal, lastMonthTotal),
           valueLabel: formatCurrency(todayTotal),
@@ -244,19 +435,21 @@ export function Dashboard() {
           changeLabel: monthTotal > 0 ? `${Math.round((upsaleTotal / monthTotal) * 100)}%` : '0%',
           valueLabel: formatCurrency(upsaleTotal),
         },
-      })
+      }
+      setMetrics(nextMetrics)
 
       const yearTotal = sumAmounts(currentYearPaid)
       const yearUpsaleTotal = sumAmounts(currentYearUpsales)
-      setAnnualOverview({
+      const nextAnnualOverview = {
         totalLabel: formatCurrency(yearTotal),
         subtitle:
           currentYearPaid.length > 0
-            ? `Collected from ${currentYearPaid.length} paid invoice${currentYearPaid.length === 1 ? '' : 's'} in ${currentYear}.`
-            : 'No paid revenue recorded this year yet.',
-        paidCountLabel: `${currentYearPaid.length} paid invoice${currentYearPaid.length === 1 ? '' : 's'}`,
+            ? `Collected from ${currentYearPaid.length} successful payment${currentYearPaid.length === 1 ? '' : 's'} in ${currentYear}.`
+            : 'No received payments recorded this year yet.',
+        paidCountLabel: `${currentYearPaid.length} successful payment${currentYearPaid.length === 1 ? '' : 's'}`,
         upsaleLabel: `${formatCurrency(yearUpsaleTotal)} upsale`,
-      })
+      }
+      setAnnualOverview(nextAnnualOverview)
 
       const buildWeekSeries = (startDate: Date, highlightToday: boolean) =>
         WEEK_DAYS.map((day, index) => {
@@ -266,7 +459,7 @@ export function Dashboard() {
           return {
             day,
             value: Number(
-              sumAmounts(paidInvoices.filter((row) => String(row.invoice_date ?? '').slice(0, 10) === iso)).toFixed(2)
+              sumAmounts(successfulPayments.filter((row) => String(row.created_at ?? '').slice(0, 10) === iso)).toFixed(2)
             ),
             highlight: highlightToday && iso === todayIso,
           }
@@ -274,43 +467,53 @@ export function Dashboard() {
 
       const thisWeekSeries = buildWeekSeries(weekStart, true)
       const lastWeekSeries = buildWeekSeries(lastWeekStart, false)
-      setDailyRevenueSeries({
+      const nextDailyRevenueSeries = {
         this_week: thisWeekSeries,
         last_week: lastWeekSeries,
-      })
-      setDailyRevenueData(dailyRange === 'this_week' ? thisWeekSeries : lastWeekSeries)
+      }
+      setDailyRevenueSeries(nextDailyRevenueSeries)
 
       const paidRevenueSeries = YEAR_MONTHS.map((month, index) => {
-          const monthKey = `${currentYear}-${String(index + 1).padStart(2, '0')}`
-          return {
-            month,
-            value: Number(sumAmounts(paidInvoices.filter((row) => String(row.invoice_date ?? '').slice(0, 7) === monthKey)).toFixed(2)),
-          }
-        })
+        const monthKey = `${currentYear}-${String(index + 1).padStart(2, '0')}`
+        return {
+          month,
+          value: Number(sumAmounts(successfulPayments.filter((row) => String(row.created_at ?? '').slice(0, 7) === monthKey)).toFixed(2)),
+        }
+      })
       const upsaleRevenueSeries = YEAR_MONTHS.map((month, index) => {
         const monthKey = `${currentYear}-${String(index + 1).padStart(2, '0')}`
         return {
           month,
           value: Number(
             sumAmounts(
-              paidInvoices.filter(
-                (row) =>
-                  String(row.invoice_date ?? '').slice(0, 7) === monthKey &&
-                  String(row.invoice_type ?? '').toLowerCase() === 'upsale'
-              )
+              successfulPayments.filter((row) => {
+                const invoice = invoiceMap.get(Number(row.invoice_id ?? 0))
+                return (
+                  String(row.created_at ?? '').slice(0, 7) === monthKey &&
+                  String(invoice?.invoice_type ?? '').toLowerCase() === 'upsale'
+                )
+              })
             ).toFixed(2)
           ),
         }
       })
-      setGrowthVelocitySeries({
+      const nextGrowthVelocitySeries = {
         paid_revenue: paidRevenueSeries,
         upsale_revenue: upsaleRevenueSeries,
-      })
-      setGrowthVelocityData(growthMetric === 'paid_revenue' ? paidRevenueSeries : upsaleRevenueSeries)
+      }
+      setGrowthVelocitySeries(nextGrowthVelocitySeries)
+
+      dashboardSnapshotCache = {
+        topOperatives: nextTopOperatives,
+        metrics: nextMetrics,
+        dailyRevenueSeries: nextDailyRevenueSeries,
+        growthVelocitySeries: nextGrowthVelocitySeries,
+        annualOverview: nextAnnualOverview,
+      }
     }
 
     loadDashboardData()
-  }, [])
+  }, [isUserRole])
 
   useEffect(() => {
     setDailyRevenueData(dailyRevenueSeries[dailyRange])
@@ -352,7 +555,7 @@ export function Dashboard() {
                   </div>
                 </div>
                 <p className="mt-3 text-[10px] font-black uppercase leading-4 tracking-[2.4px] text-slate-400 sm:mt-4 sm:text-xs">Payments - Today</p>
-                <p className="mt-0.5 text-xl font-black leading-8 text-white sm:mt-1 sm:text-2xl md:text-3xl md:leading-9">{metrics.today.valueLabel}</p>
+                <p className="mt-0.5 text-xl font-black leading-8 text-white sm:mt-1 sm:text-2xl md:text-3xl md:leading-9"><AnimatedCurrencyValue valueLabel={metrics.today.valueLabel} animate={shouldAnimateAmounts} /></p>
               </div>
               <div className="relative min-h-[140px] min-w-0 w-full flex-1 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900 to-gray-900 p-4 sm:min-h-[180px] sm:rounded-3xl sm:p-6 lg:min-w-0">
                 <div className="flex justify-between items-start">
@@ -365,7 +568,7 @@ export function Dashboard() {
                   </div>
                 </div>
                 <p className="mt-3 text-[10px] font-black uppercase leading-4 tracking-[2.4px] text-slate-400 sm:mt-4 sm:text-xs">Payments - Month</p>
-                <p className="mt-0.5 text-xl font-black leading-8 text-white sm:mt-1 sm:text-2xl md:text-3xl md:leading-9">{metrics.month.valueLabel}</p>
+                <p className="mt-0.5 text-xl font-black leading-8 text-white sm:mt-1 sm:text-2xl md:text-3xl md:leading-9"><AnimatedCurrencyValue valueLabel={metrics.month.valueLabel} animate={shouldAnimateAmounts} /></p>
               </div>
               <div className="relative min-h-[140px] min-w-0 w-full flex-1 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900 to-gray-900 p-4 sm:min-h-[180px] sm:rounded-3xl sm:p-6 lg:min-w-0">
                 <div className="flex justify-between items-start">
@@ -378,13 +581,17 @@ export function Dashboard() {
                   </div>
                 </div>
                 <p className="mt-3 text-[10px] font-black uppercase leading-4 tracking-[2.4px] text-slate-400 sm:mt-4 sm:text-xs">Upsale - Month</p>
-                <p className="mt-0.5 text-xl font-black leading-8 text-white sm:mt-1 sm:text-2xl md:text-3xl md:leading-9">{metrics.upsale.valueLabel}</p>
+                <p className="mt-0.5 text-xl font-black leading-8 text-white sm:mt-1 sm:text-2xl md:text-3xl md:leading-9"><AnimatedCurrencyValue valueLabel={metrics.upsale.valueLabel} animate={shouldAnimateAmounts} /></p>
               </div>
             </div>
 
             {/* Annual target + Top Operatives row */}
             <div className="flex flex-wrap gap-3 sm:gap-4 lg:flex-nowrap lg:gap-6">
-              <div className="relative flex max-h-80 min-h-56 min-w-0 w-full flex-col justify-center overflow-hidden rounded-2xl border border-orange-500/20 bg-gradient-to-br from-slate-900 to-slate-800 p-4 sm:min-h-80 sm:max-h-96 sm:rounded-[32px] sm:p-8 lg:w-0 lg:min-w-0 lg:flex-[7]">
+              <div
+                className={`relative flex max-h-80 min-h-56 min-w-0 w-full flex-col justify-center overflow-hidden rounded-2xl border border-orange-500/20 bg-gradient-to-br from-slate-900 to-slate-800 p-4 sm:min-h-80 sm:max-h-96 sm:rounded-[32px] sm:p-8 lg:w-0 lg:min-w-0 ${
+                  canSeeTopOperatives ? 'lg:flex-[7]' : 'lg:flex-[1]'
+                }`}
+              >
                 <div className="absolute inset-y-0 right-4 flex items-center opacity-5 sm:right-6">
                   <img src="/%24%20coin.svg" alt="" className="h-72 w-56 object-contain sm:h-80 sm:w-64" />
                 </div>
@@ -393,7 +600,7 @@ export function Dashboard() {
                     <div className="h-px w-6 bg-orange-500 sm:w-8" />
                     <p className="text-[10px] font-black uppercase leading-4 tracking-[3.6px] text-orange-500 sm:text-xs">This Year Revenue</p>
                   </div>
-                  <p className="break-words text-2xl font-black leading-tight text-white sm:text-3xl md:text-4xl md:leading-tight lg:text-6xl xl:text-7xl xl:leading-[72px] 2xl:text-7xl">{annualOverview.totalLabel}</p>
+                  <p className="break-words text-2xl font-black leading-tight text-white sm:text-3xl md:text-4xl md:leading-tight lg:text-6xl xl:text-7xl xl:leading-[72px] 2xl:text-7xl"><AnimatedCurrencyValue valueLabel={annualOverview.totalLabel} animate={shouldAnimateAmounts} /></p>
                   <p className="max-w-[576px] pt-1 text-xs font-medium leading-6 text-slate-400 sm:pt-2 sm:text-sm md:text-base md:leading-7 lg:text-lg">{annualOverview.subtitle}</p>
                   <div className="flex flex-wrap items-start gap-2 pt-2 sm:gap-4 sm:pt-4">
                     <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 backdrop-blur-[6px] sm:gap-3 sm:rounded-2xl sm:px-6 sm:py-3">
@@ -421,6 +628,7 @@ export function Dashboard() {
                   </div>
                 </div>
               </div>
+              {canSeeTopOperatives && (
               <div className="relative flex max-h-80 min-h-56 min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900 to-gray-900 p-4 sm:min-h-80 sm:max-h-96 sm:rounded-[32px] sm:p-8 lg:w-0 lg:flex-[3] lg:shrink-0">
                 <div className="absolute -top-4 right-0 h-24 w-24 rounded-full bg-orange-500/20 blur-[20px] pointer-events-none" />
                 <div className="shrink-0 pb-3 sm:pb-4">
@@ -452,6 +660,7 @@ export function Dashboard() {
                   <div className="absolute left-0 right-2 bottom-0 z-10 h-6 bg-gradient-to-t from-gray-900 to-transparent pointer-events-none" />
                 </div>
               </div>
+              )}
             </div>
 
             {/* Charts row */}

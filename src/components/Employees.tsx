@@ -22,6 +22,13 @@ type EmployeeRow = {
   created_at?: string
 }
 
+type EmployeesTableCache = {
+  employees: EmployeeRow[]
+  avatarUrls: Record<string, string>
+}
+
+let employeesTableCache: EmployeesTableCache | null = null
+
 function getDepartmentStyle(dept: string): string {
   const d = (dept || '').toLowerCase()
   if (d.includes('design')) return 'bg-blue-500/10 text-blue-400 border-blue-500/20'
@@ -129,8 +136,8 @@ function areAvatarMapsEqual(a: Record<string, string>, b: Record<string, string>
 
 export default function Employees() {
   const { displayRole, onlineAuthIds } = useDashboardProfile()
-  const [employees, setEmployees] = useState<EmployeeRow[]>([])
-  const [employeesLoading, setEmployeesLoading] = useState(true)
+  const [employees, setEmployees] = useState<EmployeeRow[]>(() => employeesTableCache?.employees ?? [])
+  const [employeesLoading, setEmployeesLoading] = useState(() => !employeesTableCache)
   const [showAddModal, setShowAddModal] = useState(false)
   const [addEmail, setAddEmail] = useState('')
   const [addPassword, setAddPassword] = useState('')
@@ -143,7 +150,9 @@ export default function Employees() {
   const [searchQuery, setSearchQuery] = useState('')
   const [roleFilter, setRoleFilter] = useState('') // '' = all, 'superadmin' | 'admin' | 'user'
   const [roleDropdownOpen, setRoleDropdownOpen] = useState(false)
-  const [employeeAvatarUrls, setEmployeeAvatarUrls] = useState<Record<string, string>>({})
+  const [employeeAvatarUrls, setEmployeeAvatarUrls] = useState<Record<string, string>>(
+    () => employeesTableCache?.avatarUrls ?? {}
+  )
   const [editingEmployee, setEditingEmployee] = useState<EmployeeRow | null>(null)
   const [editName, setEditName] = useState('')
   const [editRole, setEditRole] = useState<'user' | 'admin' | 'superadmin'>('user')
@@ -241,6 +250,10 @@ export default function Employees() {
 
     if (authIds.length === 0) {
       setEmployeeAvatarUrls({})
+      employeesTableCache = {
+        employees: employeesTableCache?.employees ?? [],
+        avatarUrls: {},
+      }
       return
     }
 
@@ -268,12 +281,19 @@ export default function Employees() {
     )
 
     const nextMap = Object.fromEntries(avatarEntries.filter((entry) => entry[1]))
-    setEmployeeAvatarUrls((prev) => (areAvatarMapsEqual(prev, nextMap) ? prev : nextMap))
+    setEmployeeAvatarUrls((prev) => {
+      const next = areAvatarMapsEqual(prev, nextMap) ? prev : nextMap
+      employeesTableCache = {
+        employees: employeesTableCache?.employees ?? [],
+        avatarUrls: next,
+      }
+      return next
+    })
   }, [])
 
   const fetchEmployees = useCallback(async (options?: { background?: boolean }) => {
     const isBackgroundRefresh = options?.background ?? false
-    if (!isBackgroundRefresh) {
+    if (!isBackgroundRefresh && !employeesTableCache) {
       setEmployeesLoading(true)
     }
     const { data, error } = await supabase
@@ -288,10 +308,20 @@ export default function Employees() {
       console.error('Failed to fetch employees', error)
       setEmployees([])
       setEmployeeAvatarUrls({})
+      if (!isBackgroundRefresh) {
+        employeesTableCache = null
+      }
       return
     }
     const rows = (data as EmployeeRow[]) ?? []
-    setEmployees((prev) => (areEmployeeRowsEqual(prev, rows) ? prev : rows))
+    setEmployees((prev) => {
+      const next = areEmployeeRowsEqual(prev, rows) ? prev : rows
+      employeesTableCache = {
+        employees: next,
+        avatarUrls: employeesTableCache?.avatarUrls ?? {},
+      }
+      return next
+    })
     void fetchEmployeeAvatarUrls(rows)
   }, [fetchEmployeeAvatarUrls])
 

@@ -45,6 +45,8 @@ type InvoiceRow = {
   invoice_type: string
 }
 
+let invoiceTableCache: InvoiceRow[] | null = null
+
 type ActionMenuState = {
   id: number
   top: number
@@ -510,10 +512,12 @@ export function InvoiceDocument({
 
 export default function Invoice() {
   const router = useRouter()
-  const { displayRole, accountType } = useDashboardProfile()
+  const { displayRole, accountType, currentEmployeeId, profileLoaded } = useDashboardProfile()
+  const normalizedRole = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '')
+  const isUserRole = normalizedRole === 'user'
   const clientData = useClientDashboardData()
-  const [invoices, setInvoices] = useState<InvoiceRow[]>([])
-  const [invoicesLoading, setInvoicesLoading] = useState(true)
+  const [invoices, setInvoices] = useState<InvoiceRow[]>(() => invoiceTableCache ?? [])
+  const [invoicesLoading, setInvoicesLoading] = useState(() => !invoiceTableCache)
   const [employees, setEmployees] = useState<EmployeeOption[]>([])
   const [clients, setClients] = useState<ClientOption[]>([])
   const [brands, setBrands] = useState<BrandOption[]>([])
@@ -588,29 +592,16 @@ export default function Invoice() {
       }
     }
   }
-  const [currentUserEmployeeId, setCurrentUserEmployeeId] = useState<number | null>(null)
   const [openActionMenu, setOpenActionMenu] = useState<ActionMenuState | null>(null)
-
-  useEffect(() => {
-    supabase.auth.getUser().then(async ({ data }) => {
-      const authId = data.user?.id ?? null
-      if (authId) {
-        const { data: emp } = await supabase.from('employees').select('id').eq('auth_id', authId).maybeSingle()
-        setCurrentUserEmployeeId(emp ? (emp as { id: number }).id : null)
-      } else {
-        setCurrentUserEmployeeId(null)
-      }
-    })
-  }, [])
 
   function canEditInvoice(inv: InvoiceRow): boolean {
     if (isSuperAdmin) return true
-    return currentUserEmployeeId !== null && currentUserEmployeeId === inv.invoice_creator_id
+    return currentEmployeeId !== null && currentEmployeeId === inv.invoice_creator_id
   }
 
   function canDeleteInvoice(inv: InvoiceRow): boolean {
     if (isSuperAdmin) return true
-    return currentUserEmployeeId !== null && currentUserEmployeeId === inv.invoice_creator_id
+    return currentEmployeeId !== null && currentEmployeeId === inv.invoice_creator_id
   }
 
 
@@ -632,16 +623,35 @@ export default function Invoice() {
       return
     }
 
-    if (!isBackgroundRefresh) {
+    if (isUserRole && !profileLoaded) {
+      return
+    }
+
+    if (isUserRole && currentEmployeeId == null) {
+      if (!isBackgroundRefresh) {
+        setInvoicesLoading(true)
+      }
+      setInvoices([])
+      if (!isBackgroundRefresh) {
+        setInvoicesLoading(false)
+      }
+      return
+    }
+
+    if (!isBackgroundRefresh && !invoiceTableCache) {
       setInvoicesLoading(true)
     }
     let query = supabase
       .from('invoices')
-      .select('*, employees!invoice_creator_id(employee_name), clients!client_id(name)')
+      .select(
+        'id, invoice_date, invoice_creator_id, client_id, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, created_at, employees!invoice_creator_id(employee_name), clients!client_id(name)'
+      )
       .order('created_at', { ascending: false })
 
     if (isClient && clientId) {
       query = query.eq('client_id', clientId)
+    } else if (isUserRole && currentEmployeeId != null) {
+      query = query.eq('invoice_creator_id', currentEmployeeId)
     }
 
     const { data, error } = await query
@@ -650,7 +660,10 @@ export default function Invoice() {
     }
     if (error) {
       console.error('Failed to fetch invoices', error)
-      setInvoices([])
+      if (!isBackgroundRefresh) {
+        setInvoices([])
+        invoiceTableCache = null
+      }
       return
     }
     const rows = (data ?? []).map((row: Record<string, unknown>) => {
@@ -677,8 +690,12 @@ export default function Invoice() {
         invoice_type: (row.invoice_type as string) ?? INVOICE_TYPE_OPTIONS[0],
       }
     })
-    setInvoices((prev) => (areInvoiceRowsEqual(prev, rows) ? prev : rows))
-  }, [accountType, clientData?.client?.id, clientData?.loading])
+    setInvoices((prev) => {
+      const next = areInvoiceRowsEqual(prev, rows) ? prev : rows
+      invoiceTableCache = next
+      return next
+    })
+  }, [accountType, clientData?.client?.id, clientData?.loading, currentEmployeeId, isUserRole, profileLoaded])
 
   const fetchEmployees = useCallback(async () => {
     const { data, error } = await supabase
@@ -721,6 +738,9 @@ export default function Invoice() {
     setBrands((data as BrandOption[]) ?? [])
   }, [])
 
+  const PAGE_SIZE = 4
+  const TABLE_REFRESH_INTERVAL_MS = 5000
+
   useEffect(() => {
     void fetchInvoices()
 
@@ -743,7 +763,7 @@ export default function Invoice() {
     fetchBrands()
   }, [fetchBrands])
 
-  const isSuperAdmin = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '') === 'superadmin'
+  const isSuperAdmin = normalizedRole === 'superadmin'
 
   const statusOptions: { label: string; value: 'all' | 'paid' | 'unpaid' }[] = [
     { label: 'All Statuses', value: 'all' },
@@ -751,9 +771,6 @@ export default function Invoice() {
     { label: 'Unpaid', value: 'unpaid' },
   ]
   const statusFilterLabel = statusOptions.find((o) => o.value === statusFilter)?.label ?? 'All Statuses'
-
-  const PAGE_SIZE = 4
-  const TABLE_REFRESH_INTERVAL_MS = 5000
 
   useEffect(() => {
     setCurrentPage(1)
@@ -909,7 +926,7 @@ export default function Invoice() {
 
   async function handleAddSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (currentUserEmployeeId === null) return
+    if (currentEmployeeId === null) return
     if (savedAddInvoiceId !== null) return
     if (!addValidation.valid) {
       setAddError(addValidation.message)
@@ -941,7 +958,7 @@ export default function Invoice() {
       .from('invoices')
       .insert({
         invoice_date: new Date().toISOString().slice(0, 10),
-        invoice_creator_id: currentUserEmployeeId,
+        invoice_creator_id: currentEmployeeId,
         client_id: addClientId,
         brand_name: addBrand.trim(),
         email: addEmail.trim(),
@@ -1801,7 +1818,7 @@ export default function Invoice() {
                     )
                   })()}
 
-                  {currentUserEmployeeId === null && !addError && savedAddInvoiceId === null && (
+                  {currentEmployeeId === null && !addError && savedAddInvoiceId === null && (
                     <p className="mx-10 mt-4 rounded-lg border border-amber-500/50 bg-amber-500/10 px-4 py-3 text-sm text-amber-700">You must be registered as an employee to create invoices.</p>
                   )}
                   {savedAddInvoiceId !== null && !addError && savedAddInvoiceUrl && (
@@ -1847,7 +1864,7 @@ export default function Invoice() {
                         type="submit"
                         disabled={
                           addLoading ||
-                          currentUserEmployeeId === null ||
+                          currentEmployeeId === null ||
                           !addValidation.valid ||
                           isGatewayLimitBlockingError(addError)
                         }

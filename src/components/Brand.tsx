@@ -17,6 +17,8 @@ type BrandRow = {
   created_at?: string
 }
 
+let brandTableCache: BrandRow[] | null = null
+
 const PAGE_SIZE = 4
 const TABLE_REFRESH_INTERVAL_MS = 5000
 const BRAND_GRID = 'minmax(68px,0.75fr) minmax(108px,1.15fr) minmax(148px,2.1fr) 128px 96px 100px'
@@ -83,8 +85,8 @@ function areBrandRowsEqual(a: BrandRow[], b: BrandRow[]) {
 
 export default function Brand() {
   const { displayRole } = useDashboardProfile()
-  const [brands, setBrands] = useState<BrandRow[]>([])
-  const [brandsLoading, setBrandsLoading] = useState(true)
+  const [brands, setBrands] = useState<BrandRow[]>(() => brandTableCache ?? [])
+  const [brandsLoading, setBrandsLoading] = useState(() => !brandTableCache)
   const [searchQuery, setSearchQuery] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [showAddModal, setShowAddModal] = useState(false)
@@ -110,7 +112,7 @@ export default function Brand() {
 
   const fetchBrands = useCallback(async (options?: { background?: boolean }) => {
     const isBackgroundRefresh = options?.background ?? false
-    if (!isBackgroundRefresh) {
+    if (!isBackgroundRefresh && !brandTableCache) {
       setBrandsLoading(true)
     }
     const { data, error } = await supabase
@@ -122,11 +124,18 @@ export default function Brand() {
     }
     if (error) {
       console.error('Failed to fetch brands', error)
-      setBrands([])
+      if (!isBackgroundRefresh) {
+        setBrands([])
+        brandTableCache = null
+      }
       return
     }
     const nextRows = (data as BrandRow[]) ?? []
-    setBrands((prev) => (areBrandRowsEqual(prev, nextRows) ? prev : nextRows))
+    setBrands((prev) => {
+      const next = areBrandRowsEqual(prev, nextRows) ? prev : nextRows
+      brandTableCache = next
+      return next
+    })
   }, [])
 
   useEffect(() => {

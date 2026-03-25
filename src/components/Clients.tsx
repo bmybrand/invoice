@@ -42,6 +42,14 @@ type ClientTableRow = {
 
 type BrandOption = { id: number; brand_name: string }
 
+type ClientsTableCache = {
+  clients: ClientRow[]
+  registrationRequests: RegistrationRequestRow[]
+  brands: BrandOption[]
+}
+
+let clientsTableCache: ClientsTableCache | null = null
+
 type RequestActionMode = 'approve' | 'reject' | 'delete'
 type RequestActionConfirmState = {
   mode: RequestActionMode
@@ -122,10 +130,12 @@ function TrashIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
 
 export default function Clients() {
   const { displayRole } = useDashboardProfile()
-  const [clients, setClients] = useState<ClientRow[]>([])
-  const [clientsLoading, setClientsLoading] = useState(true)
-  const [registrationRequests, setRegistrationRequests] = useState<RegistrationRequestRow[]>([])
-  const [brands, setBrands] = useState<BrandOption[]>([])
+  const [clients, setClients] = useState<ClientRow[]>(() => clientsTableCache?.clients ?? [])
+  const [clientsLoading, setClientsLoading] = useState(() => !clientsTableCache)
+  const [registrationRequests, setRegistrationRequests] = useState<RegistrationRequestRow[]>(
+    () => clientsTableCache?.registrationRequests ?? []
+  )
+  const [brands, setBrands] = useState<BrandOption[]>(() => clientsTableCache?.brands ?? [])
   const [searchQuery, setSearchQuery] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [showAddModal, setShowAddModal] = useState(false)
@@ -173,12 +183,18 @@ export default function Clients() {
       console.error('Failed to fetch brands', error)
       return
     }
-    setBrands((data as BrandOption[]) ?? [])
+    const nextBrands = (data as BrandOption[]) ?? []
+    setBrands(nextBrands)
+    clientsTableCache = {
+      clients: clientsTableCache?.clients ?? [],
+      registrationRequests: clientsTableCache?.registrationRequests ?? [],
+      brands: nextBrands,
+    }
   }, [])
 
   const fetchClients = useCallback(async (options?: { background?: boolean }) => {
     const isBackgroundRefresh = options?.background ?? false
-    if (!isBackgroundRefresh) {
+    if (!isBackgroundRefresh && !clientsTableCache) {
       setClientsLoading(true)
     }
     const { data: clientsData, error: clientsError } = await supabase
@@ -283,6 +299,11 @@ export default function Clients() {
 
     setClients((prev) => (areClientRowsEqual(prev, visibleClientRows) ? prev : visibleClientRows))
     setRegistrationRequests((prev) => (areRequestRowsEqual(prev, requestRows) ? prev : requestRows))
+    clientsTableCache = {
+      clients: visibleClientRows,
+      registrationRequests: requestRows,
+      brands: clientsTableCache?.brands ?? [],
+    }
     if (!isBackgroundRefresh) {
       setClientsLoading(false)
     }
