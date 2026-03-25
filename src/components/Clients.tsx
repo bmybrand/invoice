@@ -202,7 +202,7 @@ export default function Clients() {
     }
     const { data: clientsData, error: clientsError } = await supabase
       .from('clients')
-      .select('id, name, email, brand_id, status, created_date')
+      .select('id, name, email, brand_id, status, created_date, brands:brand_id(brand_name)')
       .neq('isdeleted', true)
       .order('created_date', { ascending: false })
 
@@ -222,30 +222,39 @@ export default function Clients() {
         brand_id: number | null
         status: string | null
         created_date?: string | null
+        brands?: { brand_name?: string | null } | Array<{ brand_name?: string | null }> | null
       }> | null) ?? [])
 
     const clientRows = allClientRows
       .filter((row) => (row.status || '').trim().toLowerCase() === 'approved')
-      .map((row) => ({
+      .map((row) => {
+        const brandRel = Array.isArray(row.brands) ? row.brands[0] : row.brands
+        return {
         id: row.id,
         name: row.name,
         email: row.email,
         brand_id: row.brand_id,
-      }))
+        brand_name: brandRel?.brand_name ?? '',
+      }
+      })
 
     const requestsData: RegistrationRequestRow[] = allClientRows
       .filter((row) => {
         const status = (row.status || '').trim().toLowerCase()
         return status === 'pending' || status === 'rejected'
       })
-      .map((row) => ({
+      .map((row) => {
+        const brandRel = Array.isArray(row.brands) ? row.brands[0] : row.brands
+        return {
         id: row.id,
         name: row.name,
         email: row.email,
         brand_id: row.brand_id,
         status: (row.status || '').trim().toLowerCase(),
         created_at: row.created_date ?? null,
-      }))
+        brand_name: brandRel?.brand_name ?? '',
+      }
+      })
 
     const visibleClientRows = clientRows.filter((c) => !pendingClientDeleteIdsRef.current.has(c.id))
     const allRequestRows = requestsData
@@ -279,27 +288,6 @@ export default function Clients() {
       }
     })
 
-    const brandIds = [
-      ...new Set([
-        ...visibleClientRows.map((c) => c.brand_id).filter(Boolean),
-        ...requestRows.map((r) => r.brand_id).filter(Boolean),
-      ]),
-    ] as number[]
-
-    if (brandIds.length > 0) {
-      const { data: brandsData } = await supabase
-        .from('brands')
-        .select('id, brand_name')
-        .in('id', brandIds)
-      const brandMap = new Map((brandsData ?? []).map((b: { id: number; brand_name: string }) => [b.id, b.brand_name]))
-      visibleClientRows.forEach((c) => {
-        if (c.brand_id) (c as ClientRow).brand_name = brandMap.get(c.brand_id) ?? ''
-      })
-      requestRows.forEach((r) => {
-        if (r.brand_id) (r as RegistrationRequestRow).brand_name = brandMap.get(r.brand_id) ?? ''
-      })
-    }
-
     setClients((prev) => (areClientRowsEqual(prev, visibleClientRows) ? prev : visibleClientRows))
     setRegistrationRequests((prev) => (areRequestRowsEqual(prev, requestRows) ? prev : requestRows))
     clientsTableCache = {
@@ -319,7 +307,9 @@ export default function Clients() {
     }, 0)
 
     const intervalId = window.setInterval(() => {
-      void fetchClients({ background: true })
+      if (document.visibilityState === 'visible') {
+        void fetchClients({ background: true })
+      }
     }, TABLE_REFRESH_INTERVAL_MS)
 
     return () => {

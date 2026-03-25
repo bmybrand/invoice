@@ -263,8 +263,11 @@ export default function Employees() {
       return
     }
 
+    const existingMap = scopedEmployeesCache?.avatarUrls ?? {}
+    const missingAuthIds = authIds.filter((authId) => !(authId in existingMap))
+
     const avatarEntries = await Promise.all(
-      authIds.map(async (authId) => {
+      missingAuthIds.map(async (authId) => {
         const { data, error } = await supabase.storage.from(PROFILE_AVATAR_BUCKET).list(authId)
 
         if (error || !data?.length) return [authId, ''] as const
@@ -286,7 +289,16 @@ export default function Employees() {
       })
     )
 
-    const nextMap = Object.fromEntries(avatarEntries.filter((entry) => entry[1]))
+    const mergedMap: Record<string, string> = { ...existingMap }
+    for (const [authId, url] of avatarEntries) {
+      mergedMap[authId] = url
+    }
+
+    const nextMap = Object.fromEntries(
+      authIds
+        .map((authId) => [authId, mergedMap[authId] || ''] as const)
+        .filter((entry) => entry[1])
+    )
     setEmployeeAvatarUrls((prev) => {
       const next = areAvatarMapsEqual(prev, nextMap) ? prev : nextMap
       employeesTableCache = {
@@ -337,7 +349,9 @@ export default function Employees() {
     void fetchEmployees()
 
     const intervalId = window.setInterval(() => {
-      void fetchEmployees({ background: true })
+      if (document.visibilityState === 'visible') {
+        void fetchEmployees({ background: true })
+      }
     }, TABLE_REFRESH_INTERVAL_MS)
 
     return () => window.clearInterval(intervalId)

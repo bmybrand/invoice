@@ -151,7 +151,9 @@ export default function Brand() {
     void fetchBrands()
 
     const intervalId = window.setInterval(() => {
-      void fetchBrands({ background: true })
+      if (document.visibilityState === 'visible') {
+        void fetchBrands({ background: true })
+      }
     }, TABLE_REFRESH_INTERVAL_MS)
 
     return () => window.clearInterval(intervalId)
