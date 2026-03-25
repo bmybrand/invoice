@@ -59,7 +59,12 @@ type PaymentRow = {
   status: 'Success' | 'Processing' | 'Recorded'
 }
 
-let paymentsTableCache: PaymentRow[] | null = null
+type PaymentsScopedCache = {
+  ownerAuthId: string | null
+  rows: PaymentRow[]
+}
+
+let paymentsTableCache: PaymentsScopedCache | null = null
 
 function SearchIcon({ className = 'h-4 w-4' }: { className?: string }) {
   return (
@@ -139,12 +144,13 @@ function formatDateTime(value: string | null | undefined): string {
 
 export default function Payments() {
   const router = useRouter()
-  const { accountType, displayRole, currentEmployeeId, profileLoaded } = useDashboardProfile()
+  const { accountType, currentUserAuthId, displayRole, currentEmployeeId, profileLoaded } = useDashboardProfile()
   const normalizedRole = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '')
   const isUserRole = normalizedRole === 'user'
   const clientData = useClientDashboardData()
-  const [payments, setPayments] = useState<PaymentRow[]>(() => paymentsTableCache ?? [])
-  const [paymentsLoading, setPaymentsLoading] = useState(() => !paymentsTableCache)
+  const scopedPaymentsCache = paymentsTableCache?.ownerAuthId === currentUserAuthId ? paymentsTableCache.rows : null
+  const [payments, setPayments] = useState<PaymentRow[]>(() => scopedPaymentsCache ?? [])
+  const [paymentsLoading, setPaymentsLoading] = useState(() => !scopedPaymentsCache)
   const [searchQuery, setSearchQuery] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
 
@@ -153,7 +159,7 @@ export default function Payments() {
 
     async function fetchPayments(options?: { background?: boolean }) {
       const isBackgroundRefresh = options?.background ?? false
-      if (!isBackgroundRefresh && !paymentsTableCache) {
+      if (!isBackgroundRefresh && !scopedPaymentsCache) {
         setPaymentsLoading(true)
       }
 
@@ -263,7 +269,10 @@ export default function Payments() {
       if (!active) return
 
       setPayments(mappedPayments)
-      paymentsTableCache = mappedPayments
+      paymentsTableCache = {
+        ownerAuthId: currentUserAuthId,
+        rows: mappedPayments,
+      }
       if (!isBackgroundRefresh) {
         setPaymentsLoading(false)
       }
@@ -281,7 +290,7 @@ export default function Payments() {
       window.clearInterval(intervalId)
       active = false
     }
-  }, [accountType, clientData?.client?.id, clientData?.loading, currentEmployeeId, isUserRole, profileLoaded])
+  }, [accountType, clientData?.client?.id, clientData?.loading, currentEmployeeId, currentUserAuthId, isUserRole, profileLoaded, scopedPaymentsCache])
 
   const filteredPayments = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()

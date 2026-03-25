@@ -17,7 +17,12 @@ type BrandRow = {
   created_at?: string
 }
 
-let brandTableCache: BrandRow[] | null = null
+type BrandScopedCache = {
+  ownerAuthId: string | null
+  rows: BrandRow[]
+}
+
+let brandTableCache: BrandScopedCache | null = null
 
 const PAGE_SIZE = 4
 const TABLE_REFRESH_INTERVAL_MS = 5000
@@ -84,9 +89,10 @@ function areBrandRowsEqual(a: BrandRow[], b: BrandRow[]) {
 }
 
 export default function Brand() {
-  const { displayRole } = useDashboardProfile()
-  const [brands, setBrands] = useState<BrandRow[]>(() => brandTableCache ?? [])
-  const [brandsLoading, setBrandsLoading] = useState(() => !brandTableCache)
+  const { currentUserAuthId, displayRole } = useDashboardProfile()
+  const scopedBrandCache = brandTableCache?.ownerAuthId === currentUserAuthId ? brandTableCache.rows : null
+  const [brands, setBrands] = useState<BrandRow[]>(() => scopedBrandCache ?? [])
+  const [brandsLoading, setBrandsLoading] = useState(() => !scopedBrandCache)
   const [searchQuery, setSearchQuery] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [showAddModal, setShowAddModal] = useState(false)
@@ -112,7 +118,7 @@ export default function Brand() {
 
   const fetchBrands = useCallback(async (options?: { background?: boolean }) => {
     const isBackgroundRefresh = options?.background ?? false
-    if (!isBackgroundRefresh && !brandTableCache) {
+    if (!isBackgroundRefresh && !scopedBrandCache) {
       setBrandsLoading(true)
     }
     const { data, error } = await supabase
@@ -133,10 +139,13 @@ export default function Brand() {
     const nextRows = (data as BrandRow[]) ?? []
     setBrands((prev) => {
       const next = areBrandRowsEqual(prev, nextRows) ? prev : nextRows
-      brandTableCache = next
+      brandTableCache = {
+        ownerAuthId: currentUserAuthId,
+        rows: next,
+      }
       return next
     })
-  }, [])
+  }, [currentUserAuthId, scopedBrandCache])
 
   useEffect(() => {
     void fetchBrands()

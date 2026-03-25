@@ -45,7 +45,12 @@ type InvoiceRow = {
   invoice_type: string
 }
 
-let invoiceTableCache: InvoiceRow[] | null = null
+type InvoiceScopedCache = {
+  ownerAuthId: string | null
+  rows: InvoiceRow[]
+}
+
+let invoiceTableCache: InvoiceScopedCache | null = null
 
 type ActionMenuState = {
   id: number
@@ -512,12 +517,13 @@ export function InvoiceDocument({
 
 export default function Invoice() {
   const router = useRouter()
-  const { displayRole, accountType, currentEmployeeId, profileLoaded } = useDashboardProfile()
+  const { displayRole, accountType, currentEmployeeId, currentUserAuthId, profileLoaded } = useDashboardProfile()
   const normalizedRole = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '')
   const isUserRole = normalizedRole === 'user'
   const clientData = useClientDashboardData()
-  const [invoices, setInvoices] = useState<InvoiceRow[]>(() => invoiceTableCache ?? [])
-  const [invoicesLoading, setInvoicesLoading] = useState(() => !invoiceTableCache)
+  const scopedInvoiceCache = invoiceTableCache?.ownerAuthId === currentUserAuthId ? invoiceTableCache.rows : null
+  const [invoices, setInvoices] = useState<InvoiceRow[]>(() => scopedInvoiceCache ?? [])
+  const [invoicesLoading, setInvoicesLoading] = useState(() => !scopedInvoiceCache)
   const [employees, setEmployees] = useState<EmployeeOption[]>([])
   const [clients, setClients] = useState<ClientOption[]>([])
   const [brands, setBrands] = useState<BrandOption[]>([])
@@ -638,7 +644,7 @@ export default function Invoice() {
       return
     }
 
-    if (!isBackgroundRefresh && !invoiceTableCache) {
+    if (!isBackgroundRefresh && !scopedInvoiceCache) {
       setInvoicesLoading(true)
     }
     let query = supabase
@@ -692,10 +698,13 @@ export default function Invoice() {
     })
     setInvoices((prev) => {
       const next = areInvoiceRowsEqual(prev, rows) ? prev : rows
-      invoiceTableCache = next
+      invoiceTableCache = {
+        ownerAuthId: currentUserAuthId,
+        rows: next,
+      }
       return next
     })
-  }, [accountType, clientData?.client?.id, clientData?.loading, currentEmployeeId, isUserRole, profileLoaded])
+  }, [accountType, clientData?.client?.id, clientData?.loading, currentEmployeeId, currentUserAuthId, isUserRole, profileLoaded, scopedInvoiceCache])
 
   const fetchEmployees = useCallback(async () => {
     const { data, error } = await supabase

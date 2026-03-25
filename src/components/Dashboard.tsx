@@ -128,6 +128,11 @@ type DashboardSnapshot = {
   annualOverview: AnnualOverview
 }
 
+type DashboardScopedCache = {
+  ownerAuthId: string | null
+  snapshot: DashboardSnapshot
+}
+
 const createEmptyDailyRevenueSeries = () => ({
   this_week: WEEK_DAYS.map((day) => ({ day, value: 0, highlight: false })),
   last_week: WEEK_DAYS.map((day) => ({ day, value: 0, highlight: false })),
@@ -159,7 +164,7 @@ const createEmptySnapshot = (): DashboardSnapshot => ({
   annualOverview: EMPTY_ANNUAL_OVERVIEW,
 })
 
-let dashboardSnapshotCache: DashboardSnapshot | null = null
+let dashboardSnapshotCache: DashboardScopedCache | null = null
 
 function isSuccessfulPaymentStatus(value: string | null | undefined): boolean {
   const normalized = (value || '').trim().toLowerCase()
@@ -172,7 +177,7 @@ function isSuccessfulPaymentStatus(value: string | null | undefined): boolean {
 }
 
 export function Dashboard() {
-  const { displayRole } = useDashboardProfile()
+  const { displayRole, currentUserAuthId } = useDashboardProfile()
   const normalizedRole = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '')
   const canSeeTopOperatives = normalizedRole === 'admin' || normalizedRole === 'superadmin'
   const isUserRole = normalizedRole === 'user'
@@ -180,7 +185,10 @@ export function Dashboard() {
   const [dailyRangeOpen, setDailyRangeOpen] = useState(false)
   const [growthMetric, setGrowthMetric] = useState<'paid_revenue' | 'upsale_revenue'>('paid_revenue')
   const [growthMetricOpen, setGrowthMetricOpen] = useState(false)
-  const cachedSnapshot = dashboardSnapshotCache
+  const cachedSnapshot =
+    dashboardSnapshotCache?.ownerAuthId === currentUserAuthId
+      ? dashboardSnapshotCache.snapshot
+      : null
   const [shouldAnimateAmounts] = useState(() => !cachedSnapshot)
   const [topOperatives, setTopOperatives] = useState<Array<{
     id: number
@@ -219,7 +227,10 @@ export function Dashboard() {
     async function loadDashboardData() {
       const setEmptyState = () => {
         const emptySnapshot = createEmptySnapshot()
-        dashboardSnapshotCache = emptySnapshot
+        dashboardSnapshotCache = {
+          ownerAuthId: currentUserAuthId,
+          snapshot: emptySnapshot,
+        }
         setTopOperatives(emptySnapshot.topOperatives)
         setMetrics(emptySnapshot.metrics)
         setDailyRevenueSeries(emptySnapshot.dailyRevenueSeries)
@@ -504,16 +515,19 @@ export function Dashboard() {
       setGrowthVelocitySeries(nextGrowthVelocitySeries)
 
       dashboardSnapshotCache = {
-        topOperatives: nextTopOperatives,
-        metrics: nextMetrics,
-        dailyRevenueSeries: nextDailyRevenueSeries,
-        growthVelocitySeries: nextGrowthVelocitySeries,
-        annualOverview: nextAnnualOverview,
+        ownerAuthId: currentUserAuthId,
+        snapshot: {
+          topOperatives: nextTopOperatives,
+          metrics: nextMetrics,
+          dailyRevenueSeries: nextDailyRevenueSeries,
+          growthVelocitySeries: nextGrowthVelocitySeries,
+          annualOverview: nextAnnualOverview,
+        },
       }
     }
 
     loadDashboardData()
-  }, [isUserRole])
+  }, [currentUserAuthId, isUserRole])
 
   useEffect(() => {
     setDailyRevenueData(dailyRevenueSeries[dailyRange])

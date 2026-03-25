@@ -15,6 +15,7 @@ const PROFILE_AVATAR_BUCKET = 'profile-images'
 type DashboardProfile = {
   displayName: string
   displayRole: string
+  currentUserAuthId: string | null
   currentEmployeeId: number | null
   onlineAuthIds: string[]
   accountType: 'employee' | 'client' | null
@@ -24,6 +25,7 @@ type DashboardProfile = {
 const DashboardProfileContext = createContext<DashboardProfile>({
   displayName: '',
   displayRole: '',
+  currentUserAuthId: null,
   currentEmployeeId: null,
   onlineAuthIds: [],
   accountType: null,
@@ -230,6 +232,14 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
     setProfileLoaded(nextProfileLoaded)
   }, [])
 
+  const redirectToLoginHard = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      window.location.replace('/login')
+      return
+    }
+    router.replace('/login')
+  }, [router])
+
   const visibleNavItems =
     accountType === 'client'
       ? [
@@ -406,7 +416,7 @@ if (clientError) {
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT') {
         resetDashboardProfile(false)
-        router.replace('/login')
+        redirectToLoginHard()
       } else if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session?.user) {
         void loadProfile()
       } else if (!session?.user) {
@@ -418,7 +428,7 @@ if (clientError) {
       window.clearTimeout(timeoutId)
       subscription.unsubscribe()
     }
-  }, [loadProfile, resetDashboardProfile, router])
+  }, [loadProfile, redirectToLoginHard, resetDashboardProfile])
 
   useEffect(() => {
     if (!accountType) return
@@ -514,7 +524,7 @@ if (clientError) {
     }
 
     resetDashboardProfile(false)
-    router.replace('/login')
+    redirectToLoginHard()
   }
 
   function resetProfileImageState(nextPreviewUrl: string) {
@@ -695,6 +705,7 @@ if (clientError) {
       value={{
         displayName,
         displayRole,
+        currentUserAuthId,
         currentEmployeeId,
         onlineAuthIds: accountType === 'employee' ? onlineAuthIds : [],
         accountType,

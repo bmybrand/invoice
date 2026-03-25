@@ -23,6 +23,7 @@ type EmployeeRow = {
 }
 
 type EmployeesTableCache = {
+  ownerAuthId: string | null
   employees: EmployeeRow[]
   avatarUrls: Record<string, string>
 }
@@ -135,9 +136,11 @@ function areAvatarMapsEqual(a: Record<string, string>, b: Record<string, string>
 }
 
 export default function Employees() {
-  const { displayRole, onlineAuthIds } = useDashboardProfile()
-  const [employees, setEmployees] = useState<EmployeeRow[]>(() => employeesTableCache?.employees ?? [])
-  const [employeesLoading, setEmployeesLoading] = useState(() => !employeesTableCache)
+  const { currentUserAuthId: profileCurrentUserAuthId, displayRole, onlineAuthIds } = useDashboardProfile()
+  const scopedEmployeesCache =
+    employeesTableCache?.ownerAuthId === profileCurrentUserAuthId ? employeesTableCache : null
+  const [employees, setEmployees] = useState<EmployeeRow[]>(() => scopedEmployeesCache?.employees ?? [])
+  const [employeesLoading, setEmployeesLoading] = useState(() => !scopedEmployeesCache)
   const [showAddModal, setShowAddModal] = useState(false)
   const [addEmail, setAddEmail] = useState('')
   const [addPassword, setAddPassword] = useState('')
@@ -151,7 +154,7 @@ export default function Employees() {
   const [roleFilter, setRoleFilter] = useState('') // '' = all, 'superadmin' | 'admin' | 'user'
   const [roleDropdownOpen, setRoleDropdownOpen] = useState(false)
   const [employeeAvatarUrls, setEmployeeAvatarUrls] = useState<Record<string, string>>(
-    () => employeesTableCache?.avatarUrls ?? {}
+    () => scopedEmployeesCache?.avatarUrls ?? {}
   )
   const [editingEmployee, setEditingEmployee] = useState<EmployeeRow | null>(null)
   const [editName, setEditName] = useState('')
@@ -179,23 +182,25 @@ export default function Employees() {
     (displayRole || '').trim().toLowerCase().replace(/\s+/g, '') === 'admin'
   const onlineAuthIdSet = new Set(onlineAuthIds)
 
-  const [currentUserAuthId, setCurrentUserAuthId] = useState<string | null>(null)
   const [currentUserEmployeeId, setCurrentUserEmployeeId] = useState<number | null>(null)
   useEffect(() => {
-    supabase.auth.getUser().then(async ({ data }) => {
-      const authId = data.user?.id ?? null
-      setCurrentUserAuthId(authId)
-      if (authId) {
-        const { data: emp } = await supabase.from('employees').select('id').eq('auth_id', authId).maybeSingle()
+    if (!profileCurrentUserAuthId) {
+      setCurrentUserEmployeeId(null)
+      return
+    }
+
+    supabase
+      .from('employees')
+      .select('id')
+      .eq('auth_id', profileCurrentUserAuthId)
+      .maybeSingle()
+      .then(({ data: emp }) => {
         setCurrentUserEmployeeId(emp ? (emp as { id: number }).id : null)
-      } else {
-        setCurrentUserEmployeeId(null)
-      }
-    })
-  }, [])
+      })
+  }, [profileCurrentUserAuthId])
 
   function canEdit(emp: EmployeeRow): boolean {
-    if (emp.auth_id === currentUserAuthId) return true
+    if (emp.auth_id === profileCurrentUserAuthId) return true
     const role = (emp.role || '').trim().toLowerCase().replace(/\s+/g, '')
     if (isSuperAdmin) {
       if (role === 'superadmin') return false
@@ -206,7 +211,7 @@ export default function Employees() {
   }
 
   function canDelete(emp: EmployeeRow): boolean {
-    if (emp.auth_id === currentUserAuthId) return false
+    if (emp.auth_id === profileCurrentUserAuthId) return false
     const role = (emp.role || '').trim().toLowerCase().replace(/\s+/g, '')
     if (isSuperAdmin) return true
     if (isAdmin && role === 'user') return true
@@ -251,7 +256,8 @@ export default function Employees() {
     if (authIds.length === 0) {
       setEmployeeAvatarUrls({})
       employeesTableCache = {
-        employees: employeesTableCache?.employees ?? [],
+        ownerAuthId: profileCurrentUserAuthId,
+        employees: scopedEmployeesCache?.employees ?? [],
         avatarUrls: {},
       }
       return
@@ -284,16 +290,17 @@ export default function Employees() {
     setEmployeeAvatarUrls((prev) => {
       const next = areAvatarMapsEqual(prev, nextMap) ? prev : nextMap
       employeesTableCache = {
-        employees: employeesTableCache?.employees ?? [],
+        ownerAuthId: profileCurrentUserAuthId,
+        employees: scopedEmployeesCache?.employees ?? [],
         avatarUrls: next,
       }
       return next
     })
-  }, [])
+  }, [profileCurrentUserAuthId, scopedEmployeesCache])
 
   const fetchEmployees = useCallback(async (options?: { background?: boolean }) => {
     const isBackgroundRefresh = options?.background ?? false
-    if (!isBackgroundRefresh && !employeesTableCache) {
+    if (!isBackgroundRefresh && !scopedEmployeesCache) {
       setEmployeesLoading(true)
     }
     const { data, error } = await supabase
@@ -317,13 +324,14 @@ export default function Employees() {
     setEmployees((prev) => {
       const next = areEmployeeRowsEqual(prev, rows) ? prev : rows
       employeesTableCache = {
+        ownerAuthId: profileCurrentUserAuthId,
         employees: next,
-        avatarUrls: employeesTableCache?.avatarUrls ?? {},
+        avatarUrls: scopedEmployeesCache?.avatarUrls ?? {},
       }
       return next
     })
     void fetchEmployeeAvatarUrls(rows)
-  }, [fetchEmployeeAvatarUrls])
+  }, [fetchEmployeeAvatarUrls, profileCurrentUserAuthId, scopedEmployeesCache])
 
   useEffect(() => {
     void fetchEmployees()
@@ -512,7 +520,7 @@ export default function Employees() {
       return
     }
 
-    const isEditingSelf = editingEmployee.auth_id === currentUserAuthId
+    const isEditingSelf = editingEmployee.auth_id === profileCurrentUserAuthId
     const updatePayload: { employee_name: string; role?: string; department: string } = {
       employee_name: editName.trim(),
       department: editDepartment.trim(),
@@ -931,7 +939,7 @@ export default function Employees() {
                     />
                     <p className="mt-0.5 text-xs text-slate-500">Superadmin role cannot be changed</p>
                   </>
-                ) : isAdmin || editingEmployee?.auth_id === currentUserAuthId ? (
+                ) : isAdmin || editingEmployee?.auth_id === profileCurrentUserAuthId ? (
                   <>
                     <input
                       id="edit-role"
