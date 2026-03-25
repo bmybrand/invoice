@@ -42,6 +42,13 @@ type GatewayFormState = {
   liveSecretKey: string
 }
 
+type SettingsScopedCache = {
+  ownerAuthId: string | null
+  gateways: PaymentGatewayRow[]
+}
+
+let settingsGatewaysCache: SettingsScopedCache | null = null
+
 const EMPTY_FORM: GatewayFormState = {
   name: '',
   minimumDepositAmount: '',
@@ -144,12 +151,15 @@ async function fetchWithSession(url: string, init?: RequestInit) {
 }
 
 export default function Settings() {
-  const { displayRole } = useDashboardProfile()
+  const { currentUserAuthId, displayRole } = useDashboardProfile()
   const normalizedRole = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '')
   const canManageGateways = normalizedRole === 'superadmin' || normalizedRole === 'admin'
+  const scopedGatewaysCache =
+    settingsGatewaysCache?.ownerAuthId === currentUserAuthId ? settingsGatewaysCache.gateways : null
+  const hasScopedGatewaysCache = Boolean(scopedGatewaysCache)
 
-  const [gateways, setGateways] = useState<PaymentGatewayRow[]>([])
-  const [gatewaysLoading, setGatewaysLoading] = useState(true)
+  const [gateways, setGateways] = useState<PaymentGatewayRow[]>(() => scopedGatewaysCache ?? [])
+  const [gatewaysLoading, setGatewaysLoading] = useState(() => !hasScopedGatewaysCache)
   const [pageError, setPageError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
@@ -158,37 +168,64 @@ export default function Settings() {
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  const loadGateways = useCallback(async () => {
+  const loadGateways = useCallback(async (options?: { background?: boolean }) => {
+    const isBackgroundRefresh = options?.background ?? false
+
     if (!canManageGateways) {
       setGateways([])
       setGatewaysLoading(false)
       return
     }
 
-    setGatewaysLoading(true)
-    setPageError(null)
+    if (!isBackgroundRefresh && !hasScopedGatewaysCache) {
+      setGatewaysLoading(true)
+    }
+    if (!isBackgroundRefresh) {
+      setPageError(null)
+    }
 
     const res = await fetchWithSession('/api/settings/payment-gateways')
     const payload = (await res.json().catch(() => ({}))) as { gateways?: PaymentGatewayApiRow[]; error?: string }
 
     if (!res.ok) {
-      setPageError(payload.error ?? 'Failed to load payment gateways.')
-      setGateways([])
-      setGatewaysLoading(false)
+      if (!isBackgroundRefresh) {
+        setPageError(payload.error ?? 'Failed to load payment gateways.')
+        if (!hasScopedGatewaysCache) {
+          setGateways([])
+        }
+        setGatewaysLoading(false)
+      }
       return
     }
 
-    setGateways((payload.gateways ?? []).map(mapGatewayRow))
-    setGatewaysLoading(false)
-  }, [canManageGateways])
+    const nextGateways = (payload.gateways ?? []).map(mapGatewayRow)
+    settingsGatewaysCache = {
+      ownerAuthId: currentUserAuthId,
+      gateways: nextGateways,
+    }
+    setGateways(nextGateways)
+
+    if (!isBackgroundRefresh) {
+      setGatewaysLoading(false)
+    }
+  }, [canManageGateways, currentUserAuthId, hasScopedGatewaysCache])
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
-      void loadGateways()
+      void loadGateways({ background: hasScopedGatewaysCache })
     }, 0)
 
-    return () => window.clearTimeout(timeoutId)
-  }, [loadGateways])
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void loadGateways({ background: true })
+      }
+    }, 5000)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+      window.clearInterval(intervalId)
+    }
+  }, [hasScopedGatewaysCache, loadGateways])
 
   function openCreateModal() {
     setEditingGateway(null)
