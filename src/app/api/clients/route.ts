@@ -49,9 +49,11 @@ export async function POST(request: Request) {
       email,
       brand_id: brandId,
       handler_id: createdUser.user.id,
-      status: true,
+      auth_id: createdUser.user.id,
+      status: 'approved',
+      isdeleted: false,
     })
-    .select('id, name, email, brand_id')
+    .select('id, name, email, brand_id, status')
     .single()
 
   if (insertError) {

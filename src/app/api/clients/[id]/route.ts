@@ -1,17 +1,19 @@
 import { NextResponse } from 'next/server'
 import { requireAdminOrSuperAdmin } from '@/lib/server-admin-auth'
 
+type RouteParams = { id: string }
+
 export async function PATCH(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: RouteParams | Promise<RouteParams> }
 ) {
   const auth = await requireAdminOrSuperAdmin(request)
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
 
-  const { id } = await params
-  const clientId = id ? parseInt(id, 10) : NaN
+  const resolvedParams = params instanceof Promise ? await params : params
+  const clientId = resolvedParams.id ? parseInt(resolvedParams.id, 10) : NaN
   if (!Number.isFinite(clientId) || clientId < 1) {
     return NextResponse.json({ error: 'Invalid client ID' }, { status: 400 })
   }
@@ -28,16 +30,15 @@ export async function PATCH(
 
   const { data: client, error: fetchError } = await auth.supabase
     .from('clients')
-    .select('id, name, email, brand_id, handler_id')
+    .select('id, name, email, brand_id, handler_id, isdeleted')
     .eq('id', clientId)
-    .eq('status', true)
     .single()
 
-  if (fetchError || !client) {
+  if (fetchError || !client || (client as { isdeleted?: boolean | null }).isdeleted === true) {
     return NextResponse.json({ error: fetchError?.message || 'Client not found' }, { status: 404 })
   }
 
-  const row = client as { name: string; email: string; brand_id: number; handler_id: string }
+  const row = client as { name: string; email: string; handler_id: string }
   const updates: Record<string, unknown> = {}
 
   if (name !== null) updates.name = name
@@ -77,33 +78,32 @@ export async function PATCH(
 
 export async function DELETE(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: RouteParams | Promise<RouteParams> }
 ) {
   const auth = await requireAdminOrSuperAdmin(request)
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
 
-  const { id } = await params
-  const clientId = id ? parseInt(id, 10) : NaN
+  const resolvedParams = params instanceof Promise ? await params : params
+  const clientId = resolvedParams.id ? parseInt(resolvedParams.id, 10) : NaN
   if (!Number.isFinite(clientId) || clientId < 1) {
     return NextResponse.json({ error: 'Invalid client ID' }, { status: 400 })
   }
 
   const { data: client, error: fetchError } = await auth.supabase
     .from('clients')
-    .select('id, name, email, brand_id, handler_id')
+    .select('id, isdeleted')
     .eq('id', clientId)
-    .eq('status', true)
     .single()
 
-  if (fetchError || !client) {
+  if (fetchError || !client || (client as { isdeleted?: boolean | null }).isdeleted === true) {
     return NextResponse.json({ error: fetchError?.message || 'Client not found' }, { status: 404 })
   }
 
   const { error: deleteError } = await auth.supabase
     .from('clients')
-    .update({ status: false })
+    .update({ isdeleted: true })
     .eq('id', clientId)
 
   if (deleteError) {

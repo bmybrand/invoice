@@ -1,83 +1,37 @@
 import { NextResponse } from 'next/server'
 import { requireAdminOrSuperAdmin } from '@/lib/server-admin-auth'
 
+type RouteParams = { id: string }
+
 export async function POST(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: RouteParams | Promise<RouteParams> }
 ) {
   const auth = await requireAdminOrSuperAdmin(request)
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
 
-  const { id } = await params
-  const reqId = id ? parseInt(id, 10) : NaN
-  if (!Number.isFinite(reqId)) {
+  const resolvedParams = params instanceof Promise ? await params : params
+  const requestId = resolvedParams.id ? parseInt(resolvedParams.id, 10) : NaN
+  if (!Number.isFinite(requestId) || requestId < 1) {
     return NextResponse.json({ error: 'Invalid request ID' }, { status: 400 })
   }
 
-  const { data: reqRow, error: fetchError } = await auth.supabase
-    .from('client_registration_requests')
-    .select('id, name, email, brand_id, auth_id, status')
-    .eq('id', reqId)
+  const { data: row, error: fetchError } = await auth.supabase
+    .from('clients')
+    .select('id, status, isdeleted')
+    .eq('id', requestId)
     .single()
 
-  if (fetchError || !reqRow) {
-    return NextResponse.json(
-      { error: fetchError?.message || 'Request not found' },
-      { status: 404 }
-    )
-  }
-
-  const row = reqRow as { name: string; email: string; brand_id: number; auth_id: string; status?: string }
-  const currentStatus = (row.status || '').trim().toLowerCase()
-
-  if (currentStatus !== 'pending' && currentStatus !== 'rejected') {
-    return NextResponse.json({ error: 'Only pending or rejected requests can be approved' }, { status: 409 })
-  }
-
-  const { data: existingClient, error: existingClientError } = await auth.supabase
-    .from('clients')
-    .select('id')
-    .eq('email', row.email)
-    .maybeSingle()
-
-  if (existingClientError) {
-    return NextResponse.json({ error: existingClientError.message }, { status: 500 })
-  }
-
-  if (!existingClient) {
-    const { error: insertError } = await auth.supabase.from('clients').insert({
-      name: row.name,
-      email: row.email,
-      brand_id: row.brand_id,
-      handler_id: row.auth_id,
-      status: true,
-    })
-
-    if (insertError) {
-      return NextResponse.json({ error: insertError.message }, { status: 500 })
-    }
-  } else {
-    const { error: reactivateError } = await auth.supabase
-      .from('clients')
-      .update({
-        name: row.name,
-        brand_id: row.brand_id,
-        handler_id: row.auth_id,
-        status: true,
-      })
-      .eq('id', (existingClient as { id: number }).id)
-
-    if (reactivateError) {
-      return NextResponse.json({ error: reactivateError.message }, { status: 500 })
-    }
+  if (fetchError || !row || (row as { isdeleted?: boolean | null }).isdeleted === true) {
+    return NextResponse.json({ error: fetchError?.message || 'Request not found' }, { status: 404 })
   }
 
   const { error: updateError } = await auth.supabase
-    .from('client_registration_requests')
-    .update({ status: 'approved' })
-    .eq('id', reqId)
+    .from('clients')
+    .update({ status: 'approved', isdeleted: false })
+    .eq('id', requestId)
 
   if (updateError) {
     return NextResponse.json({ error: updateError.message }, { status: 500 })

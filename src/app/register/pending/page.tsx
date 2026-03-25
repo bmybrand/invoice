@@ -29,14 +29,16 @@ export default function RegisterPendingPage() {
         supabase
           .from('clients')
           .select('id')
-          .eq('status', true)
+          .eq('status', 'approved')
+          .neq('isdeleted', true)
           .or(`handler_id.eq.${authId},email.eq.${normalizedEmail}`)
           .maybeSingle(),
         supabase
-          .from('client_registration_requests')
+          .from('clients')
           .select('status')
-          .eq('email', normalizedEmail)
-          .order('created_at', { ascending: false })
+          .neq('isdeleted', true)
+          .or(`handler_id.eq.${authId},email.eq.${normalizedEmail}`)
+          .order('created_date', { ascending: false })
           .limit(1)
           .maybeSingle(),
       ])
@@ -92,3 +94,6 @@ export default function RegisterPendingPage() {
     </main>
   )
 }
+
+
+

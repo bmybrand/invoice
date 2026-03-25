@@ -105,9 +105,7 @@ export function NotificationsBell() {
     void fetchRequests({ showLoading: true })
 
     const intervalId = window.setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        void fetchRequests()
-      }
+      void fetchRequests()
     }, 5000)
 
     const channel = supabase
@@ -117,7 +115,7 @@ export function NotificationsBell() {
         {
           event: '*',
           schema: 'public',
-          table: 'client_registration_requests',
+          table: 'clients',
         },
         () => {
           void fetchRequests()
@@ -257,3 +255,4 @@ export function NotificationsBell() {
     </div>
   )
 }
+

@@ -48,6 +48,14 @@ type RequestActionConfirmState = {
   request: RegistrationRequestRow
 }
 
+function areClientRowsEqual(a: ClientRow[], b: ClientRow[]) {
+  return JSON.stringify(a) === JSON.stringify(b)
+}
+
+function areRequestRowsEqual(a: RegistrationRequestRow[], b: RegistrationRequestRow[]) {
+  return JSON.stringify(a) === JSON.stringify(b)
+}
+
 function SearchIcon({ className = 'h-4 w-4' }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -151,6 +159,14 @@ export default function Clients() {
   const pendingClientDeleteIdsRef = useRef<Set<number>>(new Set())
   const pendingRequestActionsRef = useRef<Map<number, RequestActionMode>>(new Map())
 
+  async function getCurrentAuthToken() {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session?.access_token?.trim()) return session.access_token.trim()
+    const { data: refreshedData, error } = await supabase.auth.refreshSession()
+    if (error) return ''
+    return refreshedData.session?.access_token?.trim() || ''
+  }
+
   const fetchBrands = useCallback(async () => {
     const { data, error } = await supabase.from('brands').select('id, brand_name').order('brand_name')
     if (error) {
@@ -165,38 +181,55 @@ export default function Clients() {
     if (!isBackgroundRefresh) {
       setClientsLoading(true)
     }
-    const [
-      { data: clientsData, error: clientsError },
-      { data: requestsData, error: requestsError },
-    ] = await Promise.all([
-      supabase
-        .from('clients')
-        .select('id, name, email, brand_id')
-        .eq('status', true)
-        .order('id', { ascending: false }),
-      supabase
-        .from('client_registration_requests')
-        .select('id, name, email, brand_id, status, created_at')
-        .order('created_at', { ascending: false }),
-    ])
+    const { data: clientsData, error: clientsError } = await supabase
+      .from('clients')
+      .select('id, name, email, brand_id, status, created_date')
+      .neq('isdeleted', true)
+      .order('created_date', { ascending: false })
 
     if (clientsError) {
       console.error('Failed to fetch clients', clientsError)
-      setClients([])
-      setRegistrationRequests([])
       if (!isBackgroundRefresh) {
         setClientsLoading(false)
       }
       return
     }
 
-    if (requestsError) {
-      console.error('Failed to fetch registration requests', requestsError)
-    }
+    const allClientRows =
+      ((clientsData as Array<{
+        id: number
+        name: string
+        email: string
+        brand_id: number | null
+        status: string | null
+        created_date?: string | null
+      }> | null) ?? [])
 
-    const clientRows = (clientsData as ClientRow[]) ?? []
+    const clientRows = allClientRows
+      .filter((row) => (row.status || '').trim().toLowerCase() === 'approved')
+      .map((row) => ({
+        id: row.id,
+        name: row.name,
+        email: row.email,
+        brand_id: row.brand_id,
+      }))
+
+    const requestsData: RegistrationRequestRow[] = allClientRows
+      .filter((row) => {
+        const status = (row.status || '').trim().toLowerCase()
+        return status === 'pending' || status === 'rejected'
+      })
+      .map((row) => ({
+        id: row.id,
+        name: row.name,
+        email: row.email,
+        brand_id: row.brand_id,
+        status: (row.status || '').trim().toLowerCase(),
+        created_at: row.created_date ?? null,
+      }))
+
     const visibleClientRows = clientRows.filter((c) => !pendingClientDeleteIdsRef.current.has(c.id))
-    const allRequestRows = (requestsData as RegistrationRequestRow[]) ?? []
+    const allRequestRows = requestsData
     const latestRequestByEmail = new Map<string, RegistrationRequestRow>()
     allRequestRows.forEach((row) => {
       const emailKey = (row.email || '').trim().toLowerCase()
@@ -248,23 +281,26 @@ export default function Clients() {
       })
     }
 
-    setClients(visibleClientRows)
-    setRegistrationRequests(requestRows)
+    setClients((prev) => (areClientRowsEqual(prev, visibleClientRows) ? prev : visibleClientRows))
+    setRegistrationRequests((prev) => (areRequestRowsEqual(prev, requestRows) ? prev : requestRows))
     if (!isBackgroundRefresh) {
       setClientsLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    void fetchClients()
+    const timeoutId = window.setTimeout(() => {
+      void fetchClients()
+    }, 0)
 
     const intervalId = window.setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        void fetchClients({ background: true })
-      }
+      void fetchClients({ background: true })
     }, TABLE_REFRESH_INTERVAL_MS)
 
-    return () => window.clearInterval(intervalId)
+    return () => {
+      window.clearTimeout(timeoutId)
+      window.clearInterval(intervalId)
+    }
   }, [fetchClients])
 
   useEffect(() => {
@@ -324,14 +360,6 @@ export default function Clients() {
   const start = (effectivePage - 1) * PAGE_SIZE
   const end = start + PAGE_SIZE
   const paginatedClients = filteredClients.slice(start, end)
-
-  async function getCurrentAuthToken() {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (session?.access_token?.trim()) return session.access_token.trim()
-    const { data: refreshedData, error } = await supabase.auth.refreshSession()
-    if (error) return ''
-    return refreshedData.session?.access_token?.trim() || ''
-  }
 
   async function handleAddSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -445,7 +473,6 @@ export default function Clients() {
     const targetClient = deletingClient
     const previousClients = clients
     pendingClientDeleteIdsRef.current.add(targetClient.id)
-    setDeletingClient(null)
     setClients((prev) => prev.filter((c) => c.id !== targetClient.id))
 
     const token = await getCurrentAuthToken()
@@ -475,8 +502,43 @@ export default function Clients() {
     }
 
     pendingClientDeleteIdsRef.current.delete(targetClient.id)
+    setDeletingClient(null)
     setActionMessage({ type: 'success', text: `Client ${targetClient.name} deleted successfully.` })
     await fetchClients({ background: true })
+  }
+
+  async function handleRejectApprovedClient(targetClient: ClientRow) {
+    if (!canEditDelete) return
+
+    setRequestActionError(null)
+    setActionMessage(null)
+    setRequestActionLoadingId(targetClient.id)
+
+    const token = await getCurrentAuthToken()
+    if (!token) {
+      setRequestActionLoadingId(null)
+      setRequestActionError('Authentication expired. Sign in again and try again.')
+      setActionMessage({ type: 'error', text: 'Authentication expired. Sign in again and try again.' })
+      return
+    }
+
+    const response = await fetch(`/api/clients/registration-requests/${targetClient.id}/reject`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+
+    const result = (await response.json().catch(() => null)) as { error?: string } | null
+
+    if (!response.ok) {
+      setRequestActionLoadingId(null)
+      setRequestActionError(result?.error || 'Failed to reject client')
+      setActionMessage({ type: 'error', text: result?.error || 'Failed to reject client' })
+      return
+    }
+
+    setActionMessage({ type: 'success', text: `Client ${targetClient.name} rejected successfully.` })
+    await fetchClients({ background: true })
+    setRequestActionLoadingId(null)
   }
 
   function getStatusStyle(status: ClientTableRow['status']) {
@@ -490,41 +552,11 @@ export default function Clients() {
 
     setRequestActionError(null)
     setRequestActionLoadingId(requestId)
-
-    const previousRequests = registrationRequests
-    const previousClients = clients
-    const targetRequest = registrationRequests.find((r) => r.id === requestId)
     pendingRequestActionsRef.current.set(requestId, decision)
-
-    if (decision === 'approve') {
-      setRegistrationRequests((prev) => prev.filter((r) => r.id !== requestId))
-      if (targetRequest) {
-        setClients((prev) => {
-          const exists = prev.some((c) => (c.email || '').trim().toLowerCase() === (targetRequest.email || '').trim().toLowerCase())
-          if (exists) return prev
-          return [
-            {
-              id: -requestId,
-              name: targetRequest.name,
-              email: targetRequest.email,
-              brand_id: targetRequest.brand_id,
-              brand_name: targetRequest.brand_name,
-            },
-            ...prev,
-          ]
-        })
-      }
-    } else {
-      setRegistrationRequests((prev) =>
-        prev.map((r) => (r.id === requestId ? { ...r, status: 'rejected' } : r))
-      )
-    }
 
     const token = await getCurrentAuthToken()
     if (!token) {
       pendingRequestActionsRef.current.delete(requestId)
-      setRegistrationRequests(previousRequests)
-      setClients(previousClients)
       setRequestActionLoadingId(null)
       setRequestActionError('Authentication expired. Sign in again and try again.')
       setActionMessage({ type: 'error', text: 'Authentication expired. Sign in again and try again.' })
@@ -540,12 +572,10 @@ export default function Clients() {
     })
 
     const result = (await response.json().catch(() => null)) as { error?: string } | null
-    setRequestActionLoadingId(null)
 
     if (!response.ok) {
       pendingRequestActionsRef.current.delete(requestId)
-      setRegistrationRequests(previousRequests)
-      setClients(previousClients)
+      setRequestActionLoadingId(null)
       setRequestActionError(result?.error || `Failed to ${decision} request`)
       setActionMessage({ type: 'error', text: result?.error || `Failed to ${decision} request` })
       return
@@ -556,6 +586,7 @@ export default function Clients() {
       text: decision === 'approve' ? 'Request approved successfully.' : 'Request rejected successfully.',
     })
     await fetchClients({ background: true })
+    setRequestActionLoadingId(null)
   }
 
   async function handleRequestDelete(requestId: number) {
@@ -637,7 +668,8 @@ export default function Clients() {
       {(actionMessage || requestActionError) && (
         <div className="w-full pb-6">
           <p
-            className={`rounded-lg border px-4 py-3 text-sm ${
+            key={requestActionError || actionMessage?.text || 'message'}
+            className={`message-fade-slide-in rounded-lg border px-4 py-3 text-sm ${
               requestActionError || actionMessage?.type === 'error'
                 ? 'border-red-500/50 bg-red-500/10 text-red-400'
                 : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
@@ -726,8 +758,18 @@ export default function Clients() {
                       <span className="text-slate-300 text-sm truncate block whitespace-nowrap" title={c.brand_name || '-'}>{c.brand_name || '-'}</span>
                     </td>
                     <td className="px-4 sm:px-6 py-4 min-w-0">
-                      <span className={`inline-flex rounded-lg border px-2 py-1 text-xs font-medium capitalize ${getStatusStyle(c.status)}`}>
-                        {c.status}
+                      <span
+                        className={`inline-flex rounded-lg border px-2 py-1 text-xs font-medium capitalize ${
+                          (c.rowType === 'client' && c.client && requestActionLoadingId === c.client.id) ||
+                          (c.rowType === 'request' && c.request && requestActionLoadingId === c.request.id)
+                            ? 'border-blue-500/20 bg-blue-500/10 text-blue-400'
+                            : getStatusStyle(c.status)
+                        }`}
+                      >
+                        {(c.rowType === 'client' && c.client && requestActionLoadingId === c.client.id) ||
+                        (c.rowType === 'request' && c.request && requestActionLoadingId === c.request.id)
+                          ? 'updating...'
+                          : c.status}
                       </span>
                     </td>
                     {canEditDelete && (
@@ -738,10 +780,21 @@ export default function Clients() {
                               <button
                                 type="button"
                                 onClick={() => openEditModal(c.client!)}
-                                className="p-2 rounded-lg text-slate-400 hover:bg-slate-700/50 hover:text-slate-300 transition"
+                                disabled={requestActionLoadingId === c.client.id}
+                                className="p-2 rounded-lg text-slate-400 hover:bg-slate-700/50 hover:text-slate-300 transition disabled:opacity-50"
                                 aria-label="Edit"
                               >
                                 <PencilIcon />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleRejectApprovedClient(c.client!)}
+                                disabled={requestActionLoadingId === c.client.id}
+                                className="p-2 rounded-lg text-slate-400 hover:bg-slate-700/50 hover:text-red-400 transition disabled:opacity-50"
+                                title="Reject client"
+                                aria-label="Reject client"
+                              >
+                                {requestActionLoadingId === c.client.id ? '...' : <CloseIcon className="h-3.5 w-3.5" />}
                               </button>
                               <button
                                 type="button"
@@ -749,7 +802,8 @@ export default function Clients() {
                                   setDeleteError(null)
                                   setDeletingClient(c.client!)
                                 }}
-                                className="p-2 rounded-lg text-slate-400 hover:bg-slate-700/50 hover:text-red-400 transition"
+                                disabled={requestActionLoadingId === c.client.id}
+                                className="p-2 rounded-lg text-slate-400 hover:bg-slate-700/50 hover:text-red-400 transition disabled:opacity-50"
                                 aria-label="Delete"
                               >
                                 <TrashIcon />
@@ -992,7 +1046,7 @@ export default function Clients() {
             <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl">
               <h2 className="text-lg font-bold text-white">Delete Client</h2>
               <p className="mt-2 text-slate-400 text-sm">
-                Are you sure you want to delete <span className="font-medium text-white">{deletingClient.name}</span> ({deletingClient.email})? This is a soft delete: the client will be hidden from the clients table (status set to false), and request records will be kept.
+                Are you sure you want to delete <span className="font-medium text-white">{deletingClient.name}</span> ({deletingClient.email})? This will hide the client by marking it deleted.
               </p>
               {deleteError && (
                 <p className="mt-4 rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-400">{deleteError}</p>
@@ -1176,3 +1230,5 @@ export default function Clients() {
     </div>
   )
 }
+
+

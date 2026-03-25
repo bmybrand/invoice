@@ -49,10 +49,11 @@ export async function POST(request: Request) {
   const normalizedEmail = (user.email ?? '').trim()
 
   const { data: latestRequest, error: requestError } = await adminClient
-    .from('client_registration_requests')
-    .select('status, auth_id')
-    .eq('email', normalizedEmail)
-    .order('created_at', { ascending: false })
+    .from('clients')
+    .select('status, auth_id, handler_id, isdeleted')
+    .neq('isdeleted', true)
+    .or(`handler_id.eq.${user.id},auth_id.eq.${user.id},email.eq.${normalizedEmail}`)
+    .order('created_date', { ascending: false })
     .limit(1)
     .maybeSingle()
 
@@ -60,9 +61,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: requestError.message }, { status: 500 })
   }
 
-  const requestRow = latestRequest as { status?: string | null; auth_id?: string | null } | null
+  const requestRow = latestRequest as { status?: string | null; auth_id?: string | null; handler_id?: string | null } | null
   const requestStatus = requestRow?.status?.trim().toLowerCase()
-  const requestAuthId = requestRow?.auth_id?.trim()
+  const requestAuthId = (requestRow?.handler_id || requestRow?.auth_id || '').trim()
 
   if (requestStatus !== 'rejected' || (requestAuthId && requestAuthId !== user.id)) {
     return NextResponse.json({ error: 'Account is not rejected' }, { status: 403 })
@@ -77,3 +78,8 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ ok: true })
 }
+
+
+
+
+

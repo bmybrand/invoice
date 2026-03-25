@@ -113,7 +113,8 @@ export function ClientDashboardDataProvider({ children }: { children: React.Reac
     const { data: clientData, error: clientError } = await supabase
       .from('clients')
       .select('id, name, email, brand_id')
-      .eq('status', true)
+      .eq('status', 'approved')
+      .neq('isdeleted', true)
       .or(`handler_id.eq.${user.id},email.eq.${email}`)
       .maybeSingle()
 
@@ -249,9 +250,7 @@ export function ClientDashboardDataProvider({ children }: { children: React.Reac
     }
 
     const intervalId = window.setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        refresh()
-      }
+      refresh()
     }, TABLE_REFRESH_INTERVAL_MS)
 
     const channelName = `client-dashboard-sync-${client?.id ?? 'unknown'}`
@@ -317,3 +316,4 @@ export function ClientDashboardDataProvider({ children }: { children: React.Reac
     </ClientDashboardDataContext.Provider>
   )
 }
+

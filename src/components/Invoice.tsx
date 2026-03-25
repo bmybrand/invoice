@@ -301,6 +301,10 @@ function sanitizeCurrencyInput(value: string): string {
 
 const INVOICE_TYPE_OPTIONS = ['Standard', 'Upsale'] as const
 
+function areInvoiceRowsEqual(a: InvoiceRow[], b: InvoiceRow[]) {
+  return JSON.stringify(a) === JSON.stringify(b)
+}
+
 export function InvoiceDocument({
   invoice,
   brandMeta,
@@ -673,7 +677,7 @@ export default function Invoice() {
         invoice_type: (row.invoice_type as string) ?? INVOICE_TYPE_OPTIONS[0],
       }
     })
-    setInvoices(rows)
+    setInvoices((prev) => (areInvoiceRowsEqual(prev, rows) ? prev : rows))
   }, [accountType, clientData?.client?.id, clientData?.loading])
 
   const fetchEmployees = useCallback(async () => {
@@ -693,7 +697,8 @@ export default function Invoice() {
     const { data, error } = await supabase
       .from('clients')
       .select('id, name, email, brand_id')
-      .eq('status', true)
+      .eq('status', 'approved')
+      .neq('isdeleted', true)
       .order('name')
     if (error) {
       console.error('Failed to fetch clients', error)
@@ -720,9 +725,7 @@ export default function Invoice() {
     void fetchInvoices()
 
     const intervalId = window.setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        void fetchInvoices({ background: true })
-      }
+      void fetchInvoices({ background: true })
     }, TABLE_REFRESH_INTERVAL_MS)
 
     return () => window.clearInterval(intervalId)
@@ -2161,3 +2164,4 @@ export default function Invoice() {
     </div>
   )
 }
+

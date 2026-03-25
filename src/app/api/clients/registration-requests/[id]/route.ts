@@ -1,38 +1,40 @@
 import { NextResponse } from 'next/server'
 import { requireAdminOrSuperAdmin } from '@/lib/server-admin-auth'
 
+type RouteParams = { id: string }
+
 export async function DELETE(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: RouteParams | Promise<RouteParams> }
 ) {
   const auth = await requireAdminOrSuperAdmin(request)
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
 
-  const { id } = await params
-  const reqId = id ? parseInt(id, 10) : NaN
-  if (!Number.isFinite(reqId)) {
+  const resolvedParams = params instanceof Promise ? await params : params
+  const requestId = resolvedParams.id ? parseInt(resolvedParams.id, 10) : NaN
+  if (!Number.isFinite(requestId) || requestId < 1) {
     return NextResponse.json({ error: 'Invalid request ID' }, { status: 400 })
   }
 
-  const { data: reqRow, error: fetchError } = await auth.supabase
-    .from('client_registration_requests')
-    .select('id')
-    .eq('id', reqId)
+  const { data: row, error: fetchError } = await auth.supabase
+    .from('clients')
+    .select('id, isdeleted')
+    .eq('id', requestId)
     .single()
 
-  if (fetchError || !reqRow) {
+  if (fetchError || !row || (row as { isdeleted?: boolean | null }).isdeleted === true) {
     return NextResponse.json({ error: fetchError?.message || 'Request not found' }, { status: 404 })
   }
 
-  const { error: deleteError } = await auth.supabase
-    .from('client_registration_requests')
-    .delete()
-    .eq('id', reqId)
+  const { error: updateError } = await auth.supabase
+    .from('clients')
+    .update({ isdeleted: true })
+    .eq('id', requestId)
 
-  if (deleteError) {
-    return NextResponse.json({ error: deleteError.message }, { status: 500 })
+  if (updateError) {
+    return NextResponse.json({ error: updateError.message }, { status: 500 })
   }
 
   return NextResponse.json({ ok: true })

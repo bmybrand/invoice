@@ -119,6 +119,14 @@ function CloseIcon({ className = 'h-4 w-4' }: { className?: string }) {
   )
 }
 
+function areEmployeeRowsEqual(a: EmployeeRow[], b: EmployeeRow[]) {
+  return JSON.stringify(a) === JSON.stringify(b)
+}
+
+function areAvatarMapsEqual(a: Record<string, string>, b: Record<string, string>) {
+  return JSON.stringify(a) === JSON.stringify(b)
+}
+
 export default function Employees() {
   const { displayRole, onlineAuthIds } = useDashboardProfile()
   const [employees, setEmployees] = useState<EmployeeRow[]>([])
@@ -259,9 +267,8 @@ export default function Employees() {
       })
     )
 
-    setEmployeeAvatarUrls(
-      Object.fromEntries(avatarEntries.filter((entry) => entry[1]))
-    )
+    const nextMap = Object.fromEntries(avatarEntries.filter((entry) => entry[1]))
+    setEmployeeAvatarUrls((prev) => (areAvatarMapsEqual(prev, nextMap) ? prev : nextMap))
   }, [])
 
   const fetchEmployees = useCallback(async (options?: { background?: boolean }) => {
@@ -284,7 +291,7 @@ export default function Employees() {
       return
     }
     const rows = (data as EmployeeRow[]) ?? []
-    setEmployees(rows)
+    setEmployees((prev) => (areEmployeeRowsEqual(prev, rows) ? prev : rows))
     void fetchEmployeeAvatarUrls(rows)
   }, [fetchEmployeeAvatarUrls])
 
@@ -292,9 +299,7 @@ export default function Employees() {
     void fetchEmployees()
 
     const intervalId = window.setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        void fetchEmployees({ background: true })
-      }
+      void fetchEmployees({ background: true })
     }, TABLE_REFRESH_INTERVAL_MS)
 
     return () => window.clearInterval(intervalId)

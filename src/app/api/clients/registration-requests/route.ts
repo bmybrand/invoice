@@ -1,21 +1,51 @@
 import { NextResponse } from 'next/server'
 import { requireAdminOrSuperAdmin } from '@/lib/server-admin-auth'
 
+type ClientRequestRow = {
+  id: number
+  name: string
+  email: string
+  brand_id: number | null
+  handler_id: string | null
+  status: string | null
+  created_date: string | null
+}
+
 export async function GET(request: Request) {
   const auth = await requireAdminOrSuperAdmin(request)
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
 
-  const { data, error } = await auth.supabase
-    .from('client_registration_requests')
-    .select('id, name, email, brand_id, auth_id, status, created_at')
-    .eq('status', 'pending')
-    .order('created_at', { ascending: false })
+  const { searchParams } = new URL(request.url)
+  const scope = (searchParams.get('scope') || '').trim().toLowerCase()
+  const includeAllStatuses = scope === 'all'
+
+  let query = auth.supabase
+    .from('clients')
+    .select('id, name, email, brand_id, handler_id, status, created_date, isdeleted')
+    .neq('isdeleted', true)
+    .order('created_date', { ascending: false })
+
+  if (!includeAllStatuses) {
+    query = query.eq('status', 'pending')
+  }
+
+  const { data, error } = await query
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ requests: data ?? [] })
+  const requests = ((data as ClientRequestRow[] | null) ?? []).map((row) => ({
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    brand_id: row.brand_id,
+    auth_id: row.handler_id,
+    status: (row.status || '').trim().toLowerCase(),
+    created_at: row.created_date,
+  }))
+
+  return NextResponse.json({ requests })
 }

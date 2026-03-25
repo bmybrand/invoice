@@ -91,13 +91,15 @@ export function RegisterForm() {
     const user = data.user
 
     if (user) {
-      const { error: requestError } = await supabase.from('client_registration_requests').insert([
+      const { error: requestError } = await supabase.from('clients').insert([
         {
           name,
           email,
           brand_id: brandId,
           auth_id: user.id,
+          handler_id: user.id,
           status: 'pending',
+          isdeleted: false,
         },
       ])
 
@@ -274,3 +276,7 @@ export function RegisterForm() {
     </main>
   )
 }
+
+
+
+

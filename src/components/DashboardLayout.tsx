@@ -330,7 +330,8 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
   const { data: clientData, error: clientError } = await supabase
   .from('clients')
   .select('name, email, brand_id, handler_id')
-  .eq('status', true)
+  .eq('status', 'approved')
+  .neq('isdeleted', true)
   .or(`handler_id.eq.${user.id},email.eq.${user.email ?? ''}`)
   .maybeSingle()
 
@@ -350,10 +351,11 @@ if (clientError) {
 }
 
     const { data: latestRequest } = await supabase
-      .from('client_registration_requests')
+      .from('clients')
       .select('id, status')
-      .eq('email', user.email ?? '')
-      .order('created_at', { ascending: false })
+      .neq('isdeleted', true)
+      .or(`handler_id.eq.${user.id},email.eq.${user.email ?? ''}`)
+      .order('created_date', { ascending: false })
       .limit(1)
       .maybeSingle()
 
@@ -978,3 +980,8 @@ if (clientError) {
     </DashboardProfileContext.Provider>
   )
 }
+
+
+
+
+

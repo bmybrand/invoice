@@ -77,6 +77,10 @@ function CloseIcon({ className = 'h-4 w-4' }: { className?: string }) {
   )
 }
 
+function areBrandRowsEqual(a: BrandRow[], b: BrandRow[]) {
+  return JSON.stringify(a) === JSON.stringify(b)
+}
+
 export default function Brand() {
   const { displayRole } = useDashboardProfile()
   const [brands, setBrands] = useState<BrandRow[]>([])
@@ -121,16 +125,15 @@ export default function Brand() {
       setBrands([])
       return
     }
-    setBrands((data as BrandRow[]) ?? [])
+    const nextRows = (data as BrandRow[]) ?? []
+    setBrands((prev) => (areBrandRowsEqual(prev, nextRows) ? prev : nextRows))
   }, [])
 
   useEffect(() => {
     void fetchBrands()
 
     const intervalId = window.setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        void fetchBrands({ background: true })
-      }
+      void fetchBrands({ background: true })
     }, TABLE_REFRESH_INTERVAL_MS)
 
     return () => window.clearInterval(intervalId)
