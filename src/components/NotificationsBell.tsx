@@ -7,7 +7,6 @@ type PendingRequest = {
   id: number
   name: string
   email: string
-  brand_id: number
   created_at: string
 }
 

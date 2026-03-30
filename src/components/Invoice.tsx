@@ -26,7 +26,7 @@ type ServiceLine = {
   price: string
 }
 
-type ClientOption = { id: number; name: string; email: string; brand_id: number | null }
+type ClientOption = { id: number; name: string; email: string }
 
 type InvoiceRow = {
   id: number
@@ -722,7 +722,7 @@ export default function Invoice() {
   const fetchClients = useCallback(async () => {
     const { data, error } = await supabase
       .from('clients')
-      .select('id, name, email, brand_id')
+      .select('id, name, email')
       .eq('status', 'approved')
       .neq('isdeleted', true)
       .order('name')
@@ -1657,8 +1657,6 @@ export default function Invoice() {
                                       if (c) {
                                         setAddClientName(c.name || '')
                                         setAddEmail(c.email || '')
-                                        const brand = c.brand_id ? brands.find((b) => b.id === c.brand_id) : null
-                                        if (brand) setAddBrand(brand.brand_name)
                                       }
                                     } else {
                                       setAddClientName('')
@@ -1959,8 +1957,6 @@ export default function Invoice() {
                                       if (c) {
                                         setEditClientName(c.name || '')
                                         setEditEmail(c.email || '')
-                                        const brand = c.brand_id ? brands.find((b) => b.id === c.brand_id) : null
-                                        if (brand) setEditBrand(brand.brand_name)
                                       }
                                     } else {
                                       setEditClientName('')

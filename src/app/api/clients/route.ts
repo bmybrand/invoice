@@ -11,7 +11,6 @@ export async function POST(request: Request) {
   const email = String(body?.email ?? '').trim().toLowerCase()
   const password = String(body?.password ?? '').trim()
   const name = String(body?.name ?? '').trim()
-  const brandId = body?.brand_id != null ? Number(body.brand_id) : NaN
 
   if (!name) {
     return NextResponse.json({ error: 'Client name is required' }, { status: 400 })
@@ -23,10 +22,6 @@ export async function POST(request: Request) {
 
   if (!password || password.length < 8) {
     return NextResponse.json({ error: 'Password must be at least 8 characters long' }, { status: 400 })
-  }
-
-  if (!Number.isFinite(brandId) || brandId < 1) {
-    return NextResponse.json({ error: 'Valid brand is required' }, { status: 400 })
   }
 
   const { data: createdUser, error: createError } = await auth.supabase.auth.admin.createUser({
@@ -47,13 +42,12 @@ export async function POST(request: Request) {
     .insert({
       name,
       email,
-      brand_id: brandId,
       handler_id: createdUser.user.id,
       auth_id: createdUser.user.id,
       status: 'approved',
       isdeleted: false,
     })
-    .select('id, name, email, brand_id, status')
+    .select('id, name, email, status')
     .single()
 
   if (insertError) {

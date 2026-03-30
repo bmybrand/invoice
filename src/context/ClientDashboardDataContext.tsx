@@ -8,7 +8,6 @@ export type ClientRow = {
   id: number
   name?: string
   email?: string
-  brand_id?: number | null
 }
 
 export type InvoiceRow = {
@@ -112,7 +111,7 @@ export function ClientDashboardDataProvider({ children }: { children: React.Reac
 
     const { data: clientData, error: clientError } = await supabase
       .from('clients')
-      .select('id, name, email, brand_id')
+      .select('id, name, email')
       .eq('status', 'approved')
       .neq('isdeleted', true)
       .or(`handler_id.eq.${user.id},email.eq.${email}`)

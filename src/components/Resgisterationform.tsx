@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
@@ -31,48 +31,19 @@ function UserIcon() {
   )
 }
 
-function BuildingIcon() {
-  return (
-    <svg className="h-5 w-5 shrink-0 text-slate-400 sm:h-6 sm:w-6 lg:h-7 lg:w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M5.25 21V7.5A2.25 2.25 0 017.5 5.25h9A2.25 2.25 0 0118.75 7.5V21M9 9.75h.008v.008H9V9.75zm0 3h.008v.008H9v-.008zm0 3h.008v.008H9v-.008zm6-6h.008v.008H15V9.75zm0 3h.008v.008H15v-.008zm0 3h.008v.008H15v-.008z" />
-    </svg>
-  )
-}
-
 export function RegisterForm() {
   const router = useRouter()
 
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [brandId, setBrandId] = useState<number | null>(null)
-  const [brands, setBrands] = useState<Array<{ id: number; brand_name: string }>>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    async function fetchBrands() {
-      const { data, error } = await supabase.from('brands').select('id, brand_name')
-      if (error) {
-        console.error('Error fetching brands:', error.message)
-      } else {
-        setBrands(data || [])
-      }
-    }
-
-    void fetchBrands()
-  }, [])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setError(null)
     setLoading(true)
-
-    if (!brandId) {
-      setError('Please select a brand.')
-      setLoading(false)
-      return
-    }
 
     const { data, error: signUpError } = await supabase.auth.signUp({
       email,
@@ -95,7 +66,6 @@ export function RegisterForm() {
         {
           name,
           email,
-          brand_id: brandId,
           auth_id: user.id,
           handler_id: user.id,
           status: 'pending',
@@ -149,31 +119,6 @@ export function RegisterForm() {
                     autoComplete="name"
                     className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none sm:text-base lg:text-base xl:text-lg"
                   />
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label htmlFor="brand" className="text-sm font-medium text-slate-300 sm:text-base lg:text-base xl:text-lg">
-                  Brand
-                </label>
-                <div className="flex items-center gap-3 rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-3 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 sm:rounded-xl sm:px-5 sm:py-4 lg:px-6 lg:py-4 xl:py-[18px]">
-                  <BuildingIcon />
-                  <select
-                    id="brand"
-                    value={brandId ?? ''}
-                    onChange={(e) => setBrandId(e.target.value ? Number(e.target.value) : null)}
-                    required
-                    className="min-w-0 flex-1 bg-transparent text-sm text-white focus:outline-none sm:text-base lg:text-base xl:text-lg"
-                  >
-                    <option value="" className="bg-slate-900 text-slate-400">
-                      Select a brand
-                    </option>
-                    {brands.map((brand) => (
-                      <option key={brand.id} value={brand.id} className="bg-slate-900 text-white">
-                        {brand.brand_name}
-                      </option>
-                    ))}
-                  </select>
                 </div>
               </div>
 

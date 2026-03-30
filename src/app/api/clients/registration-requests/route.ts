@@ -5,7 +5,6 @@ type ClientRequestRow = {
   id: number
   name: string
   email: string
-  brand_id: number | null
   handler_id: string | null
   status: string | null
   created_date: string | null
@@ -23,7 +22,7 @@ export async function GET(request: Request) {
 
   let query = auth.supabase
     .from('clients')
-    .select('id, name, email, brand_id, handler_id, status, created_date, isdeleted')
+    .select('id, name, email, handler_id, status, created_date, isdeleted')
     .neq('isdeleted', true)
     .order('created_date', { ascending: false })
 
@@ -41,7 +40,6 @@ export async function GET(request: Request) {
     id: row.id,
     name: row.name,
     email: row.email,
-    brand_id: row.brand_id,
     auth_id: row.handler_id,
     status: (row.status || '').trim().toLowerCase(),
     created_at: row.created_date,

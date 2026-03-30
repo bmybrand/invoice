@@ -21,7 +21,6 @@ export async function PATCH(
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null
   const name = body?.name != null ? String(body.name).trim() : null
   const email = body?.email != null ? String(body.email).trim().toLowerCase() : null
-  const brandId = body?.brand_id != null ? Number(body.brand_id) : NaN
   const password = typeof body?.password === 'string' ? body.password.trim() : ''
 
   if (password.length > 0 && password.length < 8) {
@@ -30,7 +29,7 @@ export async function PATCH(
 
   const { data: client, error: fetchError } = await auth.supabase
     .from('clients')
-    .select('id, name, email, brand_id, handler_id, isdeleted')
+    .select('id, name, email, handler_id, isdeleted')
     .eq('id', clientId)
     .single()
 
@@ -43,7 +42,6 @@ export async function PATCH(
 
   if (name !== null) updates.name = name
   if (email !== null) updates.email = email
-  if (Number.isFinite(brandId) && brandId > 0) updates.brand_id = brandId
 
   if (Object.keys(updates).length === 0 && !password) {
     return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 })
@@ -108,6 +106,115 @@ export async function DELETE(
 
   if (deleteError) {
     return NextResponse.json({ error: deleteError.message }, { status: 500 })
+  }
+
+  return NextResponse.json({ ok: true })
+}
+
+export async function POST(
+  request: Request,
+  { params }: { params: RouteParams | Promise<RouteParams> }
+) {
+  const auth = await requireAdminOrSuperAdmin(request)
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
+
+  const resolvedParams = params instanceof Promise ? await params : params
+  const clientId = resolvedParams.id ? parseInt(resolvedParams.id, 10) : NaN
+  if (!Number.isFinite(clientId) || clientId < 1) {
+    return NextResponse.json({ error: 'Invalid client ID' }, { status: 400 })
+  }
+
+  const body = (await request.json().catch(() => null)) as { action?: string } | null
+  const action = body?.action?.trim().toLowerCase()
+  if (action !== 'purge' && action !== 'restore') {
+    return NextResponse.json({ error: 'Unsupported action' }, { status: 400 })
+  }
+
+  const { data: client, error: fetchError } = await auth.supabase
+    .from('clients')
+    .select('id, name, email, auth_id, handler_id, isdeleted')
+    .eq('id', clientId)
+    .single()
+
+  if (fetchError || !client) {
+    return NextResponse.json({ error: fetchError?.message || 'Client not found' }, { status: 404 })
+  }
+
+  const row = client as {
+    id: number
+    name?: string | null
+    email?: string | null
+    auth_id?: string | null
+    handler_id?: string | null
+    isdeleted?: boolean | null
+  }
+
+  if (row.isdeleted !== true) {
+    return NextResponse.json(
+      { error: `Only archived clients can be ${action === 'restore' ? 'restored' : 'permanently deleted'}` },
+      { status: 409 }
+    )
+  }
+
+  if (action === 'restore') {
+    const { error: restoreError } = await auth.supabase
+      .from('clients')
+      .update({ isdeleted: false })
+      .eq('id', clientId)
+
+    if (restoreError) {
+      return NextResponse.json(
+        { error: restoreError.message || 'Failed to restore client' },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json({ ok: true })
+  }
+
+  const { count: invoiceCount, error: invoiceCountError } = await auth.supabase
+    .from('invoices')
+    .select('id', { count: 'exact', head: true })
+    .eq('client_id', clientId)
+
+  if (invoiceCountError) {
+    return NextResponse.json(
+      { error: invoiceCountError.message || 'Failed to validate client invoices' },
+      { status: 500 }
+    )
+  }
+
+  if ((invoiceCount ?? 0) > 0) {
+    return NextResponse.json(
+      { error: 'This client cannot be deleted forever because invoices are still linked to this client.' },
+      { status: 409 }
+    )
+  }
+
+  const { error: deleteError } = await auth.supabase
+    .from('clients')
+    .delete()
+    .eq('id', clientId)
+
+  if (deleteError) {
+    return NextResponse.json(
+      { error: deleteError.message || 'Failed to permanently delete client' },
+      { status: 500 }
+    )
+  }
+
+  const authIds = Array.from(new Set([row.auth_id, row.handler_id].filter((value): value is string => Boolean(value?.trim()))))
+
+  for (const authId of authIds) {
+    const { error: authDeleteError } = await auth.supabase.auth.admin.deleteUser(authId)
+    if (authDeleteError) {
+      return NextResponse.json(
+        { error: `Client row deleted but auth cleanup failed: ${authDeleteError.message}` },
+        { status: 500 }
+      )
+    }
   }
 
   return NextResponse.json({ ok: true })

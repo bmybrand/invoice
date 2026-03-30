@@ -15,17 +15,21 @@ type ClientRow = {
   id: number
   name: string
   email: string
-  brand_id: number | null
-  brand_name?: string
+}
+
+type ArchivedClientRow = {
+  id: number
+  name: string
+  email: string
+  status: string
+  created_at?: string | null
 }
 
 type RegistrationRequestRow = {
   id: number
   name: string
   email: string
-  brand_id: number | null
   status: string
-  brand_name?: string
   created_at?: string | null
 }
 
@@ -35,18 +39,14 @@ type ClientTableRow = {
   status: 'approved' | 'pending' | 'rejected'
   name: string
   email: string
-  brand_name?: string
   client?: ClientRow
   request?: RegistrationRequestRow
 }
-
-type BrandOption = { id: number; brand_name: string }
 
 type ClientsTableCache = {
   ownerAuthId: string | null
   clients: ClientRow[]
   registrationRequests: RegistrationRequestRow[]
-  brands: BrandOption[]
 }
 
 let clientsTableCache: ClientsTableCache | null = null
@@ -129,6 +129,22 @@ function TrashIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
   )
 }
 
+function ArchiveIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5H3.75m15.75 0-1.06 11.126A2.25 2.25 0 0116.2 20.75H7.8a2.25 2.25 0 01-2.24-2.124L4.5 7.5m15 0-.47-2.114A2.25 2.25 0 0016.84 3.75H7.16a2.25 2.25 0 00-2.19 1.636L4.5 7.5m4.5 4.5h6m-3-3v6" />
+    </svg>
+  )
+}
+
+function ArrowPathIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992V4.356m0 0-3.181 3.182A8.25 8.25 0 105.25 19.5m2.727-4.848H3.015v4.992m0 0 3.182-3.182" />
+    </svg>
+  )
+}
+
 export default function Clients() {
   const { currentUserAuthId, displayRole } = useDashboardProfile()
   const scopedClientsCache = clientsTableCache?.ownerAuthId === currentUserAuthId ? clientsTableCache : null
@@ -137,16 +153,19 @@ export default function Clients() {
   const [registrationRequests, setRegistrationRequests] = useState<RegistrationRequestRow[]>(
     () => scopedClientsCache?.registrationRequests ?? []
   )
-  const [brands, setBrands] = useState<BrandOption[]>(() => scopedClientsCache?.brands ?? [])
   const [searchQuery, setSearchQuery] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [showAddModal, setShowAddModal] = useState(false)
+  const [showArchivedModal, setShowArchivedModal] = useState(false)
   const [addName, setAddName] = useState('')
   const [addEmail, setAddEmail] = useState('')
   const [addPassword, setAddPassword] = useState('')
-  const [addBrandId, setAddBrandId] = useState<number | null>(null)
   const [addLoading, setAddLoading] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
+  const [archivedClients, setArchivedClients] = useState<ArchivedClientRow[]>([])
+  const [archivedLoading, setArchivedLoading] = useState(false)
+  const [archivedError, setArchivedError] = useState<string | null>(null)
+  const [archivedActionClientId, setArchivedActionClientId] = useState<number | null>(null)
 
   const normalizedRole = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '')
   const isAdmin = normalizedRole === 'admin'
@@ -157,7 +176,6 @@ export default function Clients() {
   const [editingClient, setEditingClient] = useState<ClientRow | null>(null)
   const [editName, setEditName] = useState('')
   const [editEmail, setEditEmail] = useState('')
-  const [editBrandId, setEditBrandId] = useState<number | null>(null)
   const [editPassword, setEditPassword] = useState('')
   const [editLoading, setEditLoading] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
@@ -179,22 +197,6 @@ export default function Clients() {
     return refreshedData.session?.access_token?.trim() || ''
   }
 
-  const fetchBrands = useCallback(async () => {
-    const { data, error } = await supabase.from('brands').select('id, brand_name').order('brand_name')
-    if (error) {
-      console.error('Failed to fetch brands', error)
-      return
-    }
-    const nextBrands = (data as BrandOption[]) ?? []
-    setBrands(nextBrands)
-    clientsTableCache = {
-      ownerAuthId: currentUserAuthId,
-      clients: scopedClientsCache?.clients ?? [],
-      registrationRequests: scopedClientsCache?.registrationRequests ?? [],
-      brands: nextBrands,
-    }
-  }, [currentUserAuthId, scopedClientsCache])
-
   const fetchClients = useCallback(async (options?: { background?: boolean }) => {
     const isBackgroundRefresh = options?.background ?? false
     if (!isBackgroundRefresh && !scopedClientsCache) {
@@ -202,7 +204,7 @@ export default function Clients() {
     }
     const { data: clientsData, error: clientsError } = await supabase
       .from('clients')
-      .select('id, name, email, brand_id, status, created_date, brands:brand_id(brand_name)')
+      .select('id, name, email, status, created_date')
       .neq('isdeleted', true)
       .order('created_date', { ascending: false })
 
@@ -219,42 +221,30 @@ export default function Clients() {
         id: number
         name: string
         email: string
-        brand_id: number | null
         status: string | null
         created_date?: string | null
-        brands?: { brand_name?: string | null } | Array<{ brand_name?: string | null }> | null
       }> | null) ?? [])
 
     const clientRows = allClientRows
       .filter((row) => (row.status || '').trim().toLowerCase() === 'approved')
-      .map((row) => {
-        const brandRel = Array.isArray(row.brands) ? row.brands[0] : row.brands
-        return {
+      .map((row) => ({
         id: row.id,
         name: row.name,
         email: row.email,
-        brand_id: row.brand_id,
-        brand_name: brandRel?.brand_name ?? '',
-      }
-      })
+      }))
 
     const requestsData: RegistrationRequestRow[] = allClientRows
       .filter((row) => {
         const status = (row.status || '').trim().toLowerCase()
         return status === 'pending' || status === 'rejected'
       })
-      .map((row) => {
-        const brandRel = Array.isArray(row.brands) ? row.brands[0] : row.brands
-        return {
+      .map((row) => ({
         id: row.id,
         name: row.name,
         email: row.email,
-        brand_id: row.brand_id,
         status: (row.status || '').trim().toLowerCase(),
         created_at: row.created_date ?? null,
-        brand_name: brandRel?.brand_name ?? '',
-      }
-      })
+      }))
 
     const visibleClientRows = clientRows.filter((c) => !pendingClientDeleteIdsRef.current.has(c.id))
     const allRequestRows = requestsData
@@ -294,12 +284,45 @@ export default function Clients() {
       ownerAuthId: currentUserAuthId,
       clients: visibleClientRows,
       registrationRequests: requestRows,
-      brands: scopedClientsCache?.brands ?? [],
     }
     if (!isBackgroundRefresh) {
       setClientsLoading(false)
     }
   }, [currentUserAuthId, scopedClientsCache])
+
+  const fetchArchivedClients = useCallback(async () => {
+    setArchivedLoading(true)
+    setArchivedError(null)
+
+    const { data, error } = await supabase
+      .from('clients')
+      .select('id, name, email, status, created_date')
+      .eq('isdeleted', true)
+      .order('created_date', { ascending: false })
+
+    if (error) {
+      setArchivedError(error.message || 'Failed to load archived clients')
+      setArchivedLoading(false)
+      return
+    }
+
+    setArchivedClients(
+      (((data as Array<{
+        id: number
+        name: string
+        email: string
+        status?: string | null
+        created_date?: string | null
+      }> | null) ?? [])).map((row) => ({
+        id: row.id,
+        name: row.name,
+        email: row.email,
+        status: (row.status || '').trim().toLowerCase() || 'archived',
+        created_at: row.created_date ?? null,
+      }))
+    )
+    setArchivedLoading(false)
+  }, [])
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -319,12 +342,13 @@ export default function Clients() {
   }, [fetchClients])
 
   useEffect(() => {
+    if (!showArchivedModal) return
     const timeoutId = window.setTimeout(() => {
-      void fetchBrands()
+      void fetchArchivedClients()
     }, 0)
 
     return () => window.clearTimeout(timeoutId)
-  }, [fetchBrands])
+  }, [fetchArchivedClients, showArchivedModal])
 
   const tableRows: ClientTableRow[] = [
     ...registrationRequests
@@ -335,7 +359,6 @@ export default function Clients() {
         status: 'pending' as const,
         name: row.name,
         email: row.email,
-        brand_name: row.brand_name,
         request: row,
       })),
     ...clients.map((client) => ({
@@ -344,7 +367,6 @@ export default function Clients() {
       status: 'approved' as const,
       name: client.name,
       email: client.email,
-      brand_name: client.brand_name,
       client,
     })),
     ...registrationRequests
@@ -355,7 +377,6 @@ export default function Clients() {
         status: 'rejected' as const,
         name: row.name,
         email: row.email,
-        brand_name: row.brand_name,
         request: row,
       })),
   ]
@@ -363,10 +384,9 @@ export default function Clients() {
   const filteredClients = searchQuery.trim()
     ? tableRows.filter(
         (c) =>
-          (c.name || '').toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
-          (c.email || '').toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
-          (c.brand_name || '').toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
-          c.status.toLowerCase().includes(searchQuery.trim().toLowerCase())
+        (c.name || '').toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
+        (c.email || '').toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
+        c.status.toLowerCase().includes(searchQuery.trim().toLowerCase())
       )
     : tableRows
 
@@ -399,7 +419,6 @@ export default function Clients() {
         name: addName,
         email: addEmail,
         password: addPassword,
-        brand_id: addBrandId,
       }),
     })
 
@@ -416,7 +435,6 @@ export default function Clients() {
     setAddName('')
     setAddEmail('')
     setAddPassword('')
-    setAddBrandId(null)
     setActionMessage({ type: 'success', text: `Client ${addName.trim()} added successfully.` })
     await fetchClients()
   }
@@ -425,7 +443,6 @@ export default function Clients() {
     setEditingClient(c)
     setEditName(c.name || '')
     setEditEmail(c.email || '')
-    setEditBrandId(c.brand_id ?? null)
     setEditPassword('')
     setEditError(null)
   }
@@ -450,7 +467,6 @@ export default function Clients() {
     const payload: Record<string, unknown> = {
       name: editName.trim(),
       email: editEmail.trim(),
-      brand_id: editBrandId,
     }
     if (editPassword.trim()) {
       payload.password = editPassword.trim()
@@ -519,6 +535,53 @@ export default function Clients() {
     pendingClientDeleteIdsRef.current.delete(targetClient.id)
     setDeletingClient(null)
     setActionMessage({ type: 'success', text: `Client ${targetClient.name} deleted successfully.` })
+    await fetchClients({ background: true })
+    if (showArchivedModal) {
+      await fetchArchivedClients()
+    }
+  }
+
+  async function handleArchivedClientAction(client: ArchivedClientRow, action: 'purge' | 'restore') {
+    if (!canEditDelete || archivedActionClientId !== null) return
+
+    setArchivedError(null)
+    setArchivedActionClientId(client.id)
+
+    const token = await getCurrentAuthToken()
+    if (!token) {
+      setArchivedActionClientId(null)
+      setArchivedError('Authentication expired. Sign in again and try again.')
+      return
+    }
+
+    const response = await fetch(`/api/clients/${client.id}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ action }),
+    })
+
+    const result = (await response.json().catch(() => null)) as { error?: string } | null
+    setArchivedActionClientId(null)
+
+    if (!response.ok) {
+      const fallbackMessage =
+        action === 'restore' ? 'Failed to restore archived client' : 'Failed to permanently delete archived client'
+      setArchivedError(result?.error || fallbackMessage)
+      setActionMessage({ type: 'error', text: result?.error || fallbackMessage })
+      return
+    }
+
+    setArchivedClients((prev) => prev.filter((row) => row.id !== client.id))
+    setActionMessage({
+      type: 'success',
+      text:
+        action === 'restore'
+          ? `Archived client ${client.name} was restored.`
+          : `Archived client ${client.name} was permanently deleted.`,
+    })
     await fetchClients({ background: true })
   }
 
@@ -665,18 +728,31 @@ export default function Clients() {
         <div className="w-full p-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
           <div className="flex flex-col gap-1">
             <h1 className="text-2xl sm:text-3xl font-black leading-tight text-white">Manage Clients</h1>
-            <p className="text-slate-400 text-sm font-normal leading-5">Overview of your clients and their brands</p>
+            <p className="text-slate-400 text-sm font-normal leading-5">Overview of your clients and registration requests</p>
           </div>
-          {canAddClient && (
-            <button
-              type="button"
-              onClick={() => setShowAddModal(true)}
-              className="h-12 min-w-36 px-6 bg-orange-500 rounded-xl shadow-[0px_4px_20px_0px_rgba(249,115,22,0.2)] flex justify-center items-center gap-2 hover:bg-orange-600 transition shrink-0"
-            >
-              <PlusIcon className="h-4 w-3 text-white" />
-              <span className="text-white text-sm font-bold">Add New Client</span>
-            </button>
-          )}
+          <div className="flex shrink-0 gap-3">
+            {canEditDelete && (
+              <button
+                type="button"
+                onClick={() => setShowArchivedModal(true)}
+                className="h-12 min-w-12 rounded-xl border border-slate-700 bg-slate-900/70 px-4 text-slate-300 transition hover:border-slate-600 hover:bg-slate-800 hover:text-white"
+                aria-label="View archived clients"
+                title="View archived clients"
+              >
+                <ArchiveIcon className="h-4 w-4" />
+              </button>
+            )}
+            {canAddClient && (
+              <button
+                type="button"
+                onClick={() => setShowAddModal(true)}
+                className="h-12 min-w-36 px-6 bg-orange-500 rounded-xl shadow-[0px_4px_20px_0px_rgba(249,115,22,0.2)] flex justify-center items-center gap-2 hover:bg-orange-600 transition shrink-0"
+              >
+                <PlusIcon className="h-4 w-3 text-white" />
+                <span className="text-white text-sm font-bold">Add New Client</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -708,7 +784,7 @@ export default function Clients() {
                   setSearchQuery(e.target.value)
                   setCurrentPage(1)
                 }}
-                placeholder="Search by name, email or brand..."
+                placeholder="Search by name, email or status..."
                 className="flex-1 min-w-0 h-full bg-transparent text-slate-300 text-sm placeholder:text-slate-500 focus:outline-none"
               />
             </div>
@@ -732,9 +808,6 @@ export default function Clients() {
                   <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Email</span>
                 </th>
                 <th className="px-4 sm:px-6 py-4 text-left">
-                  <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Brand</span>
-                </th>
-                <th className="px-4 sm:px-6 py-4 text-left">
                   <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Status</span>
                 </th>
                 {canEditDelete && (
@@ -747,13 +820,13 @@ export default function Clients() {
             <tbody>
               {clientsLoading ? (
                 <tr>
-                  <td colSpan={canEditDelete ? 6 : 5} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
+                  <td colSpan={canEditDelete ? 5 : 4} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
                     Loading clients…
                   </td>
                 </tr>
               ) : paginatedClients.length === 0 ? (
                 <tr>
-                  <td colSpan={canEditDelete ? 6 : 5} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
+                  <td colSpan={canEditDelete ? 5 : 4} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
                     {searchQuery.trim() ? 'No matching clients' : 'No clients yet. Add a client to get started.'}
                   </td>
                 </tr>
@@ -768,9 +841,6 @@ export default function Clients() {
                     </td>
                     <td className="px-4 sm:px-6 py-4 min-w-0">
                       <span className="text-slate-300 text-sm truncate block whitespace-nowrap" title={c.email || '-'}>{c.email || '-'}</span>
-                    </td>
-                    <td className="px-4 sm:px-6 py-4 min-w-0">
-                      <span className="text-slate-300 text-sm truncate block whitespace-nowrap" title={c.brand_name || '-'}>{c.brand_name || '-'}</span>
                     </td>
                     <td className="px-4 sm:px-6 py-4 min-w-0">
                       <span
@@ -1000,21 +1070,6 @@ export default function Clients() {
                   />
                 </div>
                 <div>
-                  <label htmlFor="edit-brand" className="block text-sm font-medium text-slate-300 mb-1">Brand</label>
-                  <select
-                    id="edit-brand"
-                    value={editBrandId ?? ''}
-                    onChange={(e) => setEditBrandId(e.target.value ? Number(e.target.value) : null)}
-                    required
-                    className="w-full rounded-xl border border-slate-600 bg-slate-900/50 px-4 py-3 text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  >
-                    <option value="">Select a brand</option>
-                    {brands.map((b) => (
-                      <option key={b.id} value={b.id}>{b.brand_name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
                   <label htmlFor="edit-password" className="block text-sm font-medium text-slate-300 mb-1">New password</label>
                   <input
                     id="edit-password"
@@ -1139,6 +1194,98 @@ export default function Clients() {
         </>
       )}
 
+      {showArchivedModal && (
+        <>
+          <div className="fixed inset-0 z-40 bg-black/60" onClick={() => archivedActionClientId === null && setShowArchivedModal(false)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="flex max-h-[80vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-800 shadow-xl">
+              <div className="flex items-center justify-between border-b border-slate-700 px-6 py-4">
+                <div>
+                  <h2 className="text-lg font-bold text-white">Archived Clients</h2>
+                  <p className="mt-1 text-sm text-slate-400">Permanently delete clients that were already archived.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => archivedActionClientId === null && setShowArchivedModal(false)}
+                  className="p-2 rounded-lg text-slate-400 hover:bg-slate-700 hover:text-white transition"
+                  aria-label="Close archived clients"
+                >
+                  <CloseIcon />
+                </button>
+              </div>
+
+              {archivedError && (
+                <div className="px-6 pt-4">
+                  <p className="rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+                    {archivedError}
+                  </p>
+                </div>
+              )}
+
+              <div className="min-h-0 flex-1 overflow-auto px-6 py-4">
+                <table className="w-full min-w-[640px] table-fixed">
+                  <thead>
+                    <tr className="border-b border-slate-700 text-left">
+                      <th className="w-[80px] px-3 py-3 text-xs font-bold uppercase tracking-wide text-slate-400">ID</th>
+                      <th className="px-3 py-3 text-xs font-bold uppercase tracking-wide text-slate-400">Client</th>
+                      <th className="px-3 py-3 text-xs font-bold uppercase tracking-wide text-slate-400">Email</th>
+                      <th className="w-[120px] px-3 py-3 text-xs font-bold uppercase tracking-wide text-slate-400">Status</th>
+                      <th className="w-[160px] px-3 py-3 text-xs font-bold uppercase tracking-wide text-slate-400">Archived</th>
+                      <th className="w-[160px] px-3 py-3 text-right text-xs font-bold uppercase tracking-wide text-slate-400">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {archivedLoading ? (
+                      <tr>
+                        <td colSpan={6} className="px-3 py-8 text-center text-sm text-slate-400">Loading archived clients...</td>
+                      </tr>
+                    ) : archivedClients.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-3 py-8 text-center text-sm text-slate-400">No archived clients found.</td>
+                      </tr>
+                    ) : (
+                      archivedClients.map((client) => (
+                        <tr key={client.id} className="border-b border-slate-700/60 last:border-b-0">
+                          <td className="px-3 py-4 text-sm font-mono text-white">{client.id}</td>
+                          <td className="px-3 py-4 text-sm font-semibold text-white">{client.name || '-'}</td>
+                          <td className="px-3 py-4 text-sm text-slate-300">{client.email || '-'}</td>
+                          <td className="px-3 py-4 text-sm text-slate-300 capitalize">{client.status || 'archived'}</td>
+                          <td className="px-3 py-4 text-sm text-slate-400">{client.created_at ? new Date(client.created_at).toLocaleDateString() : '--'}</td>
+                          <td className="px-3 py-4 text-right">
+                            <div className="flex justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => void handleArchivedClientAction(client, 'restore')}
+                                disabled={archivedActionClientId !== null}
+                                className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2 text-emerald-300 transition hover:bg-emerald-500/20 disabled:opacity-50"
+                                title="Restore client"
+                                aria-label="Restore client"
+                              >
+                                <ArrowPathIcon className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleArchivedClientAction(client, 'purge')}
+                                disabled={archivedActionClientId !== null}
+                                className="rounded-lg border border-red-500/30 bg-red-500/10 p-2 text-red-300 transition hover:bg-red-500/20 disabled:opacity-50"
+                                title="Delete forever"
+                                aria-label="Delete forever"
+                              >
+                                <TrashIcon className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
       {showAddModal && (
         <>
           <div className="fixed inset-0 z-40 bg-black/60" onClick={() => !addLoading && setShowAddModal(false)} />
@@ -1200,22 +1347,6 @@ export default function Clients() {
                     className="w-full rounded-xl border border-slate-600 bg-slate-900/50 px-4 py-3 text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
                   />
                 </div>
-                <div>
-                  <label htmlFor="add-brand" className="block text-sm font-medium text-slate-300 mb-1">Brand</label>
-                  <select
-                    id="add-brand"
-                    value={addBrandId ?? ''}
-                    onChange={(e) => setAddBrandId(e.target.value ? Number(e.target.value) : null)}
-                    required
-                    className="w-full rounded-xl border border-slate-600 bg-slate-900/50 px-4 py-3 text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  >
-                    <option value="">Select a brand</option>
-                    {brands.map((b) => (
-                      <option key={b.id} value={b.id}>{b.brand_name}</option>
-                    ))}
-                  </select>
-                </div>
-
                 {addError && (
                   <p className="rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-400">{addError}</p>
                 )}

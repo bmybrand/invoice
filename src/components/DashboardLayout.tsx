@@ -344,14 +344,14 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
 
   const { data: clientData, error: clientError } = await supabase
   .from('clients')
-  .select('name, email, brand_id, handler_id')
+  .select('name, email, handler_id')
   .eq('status', 'approved')
   .neq('isdeleted', true)
   .or(`handler_id.eq.${user.id},email.eq.${user.email ?? ''}`)
   .maybeSingle()
 
 if (clientData) {
-  const row = clientData as { name?: string; email?: string; brand_id?: number; handler_id?: string } | null
+  const row = clientData as { name?: string; email?: string; handler_id?: string } | null
   const clientName = row?.name?.trim() || metadataDisplayName || user.email || 'Client'
 
   setDisplayName(clientName)
