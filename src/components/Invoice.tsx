@@ -42,7 +42,14 @@ type InvoiceRow = {
   amount: string
   status: string
   payable_amount: number | null
+  paid_amount: number
   invoice_type: string
+}
+
+type PaymentSubmissionRow = {
+  invoice_id: number | null
+  amount_paid: string | number | null
+  payment_status: string | null
 }
 
 type InvoiceScopedCache = {
@@ -217,6 +224,16 @@ function isGatewayLimitBlockingError(message: string | null): boolean {
   return (message || '').includes('Invoice amount exceeds the active payment gateway limit')
 }
 
+function isSuccessfulPaymentStatus(status: string | null | undefined): boolean {
+  const normalized = (status || '').trim().toLowerCase()
+  return (
+    normalized.includes('paid') ||
+    normalized.includes('success') ||
+    normalized.includes('succeed') ||
+    normalized.includes('completed')
+  )
+}
+
 function formatGatewayLimitAmount(amount: number | null): string {
   if (amount == null) return 'No maximum'
   return `$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -300,6 +317,11 @@ function isValidPrice(value: string): boolean {
 function isAdvanceUnpaidStatus(status: string): boolean {
   const normalized = (status || '').toLowerCase()
   return normalized.includes('payable') || normalized.includes('pending')
+}
+
+function isSettledInvoiceStatus(status: string): boolean {
+  const normalized = (status || '').toLowerCase()
+  return normalized.includes('paid') || normalized.includes('completed')
 }
 
 function sanitizeCurrencyInput(value: string): string {
@@ -557,6 +579,7 @@ export default function Invoice() {
   const [editPhone, setEditPhone] = useState('')
   const [editStatus, setEditStatus] = useState('Pending')
   const [editPayableAmount, setEditPayableAmount] = useState('')
+  const [editPaidAmountTotal, setEditPaidAmountTotal] = useState(0)
   const [editInvoiceType, setEditInvoiceType] = useState<string>(INVOICE_TYPE_OPTIONS[0])
   const [editInvoiceUrl, setEditInvoiceUrl] = useState('')
   const [editUrlCopied, setEditUrlCopied] = useState(false)
@@ -672,6 +695,34 @@ export default function Invoice() {
       }
       return
     }
+
+    const invoiceIds = ((data ?? []) as Array<Record<string, unknown>>)
+      .map((row) => Number(row.id))
+      .filter((id) => Number.isFinite(id) && id > 0)
+
+    let paidAmountByInvoiceId = new Map<number, number>()
+    if (invoiceIds.length > 0) {
+      const { data: paymentData, error: paymentError } = await supabase
+        .from('payment_submissions')
+        .select('invoice_id, amount_paid, payment_status')
+        .in('invoice_id', invoiceIds)
+
+      if (paymentError) {
+        console.error('Failed to fetch invoice payment summaries', paymentError)
+      } else {
+        paidAmountByInvoiceId = ((paymentData as PaymentSubmissionRow[] | null) ?? []).reduce((map, row) => {
+          const invoiceId = Number(row.invoice_id ?? 0)
+          if (!Number.isFinite(invoiceId) || invoiceId <= 0 || !isSuccessfulPaymentStatus(row.payment_status)) {
+            return map
+          }
+
+          const amount = parseAmountValue(String(row.amount_paid ?? '0'))
+          map.set(invoiceId, (map.get(invoiceId) ?? 0) + amount)
+          return map
+        }, new Map<number, number>())
+      }
+    }
+
     const rows = (data ?? []).map((row: Record<string, unknown>) => {
       const emp = row.employees as { employee_name?: string } | { employee_name?: string }[] | null
       const empObj = Array.isArray(emp) ? emp[0] : emp
@@ -679,8 +730,9 @@ export default function Invoice() {
       const clientName = (Array.isArray(clientObj) ? clientObj[0] : clientObj)?.name ?? ''
       const services = toServiceLines(row.service)
       const subtotal = servicesSubtotal(services)
+      const invoiceId = Number(row.id as number)
       return {
-        id: row.id as number,
+        id: invoiceId,
         invoice_date: (row.invoice_date as string) ?? '',
         invoice_creator_id: (row.invoice_creator_id as number) ?? 0,
         invoice_creator: empObj?.employee_name ?? '--',
@@ -693,6 +745,7 @@ export default function Invoice() {
         amount: ((row.amount as string) ?? '').trim() || subtotal.toFixed(2),
         status: (row.status as string) ?? 'Pending',
         payable_amount: row.payable_amount == null ? null : Number(row.payable_amount),
+        paid_amount: Number((paidAmountByInvoiceId.get(invoiceId) ?? 0).toFixed(2)),
         invoice_type: (row.invoice_type as string) ?? INVOICE_TYPE_OPTIONS[0],
       }
     })
@@ -917,17 +970,25 @@ export default function Invoice() {
     if (!isValidEmail(editEmail.trim())) {
       return { valid: false, message: 'Enter a valid email address.' }
     }
+    if (isSettledInvoiceStatus(editStatus)) {
+      return validateServiceLines(editServices)
+    }
+    const total = servicesSubtotal(editServices)
+    const alreadyPaid = Math.min(editPaidAmountTotal, total)
+    const remainingBalance = Math.max(total - alreadyPaid, 0)
+    if (total < editPaidAmountTotal) {
+      return { valid: false, message: 'Invoice total cannot be less than the amount already paid.' }
+    }
     if (isAdvanceUnpaidStatus(editStatus)) {
       if (!editPayableAmount.trim()) {
         return { valid: false, message: 'Enter a payable amount.' }
       }
       const payable = parseAmountValue(editPayableAmount)
-      const total = servicesSubtotal(editServices)
       if (payable <= 0) {
         return { valid: false, message: 'Payable amount must be greater than 0.' }
       }
-      if (payable > total) {
-        return { valid: false, message: 'Payable amount cannot be greater than the grand total.' }
+      if (payable > remainingBalance) {
+        return { valid: false, message: 'Payable amount cannot be greater than the remaining balance.' }
       }
     }
     return validateServiceLines(editServices)
@@ -1050,6 +1111,7 @@ export default function Invoice() {
     setEditPhone(inv.phone || '')
     setEditStatus(inv.status || 'Pending')
     setEditPayableAmount(inv.payable_amount == null ? '' : String(inv.payable_amount))
+    setEditPaidAmountTotal(inv.paid_amount || 0)
     setEditInvoiceType(inv.invoice_type || INVOICE_TYPE_OPTIONS[0])
     setEditInvoiceUrl(`${window.location.origin}${getInvoiceLink(inv.id)}`)
     setEditUrlCopied(false)
@@ -1061,6 +1123,7 @@ export default function Invoice() {
   function closeEditModal() {
     if (editLoading) return
     setEditingInvoice(null)
+    setEditPaidAmountTotal(0)
     setEditInvoiceUrl('')
     setEditUrlCopied(false)
   }
@@ -1093,14 +1156,24 @@ export default function Invoice() {
     }))
     const subTotal = servicesSubtotal(cleanServices)
     const payableAmount = isAdvanceUnpaidStatus(editStatus) ? parseAmountValue(editPayableAmount) : 0
-    const gatewayValidationAmount = getInvoiceGatewayValidationAmount(editStatus, subTotal, payableAmount)
-    const gatewayValidation = await validateGatewayAmountForInvoice(gatewayValidationAmount)
-    if (gatewayValidation.error) {
-      setEditGatewayLimits(gatewayValidation.gateways)
-      setEditGatewayInfoOpen(false)
-      setEditError(gatewayValidation.error)
-      setActionMessage({ type: 'error', text: gatewayValidation.error })
-      return
+    if (!isSettledInvoiceStatus(editStatus)) {
+      const alreadyPaid = Math.min(editPaidAmountTotal, subTotal)
+      const remainingBalance = Math.max(subTotal - alreadyPaid, 0)
+      const gatewayValidationAmount =
+        alreadyPaid > 0
+          ? isAdvanceUnpaidStatus(editStatus)
+            ? payableAmount
+            : remainingBalance
+          : getInvoiceGatewayValidationAmount(editStatus, subTotal, payableAmount)
+
+      const gatewayValidation = await validateGatewayAmountForInvoice(gatewayValidationAmount)
+      if (gatewayValidation.error) {
+        setEditGatewayLimits(gatewayValidation.gateways)
+        setEditGatewayInfoOpen(false)
+        setEditError(gatewayValidation.error)
+        setActionMessage({ type: 'error', text: gatewayValidation.error })
+        return
+      }
     }
     setEditGatewayLimits([])
     setEditGatewayInfoOpen(false)
@@ -1936,8 +2009,10 @@ export default function Invoice() {
                   {(() => {
                     const subTotal = servicesSubtotal(editServices)
                     const grandTotal = subTotal
+                    const paidAmount = Math.min(editPaidAmountTotal, grandTotal)
+                    const remainingBalance = Math.max(grandTotal - paidAmount, 0)
                     const payableAmount = Math.min(parseAmountValue(editPayableAmount), grandTotal)
-                    const remainingAmount = Math.max(grandTotal - payableAmount, 0)
+                    const remainingAmount = Math.max(remainingBalance - payableAmount, 0)
                     return (
                       <>
                         <div className="grid grid-cols-1 gap-10 px-10 py-8 md:grid-cols-2">
@@ -2091,6 +2166,18 @@ export default function Invoice() {
                                 <span className="text-slate-600">Total</span>
                                 <span className="font-medium text-slate-700">${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                               </div>
+                              {paidAmount > 0 && (
+                                <div className="flex justify-between">
+                                  <span className="text-slate-600">Paid</span>
+                                  <span className="font-medium text-emerald-600">${paidAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                </div>
+                              )}
+                              {paidAmount > 0 && !isAdvanceUnpaidStatus(editStatus) && (
+                                <div className="flex justify-between">
+                                  <span className="text-slate-600">Remaining</span>
+                                  <span className="font-medium text-slate-700">${remainingBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                </div>
+                              )}
                               {isAdvanceUnpaidStatus(editStatus) && (
                                 <>
                                   <div className="rounded-xl bg-orange-600 p-4 text-white">
