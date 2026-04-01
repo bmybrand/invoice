@@ -1,7 +1,8 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useClientDashboardData } from '@/context/ClientDashboardDataContext'
+import { ClientChatModal } from '@/components/ClientChatModal'
 import {
   ResponsiveContainer,
   PieChart,
@@ -126,6 +127,7 @@ export default function ClientDashboardPage() {
       error: null,
       refetch: async () => {},
     }
+  const [chatOpen, setChatOpen] = useState(false)
 
   const stats = useMemo<DashboardStats>(() => {
     const today = new Date()
@@ -309,16 +311,26 @@ export default function ClientDashboardPage() {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => void refetch()}
-          className="shrink-0 rounded-xl border border-slate-800 bg-slate-900 p-3"
-          aria-label="Refresh"
-        >
-          <svg className="h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-          </svg>
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setChatOpen(true)}
+            disabled={!client?.id}
+            className="rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:opacity-50"
+          >
+            Message Handler
+          </button>
+          <button
+            type="button"
+            onClick={() => void refetch()}
+            className="rounded-xl border border-slate-800 bg-slate-900 p-3"
+            aria-label="Refresh"
+          >
+            <svg className="h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-4 lg:gap-6">
@@ -700,6 +712,13 @@ export default function ClientDashboardPage() {
           </ResponsiveContainer>
         </div>
       </div>
+      <ClientChatModal
+        open={chatOpen}
+        clientId={client?.id ?? null}
+        title={client?.name || 'Chat'}
+        subtitle={clientEmail}
+        onClose={() => setChatOpen(false)}
+      />
     </div>
   )
 }

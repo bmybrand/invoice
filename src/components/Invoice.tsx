@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback, type ReactNode } from 'react'
+import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 import { Plus_Jakarta_Sans } from 'next/font/google'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useDashboardProfile } from '@/components/DashboardLayout'
 import { useClientDashboardData } from '@/context/ClientDashboardDataContext'
@@ -539,6 +539,7 @@ export function InvoiceDocument({
 
 export default function Invoice() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { displayRole, accountType, currentEmployeeId, currentUserAuthId, profileLoaded } = useDashboardProfile()
   const normalizedRole = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '')
   const isUserRole = normalizedRole === 'user'
@@ -623,6 +624,12 @@ export default function Invoice() {
     }
   }
   const [openActionMenu, setOpenActionMenu] = useState<ActionMenuState | null>(null)
+  const routeClientId = useMemo(() => {
+    const raw = searchParams.get('clientId')
+    if (!raw) return null
+    const parsed = Number(raw)
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+  }, [searchParams])
 
   function canEditInvoice(inv: InvoiceRow): boolean {
     if (isSuperAdmin) return true
@@ -680,6 +687,8 @@ export default function Invoice() {
 
     if (isClient && clientId) {
       query = query.eq('client_id', clientId)
+    } else if (routeClientId != null) {
+      query = query.eq('client_id', routeClientId)
     } else if (isUserRole && currentEmployeeId != null) {
       query = query.eq('invoice_creator_id', currentEmployeeId)
     }
@@ -758,7 +767,7 @@ export default function Invoice() {
       }
       return next
     })
-  }, [accountType, clientData?.client?.id, clientData?.loading, currentEmployeeId, currentUserAuthId, isUserRole, profileLoaded, scopedInvoiceCache])
+  }, [accountType, clientData?.client?.id, clientData?.loading, currentEmployeeId, currentUserAuthId, isUserRole, profileLoaded, routeClientId, scopedInvoiceCache])
 
   const fetchEmployees = useCallback(async () => {
     const { data, error } = await supabase

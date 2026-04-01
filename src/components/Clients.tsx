@@ -5,6 +5,7 @@ import { flushSync } from 'react-dom'
 import { Plus_Jakarta_Sans } from 'next/font/google'
 import { supabase } from '@/lib/supabase'
 import { useDashboardProfile } from '@/components/DashboardLayout'
+import { ClientChatModal } from '@/components/ClientChatModal'
 import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
@@ -69,6 +70,12 @@ type RequestActionTarget = {
 type RequestActionConfirmState = {
   mode: RequestActionMode
   request: RequestActionTarget
+}
+
+type ChatTarget = {
+  clientId: number
+  title: string
+  subtitle?: string
 }
 
 function areClientRowsEqual(a: ClientRow[], b: ClientRow[]) {
@@ -217,6 +224,7 @@ export default function Clients() {
   const [requestActionError, setRequestActionError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [requestActionConfirm, setRequestActionConfirm] = useState<RequestActionConfirmState | null>(null)
+  const [chatTarget, setChatTarget] = useState<ChatTarget | null>(null)
   const pendingClientDeleteIdsRef = useRef<Set<number>>(new Set())
   const suppressBackgroundRefreshRef = useRef(false)
   const refreshTimeoutRef = useRef<number | null>(null)
@@ -1039,14 +1047,21 @@ export default function Clients() {
                     </td>
                     <td className="w-[96px] px-4 sm:px-6 py-4 text-center">
                       {c.email?.trim() ? (
-                        <a
-                          href={`mailto:${c.email.trim()}`}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setChatTarget({
+                              clientId: getRowId(c),
+                              title: c.name || c.email,
+                              subtitle: c.email || '',
+                            })
+                          }
                           className="inline-flex rounded-lg p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-orange-400"
                           title={`Message ${c.name || c.email}`}
                           aria-label={`Message ${c.name || c.email}`}
                         >
                           <MessageIcon className="h-4 w-4" />
-                        </a>
+                        </button>
                       ) : (
                         <span className="text-xs text-slate-500">--</span>
                       )}
@@ -1663,6 +1678,14 @@ export default function Clients() {
           </div>
         </>
       )}
+
+      <ClientChatModal
+        open={Boolean(chatTarget)}
+        clientId={chatTarget?.clientId ?? null}
+        title={chatTarget?.title ?? 'Chat'}
+        subtitle={chatTarget?.subtitle}
+        onClose={() => setChatTarget(null)}
+      />
     </div>
   )
 }
