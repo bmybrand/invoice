@@ -321,6 +321,7 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
       .from('employees')
       .select('id, employee_name, role')
       .eq('auth_id', user.id)
+      .neq('isdeleted', true)
       .maybeSingle()
 
     if (employeeData) {
@@ -342,16 +343,30 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
       console.error('Employee lookup error:', employeeError.message)
     }
 
+    const { data: deletedEmployee } = await supabase
+      .from('employees')
+      .select('id')
+      .eq('auth_id', user.id)
+      .eq('isdeleted', true)
+      .maybeSingle()
+
+    if (deletedEmployee) {
+      resetDashboardProfile(false)
+      await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+      router.replace('/login')
+      return
+    }
+
   const { data: clientData, error: clientError } = await supabase
   .from('clients')
-  .select('name, email, handler_id')
+  .select('name, email, auth_id, handler_id')
   .eq('status', 'approved')
   .neq('isdeleted', true)
-  .or(`handler_id.eq.${user.id},email.eq.${user.email ?? ''}`)
+  .or(`auth_id.eq.${user.id},email.eq.${user.email ?? ''}`)
   .maybeSingle()
 
 if (clientData) {
-  const row = clientData as { name?: string; email?: string; handler_id?: string } | null
+  const row = clientData as { name?: string; email?: string; auth_id?: string; handler_id?: string } | null
   const clientName = row?.name?.trim() || metadataDisplayName || user.email || 'Client'
 
   setDisplayName(clientName)
@@ -370,7 +385,7 @@ if (clientError) {
       .from('clients')
       .select('id, status')
       .neq('isdeleted', true)
-      .or(`handler_id.eq.${user.id},email.eq.${user.email ?? ''}`)
+      .or(`auth_id.eq.${user.id},email.eq.${user.email ?? ''}`)
       .order('created_date', { ascending: false })
       .limit(1)
       .maybeSingle()
@@ -396,6 +411,22 @@ if (clientError) {
       resetDashboardProfile(false)
       await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
       router.replace('/login?reason=rejected')
+      return
+    }
+
+    const { data: deletedClient } = await supabase
+      .from('clients')
+      .select('id')
+      .eq('isdeleted', true)
+      .or(`auth_id.eq.${user.id},email.eq.${user.email ?? ''}`)
+      .order('created_date', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (deletedClient) {
+      resetDashboardProfile(false)
+      await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+      router.replace('/login')
       return
     }
 
@@ -444,6 +475,65 @@ if (clientError) {
       router.replace('/dashboard')
     }
   }, [accountType, pathname, router])
+
+  useEffect(() => {
+    if (accountType !== 'employee' || !currentUserAuthId) return
+
+    const channel = supabase
+      .channel(`employee-session-guard-${currentUserAuthId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'employees',
+          filter: `auth_id=eq.${currentUserAuthId}`,
+        },
+        async (payload) => {
+          const nextRow = (payload.new ?? null) as { isdeleted?: boolean | null } | null
+          if (nextRow?.isdeleted === true) {
+            resetDashboardProfile(false)
+            await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+            redirectToLoginHard()
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      void channel.unsubscribe()
+    }
+  }, [accountType, currentUserAuthId, redirectToLoginHard, resetDashboardProfile])
+
+  useEffect(() => {
+    if (accountType !== 'client' || !currentUserAuthId) return
+
+    const channel = supabase
+      .channel(`client-session-guard-${currentUserAuthId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'clients',
+          filter: `auth_id=eq.${currentUserAuthId}`,
+        },
+        async (payload) => {
+          const nextRow = (payload.new ?? null) as { isdeleted?: boolean | null; status?: string | null } | null
+          const status = (nextRow?.status || '').trim().toLowerCase()
+          if (nextRow?.isdeleted === true || status === 'rejected') {
+            resetDashboardProfile(false)
+            await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+            redirectToLoginHard()
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      void channel.unsubscribe()
+    }
+  }, [accountType, currentUserAuthId, redirectToLoginHard, resetDashboardProfile])
 
   useEffect(() => {
     if (!currentUserAuthId || accountType !== 'employee') return

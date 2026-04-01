@@ -17,6 +17,8 @@ type BrandRow = {
   created_at?: string
 }
 
+type ArchivedBrandRow = BrandRow
+
 type BrandScopedCache = {
   ownerAuthId: string | null
   rows: BrandRow[]
@@ -48,6 +50,22 @@ function TrashIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+    </svg>
+  )
+}
+
+function ArchiveIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5H3.75m15.75 0-1.06 11.126A2.25 2.25 0 0116.2 20.75H7.8a2.25 2.25 0 01-2.24-2.124L4.5 7.5m15 0-.47-2.114A2.25 2.25 0 0016.84 3.75H7.16a2.25 2.25 0 00-2.19 1.636L4.5 7.5m4.5 4.5h6m-3-3v6" />
+    </svg>
+  )
+}
+
+function ArrowPathIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992V4.356m0 0-3.181 3.182A8.25 8.25 0 105.25 19.5m2.727-4.848H3.015v4.992m0 0 3.182-3.182" />
     </svg>
   )
 }
@@ -96,6 +114,7 @@ export default function Brand() {
   const [searchQuery, setSearchQuery] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [showAddModal, setShowAddModal] = useState(false)
+  const [showArchivedModal, setShowArchivedModal] = useState(false)
   const [addName, setAddName] = useState('')
   const [addUrl, setAddUrl] = useState('')
   const [addLogoUrl, setAddLogoUrl] = useState('')
@@ -112,9 +131,34 @@ export default function Brand() {
   const [editError, setEditError] = useState<string | null>(null)
   const [deletingBrand, setDeletingBrand] = useState<BrandRow | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [archivedBrands, setArchivedBrands] = useState<ArchivedBrandRow[]>([])
+  const [archivedLoading, setArchivedLoading] = useState(false)
+  const [archivedError, setArchivedError] = useState<string | null>(null)
+  const [archivedActionBrandId, setArchivedActionBrandId] = useState<number | null>(null)
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const isSuperAdmin = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '') === 'superadmin'
+
+  async function getCurrentAuthToken() {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+
+    if (session?.access_token?.trim()) {
+      return session.access_token.trim()
+    }
+
+    const {
+      data: refreshedData,
+      error: refreshError,
+    } = await supabase.auth.refreshSession()
+
+    if (refreshError) {
+      return ''
+    }
+
+    return refreshedData.session?.access_token?.trim() || ''
+  }
 
   const fetchBrands = useCallback(async (options?: { background?: boolean }) => {
     const isBackgroundRefresh = options?.background ?? false
@@ -124,6 +168,7 @@ export default function Brand() {
     const { data, error } = await supabase
       .from('brands')
       .select('id, brand_name, brand_url, logo_url, favicon_url, created_at')
+      .neq('isdeleted', true)
       .order('created_at', { ascending: false })
     if (!isBackgroundRefresh) {
       setBrandsLoading(false)
@@ -147,6 +192,26 @@ export default function Brand() {
     })
   }, [currentUserAuthId, scopedBrandCache])
 
+  const fetchArchivedBrands = useCallback(async () => {
+    setArchivedLoading(true)
+    setArchivedError(null)
+
+    const { data, error } = await supabase
+      .from('brands')
+      .select('id, brand_name, brand_url, logo_url, favicon_url, created_at')
+      .eq('isdeleted', true)
+      .order('created_at', { ascending: false })
+
+    setArchivedLoading(false)
+
+    if (error) {
+      setArchivedError(error.message || 'Failed to load archived brands')
+      return
+    }
+
+    setArchivedBrands((data as ArchivedBrandRow[]) ?? [])
+  }, [])
+
   useEffect(() => {
     void fetchBrands()
 
@@ -158,6 +223,15 @@ export default function Brand() {
 
     return () => window.clearInterval(intervalId)
   }, [fetchBrands])
+
+  useEffect(() => {
+    if (!showArchivedModal) return
+    const timeoutId = window.setTimeout(() => {
+      void fetchArchivedBrands()
+    }, 0)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [fetchArchivedBrands, showArchivedModal])
 
   const filteredBrands = searchQuery.trim()
     ? brands.filter(
@@ -186,17 +260,34 @@ export default function Brand() {
     setAddError(null)
     setAddLoading(true)
 
-    const { error: insertError } = await supabase.from('brands').insert({
-      brand_name: addName.trim(),
-      brand_url: addUrl.trim() || null,
-      logo_url: addLogoUrl.trim() || null,
-      favicon_url: addFaviconUrl.trim() || null,
+    const token = await getCurrentAuthToken()
+    if (!token) {
+      setAddLoading(false)
+      setAddError('Authentication expired. Sign in again and try again.')
+      setActionMessage({ type: 'error', text: 'Authentication expired. Sign in again and try again.' })
+      return
+    }
+
+    const response = await fetch('/api/brands', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        brand_name: addName,
+        brand_url: addUrl,
+        logo_url: addLogoUrl,
+        favicon_url: addFaviconUrl,
+      }),
     })
 
+    const result = (await response.json().catch(() => null)) as { error?: string } | null
+
     setAddLoading(false)
-    if (insertError) {
-      setAddError(insertError.message)
-      setActionMessage({ type: 'error', text: insertError.message })
+    if (!response.ok) {
+      setAddError(result?.error || 'Failed to create brand')
+      setActionMessage({ type: 'error', text: result?.error || 'Failed to create brand' })
       return
     }
 
@@ -224,20 +315,34 @@ export default function Brand() {
     setEditError(null)
     setEditLoading(true)
 
-    const { error } = await supabase
-      .from('brands')
-      .update({
-        brand_name: editName.trim(),
-        brand_url: editUrl.trim() || null,
-        logo_url: editLogoUrl.trim() || null,
-        favicon_url: editFaviconUrl.trim() || null,
-      })
-      .eq('id', editingBrand.id)
+    const token = await getCurrentAuthToken()
+    if (!token) {
+      setEditLoading(false)
+      setEditError('Authentication expired. Sign in again and try again.')
+      setActionMessage({ type: 'error', text: 'Authentication expired. Sign in again and try again.' })
+      return
+    }
+
+    const response = await fetch(`/api/brands/${editingBrand.id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        brand_name: editName,
+        brand_url: editUrl,
+        logo_url: editLogoUrl,
+        favicon_url: editFaviconUrl,
+      }),
+    })
+
+    const result = (await response.json().catch(() => null)) as { error?: string } | null
 
     setEditLoading(false)
-    if (error) {
-      setEditError(error.message)
-      setActionMessage({ type: 'error', text: error.message })
+    if (!response.ok) {
+      setEditError(result?.error || 'Failed to update brand')
+      setActionMessage({ type: 'error', text: result?.error || 'Failed to update brand' })
       return
     }
 
@@ -249,16 +354,85 @@ export default function Brand() {
   async function handleDeleteConfirm() {
     if (!deletingBrand || !isSuperAdmin) return
     setDeleteLoading(true)
-    const { error } = await supabase.from('brands').delete().eq('id', deletingBrand.id)
-    setDeleteLoading(false)
-    if (error) {
-      console.error('Failed to delete brand', error)
-      setActionMessage({ type: 'error', text: error.message || 'Failed to delete brand' })
+
+    const token = await getCurrentAuthToken()
+    if (!token) {
+      setDeleteLoading(false)
+      setActionMessage({ type: 'error', text: 'Authentication expired. Sign in again and try again.' })
       return
     }
-    setActionMessage({ type: 'success', text: `Brand ${deletingBrand.brand_name} deleted successfully.` })
+
+    const response = await fetch(`/api/brands/${deletingBrand.id}`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+    const result = (await response.json().catch(() => null)) as { error?: string } | null
+
+    setDeleteLoading(false)
+    if (!response.ok) {
+      setActionMessage({ type: 'error', text: result?.error || 'Failed to archive brand' })
+      return
+    }
+    setActionMessage({ type: 'success', text: `Brand ${deletingBrand.brand_name} archived successfully.` })
     setDeletingBrand(null)
     await fetchBrands()
+    if (showArchivedModal) {
+      await fetchArchivedBrands()
+    }
+  }
+
+  async function handleArchivedBrandAction(brand: ArchivedBrandRow, action: 'purge' | 'restore') {
+    if (archivedActionBrandId !== null) return
+
+    setArchivedActionBrandId(brand.id)
+    setArchivedError(null)
+
+    const token = await getCurrentAuthToken()
+    if (!token) {
+      setArchivedActionBrandId(null)
+      setArchivedError('Authentication expired. Sign in again and try again.')
+      setActionMessage({ type: 'error', text: 'Authentication expired. Sign in again and try again.' })
+      return
+    }
+
+    const response = await fetch(`/api/brands/${brand.id}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ action }),
+    })
+
+    const result = (await response.json().catch(() => null)) as { error?: string } | null
+    setArchivedActionBrandId(null)
+
+    if (!response.ok) {
+      setArchivedError(
+        result?.error ||
+          (action === 'restore' ? 'Failed to restore archived brand' : 'Failed to permanently delete archived brand')
+      )
+      setActionMessage({
+        type: 'error',
+        text:
+          result?.error ||
+          (action === 'restore' ? 'Failed to restore archived brand' : 'Failed to permanently delete archived brand'),
+      })
+      return
+    }
+
+    setActionMessage({
+      type: 'success',
+      text:
+        action === 'restore'
+          ? `Archived brand ${brand.brand_name} was restored.`
+          : `Archived brand ${brand.brand_name} was permanently deleted.`,
+    })
+
+    await fetchBrands()
+    await fetchArchivedBrands()
   }
 
   return (
@@ -273,14 +447,25 @@ export default function Brand() {
             </p>
           </div>
           {isSuperAdmin && (
-            <button
-              type="button"
-              onClick={() => setShowAddModal(true)}
-              className="h-12 min-w-36 px-6 bg-orange-500 rounded-xl shadow-[0px_4px_20px_0px_rgba(249,115,22,0.2)] flex justify-center items-center gap-2 hover:bg-orange-600 transition shrink-0"
-            >
-              <PlusIcon className="h-4 w-3 text-white" />
-              <span className="text-white text-sm font-bold">Add New Brand</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowArchivedModal(true)}
+                className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-slate-700 bg-slate-800/80 text-slate-300 transition hover:bg-slate-700/80 hover:text-white"
+                aria-label="View archived brands"
+                title="View archived brands"
+              >
+                <ArchiveIcon className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAddModal(true)}
+                className="h-12 min-w-36 px-6 bg-orange-500 rounded-xl shadow-[0px_4px_20px_0px_rgba(249,115,22,0.2)] flex justify-center items-center gap-2 hover:bg-orange-600 transition shrink-0"
+              >
+                <PlusIcon className="h-4 w-3 text-white" />
+                <span className="text-white text-sm font-bold">Add New Brand</span>
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -606,7 +791,7 @@ export default function Brand() {
             </button>
             <h2 className="text-lg font-bold text-white">Delete Brand</h2>
             <p className="mt-1 text-sm text-slate-400">
-              Delete <span className="font-semibold text-white">{deletingBrand.brand_name}</span>? This cannot be undone.
+              Archive <span className="font-semibold text-white">{deletingBrand.brand_name}</span>? This hides the brand from invoice creation but keeps historical brand data on existing invoices.
             </p>
             <div className="mt-6 flex justify-end">
               <button
@@ -615,8 +800,95 @@ export default function Brand() {
                 disabled={deleteLoading}
                 className="w-full rounded-xl bg-red-500 px-4 py-3 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-50 sm:w-auto sm:min-w-[140px]"
               >
-                {deleteLoading ? 'Deleting…' : 'Delete'}
+                {deleteLoading ? 'Archiving…' : 'Archive'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showArchivedModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+          <div className="flex max-h-[80vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-800 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-700 px-6 py-4">
+              <div>
+                <h2 className="text-lg font-bold text-white">Archived Brands</h2>
+                <p className="mt-1 text-sm text-slate-400">Restore archived brands or permanently delete them when no invoices are linked.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => archivedActionBrandId === null && setShowArchivedModal(false)}
+                className="p-2 rounded-lg text-slate-400 hover:bg-slate-700 hover:text-white transition"
+                aria-label="Close archived brands"
+              >
+                <CloseIcon />
+              </button>
+            </div>
+
+            {archivedError && (
+              <div className="px-6 pt-4">
+                <p className="rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+                  {archivedError}
+                </p>
+              </div>
+            )}
+
+            <div className="min-h-0 flex-1 overflow-auto px-6 py-4">
+              <table className="w-full min-w-[760px] table-fixed">
+                <thead>
+                  <tr className="border-b border-slate-700 text-left">
+                    <th className="w-[80px] px-3 py-3 text-xs font-bold uppercase tracking-wide text-slate-400">ID</th>
+                    <th className="px-3 py-3 text-xs font-bold uppercase tracking-wide text-slate-400">Brand</th>
+                    <th className="px-3 py-3 text-xs font-bold uppercase tracking-wide text-slate-400">URL</th>
+                    <th className="w-[160px] px-3 py-3 text-xs font-bold uppercase tracking-wide text-slate-400">Archived</th>
+                    <th className="w-[160px] px-3 py-3 text-right text-xs font-bold uppercase tracking-wide text-slate-400">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {archivedLoading ? (
+                    <tr>
+                      <td colSpan={5} className="px-3 py-8 text-center text-sm text-slate-400">Loading archived brands...</td>
+                    </tr>
+                  ) : archivedBrands.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-3 py-8 text-center text-sm text-slate-400">No archived brands found.</td>
+                    </tr>
+                  ) : (
+                    archivedBrands.map((brand) => (
+                      <tr key={brand.id} className="border-b border-slate-700/60 last:border-b-0">
+                        <td className="px-3 py-4 text-sm font-mono text-white">{brand.id}</td>
+                        <td className="px-3 py-4 text-sm font-semibold text-white">{brand.brand_name || '-'}</td>
+                        <td className="px-3 py-4 text-sm text-slate-300">{brand.brand_url || '-'}</td>
+                        <td className="px-3 py-4 text-sm text-slate-400">{brand.created_at ? new Date(brand.created_at).toLocaleDateString() : '--'}</td>
+                        <td className="px-3 py-4 text-right">
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void handleArchivedBrandAction(brand, 'restore')}
+                              disabled={archivedActionBrandId !== null}
+                              className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2 text-emerald-300 transition hover:bg-emerald-500/20 disabled:opacity-50"
+                              title="Restore brand"
+                              aria-label="Restore brand"
+                            >
+                              <ArrowPathIcon className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleArchivedBrandAction(brand, 'purge')}
+                              disabled={archivedActionBrandId !== null}
+                              className="rounded-lg border border-red-500/30 bg-red-500/10 p-2 text-red-300 transition hover:bg-red-500/20 disabled:opacity-50"
+                              title="Delete forever"
+                              aria-label="Delete forever"
+                            >
+                              <TrashIcon className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

@@ -55,6 +55,7 @@ export async function POST(request: Request) {
       employee_name: name,
       role,
       department,
+      isdeleted: false,
     })
     .select('id, auth_id, employee_name, email, role, department')
     .single()

@@ -25,6 +25,7 @@ export async function POST(request: Request) {
     .from('employees')
     .select('auth_id')
     .eq('auth_id', authId)
+    .neq('isdeleted', true)
     .maybeSingle()
 
   if (employeeError) {

@@ -47,6 +47,7 @@ export async function requirePaymentGatewayAdmin(request: Request): Promise<Paym
     .from('employees')
     .select('role')
     .eq('auth_id', user.id)
+    .neq('isdeleted', true)
     .maybeSingle()
 
   if (employeeError) {
@@ -60,4 +61,3 @@ export async function requirePaymentGatewayAdmin(request: Request): Promise<Paym
 
   return { ok: true, supabase, user, role }
 }
-

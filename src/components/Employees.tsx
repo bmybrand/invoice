@@ -22,6 +22,8 @@ type EmployeeRow = {
   created_at?: string
 }
 
+type ArchivedEmployeeRow = EmployeeRow
+
 type EmployeesTableCache = {
   ownerAuthId: string | null
   employees: EmployeeRow[]
@@ -67,6 +69,22 @@ function TrashIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+    </svg>
+  )
+}
+
+function ArchiveIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5H3.75m15.75 0-1.06 11.126A2.25 2.25 0 0116.2 20.75H7.8a2.25 2.25 0 01-2.24-2.124L4.5 7.5m15 0-.47-2.114A2.25 2.25 0 0016.84 3.75H7.16a2.25 2.25 0 00-2.19 1.636L4.5 7.5m4.5 4.5h6m-3-3v6" />
+    </svg>
+  )
+}
+
+function ArrowPathIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992V4.356m0 0-3.181 3.182A8.25 8.25 0 105.25 19.5m2.727-4.848H3.015v4.992m0 0 3.182-3.182" />
     </svg>
   )
 }
@@ -142,6 +160,7 @@ export default function Employees() {
   const [employees, setEmployees] = useState<EmployeeRow[]>(() => scopedEmployeesCache?.employees ?? [])
   const [employeesLoading, setEmployeesLoading] = useState(() => !scopedEmployeesCache)
   const [showAddModal, setShowAddModal] = useState(false)
+  const [showArchivedModal, setShowArchivedModal] = useState(false)
   const [addEmail, setAddEmail] = useState('')
   const [addPassword, setAddPassword] = useState('')
   const [addName, setAddName] = useState('')
@@ -166,6 +185,10 @@ export default function Employees() {
   const [deletingEmployee, setDeletingEmployee] = useState<EmployeeRow | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [archivedEmployees, setArchivedEmployees] = useState<ArchivedEmployeeRow[]>([])
+  const [archivedLoading, setArchivedLoading] = useState(false)
+  const [archivedError, setArchivedError] = useState<string | null>(null)
+  const [archivedActionEmployeeId, setArchivedActionEmployeeId] = useState<number | null>(null)
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const roleOptions = [
@@ -193,6 +216,7 @@ export default function Employees() {
       .from('employees')
       .select('id')
       .eq('auth_id', profileCurrentUserAuthId)
+      .neq('isdeleted', true)
       .maybeSingle()
       .then(({ data: emp }) => {
         setCurrentUserEmployeeId(emp ? (emp as { id: number }).id : null)
@@ -318,6 +342,7 @@ export default function Employees() {
     const { data, error } = await supabase
       .from('employees')
       .select('id, auth_id, employee_name, email, role, department, created_at')
+      .neq('isdeleted', true)
       .order('created_at', { ascending: false })
 
     if (!isBackgroundRefresh) {
@@ -356,6 +381,35 @@ export default function Employees() {
 
     return () => window.clearInterval(intervalId)
   }, [fetchEmployees])
+
+  const fetchArchivedEmployees = useCallback(async () => {
+    setArchivedLoading(true)
+    setArchivedError(null)
+
+    const { data, error } = await supabase
+      .from('employees')
+      .select('id, auth_id, employee_name, email, role, department, created_at')
+      .eq('isdeleted', true)
+      .order('created_at', { ascending: false })
+
+    setArchivedLoading(false)
+
+    if (error) {
+      setArchivedError(error.message || 'Failed to load archived employees')
+      return
+    }
+
+    setArchivedEmployees((data as ArchivedEmployeeRow[]) ?? [])
+  }, [])
+
+  useEffect(() => {
+    if (!showArchivedModal) return
+    const timeoutId = window.setTimeout(() => {
+      void fetchArchivedEmployees()
+    }, 0)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [fetchArchivedEmployees, showArchivedModal])
 
   async function getCurrentAuthToken() {
     const {
@@ -584,9 +638,68 @@ export default function Employees() {
       setActionMessage({ type: 'error', text: result?.error || 'Failed to delete employee' })
       return
     }
-    setActionMessage({ type: 'success', text: `Employee ${deletingEmployee.employee_name} deleted successfully.` })
+    setActionMessage({ type: 'success', text: `Employee ${deletingEmployee.employee_name} archived successfully.` })
     setDeletingEmployee(null)
     await fetchEmployees()
+    if (showArchivedModal) {
+      await fetchArchivedEmployees()
+    }
+  }
+
+  async function handleArchivedEmployeeAction(employee: ArchivedEmployeeRow, action: 'purge' | 'restore') {
+    if (archivedActionEmployeeId !== null) return
+
+    setArchivedActionEmployeeId(employee.id)
+    setArchivedError(null)
+
+    const token = await getCurrentAuthToken()
+    if (!token) {
+      setArchivedActionEmployeeId(null)
+      setArchivedError('Authentication expired. Sign in again and try again.')
+      setActionMessage({ type: 'error', text: 'Authentication expired. Sign in again and try again.' })
+      return
+    }
+
+    const response = await fetch(`/api/employees/${employee.id}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ action }),
+    })
+
+    const result = (await response.json().catch(() => null)) as { error?: string } | null
+    setArchivedActionEmployeeId(null)
+
+    if (!response.ok) {
+      setArchivedError(
+        result?.error ||
+          (action === 'restore'
+            ? 'Failed to restore archived employee'
+            : 'Failed to permanently delete archived employee')
+      )
+      setActionMessage({
+        type: 'error',
+        text:
+          result?.error ||
+          (action === 'restore'
+            ? 'Failed to restore archived employee'
+            : 'Failed to permanently delete archived employee'),
+      })
+      return
+    }
+
+    setActionMessage({
+      type: 'success',
+      text:
+        action === 'restore'
+          ? `Archived employee ${employee.employee_name} was restored.`
+          : `Archived employee ${employee.employee_name} was permanently deleted.`,
+    })
+
+    await fetchEmployees({ background: true })
+    await fetchArchivedEmployees()
   }
 
   return (
@@ -599,14 +712,25 @@ export default function Employees() {
             <p className="text-slate-400 text-sm font-normal leading-5">Overview of your current workforce and roles</p>
           </div>
           {isSuperAdmin && (
-            <button
-              type="button"
-              onClick={() => setShowAddModal(true)}
-              className="h-12 min-w-36 px-6 bg-orange-500 rounded-xl shadow-[0px_4px_20px_0px_rgba(249,115,22,0.2)] flex justify-center items-center gap-2 hover:bg-orange-600 transition shrink-0"
-            >
-              <PlusIcon className="h-4 w-3 text-white" />
-              <span className="text-white text-sm font-bold">Add New Employee</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowArchivedModal(true)}
+                className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-slate-700 bg-slate-800/80 text-slate-300 transition hover:bg-slate-700/80 hover:text-white"
+                aria-label="View archived employees"
+                title="View archived employees"
+              >
+                <ArchiveIcon className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAddModal(true)}
+                className="h-12 min-w-36 px-6 bg-orange-500 rounded-xl shadow-[0px_4px_20px_0px_rgba(249,115,22,0.2)] flex justify-center items-center gap-2 hover:bg-orange-600 transition shrink-0"
+              >
+                <PlusIcon className="h-4 w-3 text-white" />
+                <span className="text-white text-sm font-bold">Add New Employee</span>
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -876,7 +1000,7 @@ export default function Employees() {
             </button>
             <h2 className="text-lg font-bold text-white">Delete Employee</h2>
             <p className="mt-1 text-sm text-slate-400">
-              Delete <span className="font-semibold text-white">{deletingEmployee.employee_name}</span>? This cannot be undone.
+              Archive <span className="font-semibold text-white">{deletingEmployee.employee_name}</span>? This hides the employee but keeps historical invoice links.
             </p>
             {deleteError && (
               <p className="mt-4 rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-400">{deleteError}</p>
@@ -888,8 +1012,99 @@ export default function Employees() {
                 disabled={deleteLoading}
                 className="w-full rounded-xl bg-red-500 px-4 py-3 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-50 sm:w-auto sm:min-w-[140px]"
               >
-                {deleteLoading ? 'Deleting…' : 'Delete'}
+                {deleteLoading ? 'Archiving…' : 'Archive'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showArchivedModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+          <div className="flex max-h-[80vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-800 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-700 px-6 py-4">
+              <div>
+                <h2 className="text-lg font-bold text-white">Archived Employees</h2>
+                <p className="mt-1 text-sm text-slate-400">Restore archived employees or permanently delete them when no invoices are linked.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => archivedActionEmployeeId === null && setShowArchivedModal(false)}
+                className="p-2 rounded-lg text-slate-400 hover:bg-slate-700 hover:text-white transition"
+                aria-label="Close archived employees"
+              >
+                <CloseIcon />
+              </button>
+            </div>
+
+            {archivedError && (
+              <div className="px-6 pt-4">
+                <p className="rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+                  {archivedError}
+                </p>
+              </div>
+            )}
+
+            <div className="min-h-0 flex-1 overflow-auto px-6 py-4">
+              <table className="w-full min-w-[760px] table-fixed">
+                <thead>
+                  <tr className="border-b border-slate-700 text-left">
+                    <th className="w-[80px] px-3 py-3 text-xs font-bold uppercase tracking-wide text-slate-400">ID</th>
+                    <th className="px-3 py-3 text-xs font-bold uppercase tracking-wide text-slate-400">Employee</th>
+                    <th className="px-3 py-3 text-xs font-bold uppercase tracking-wide text-slate-400">Email</th>
+                    <th className="w-[120px] px-3 py-3 text-xs font-bold uppercase tracking-wide text-slate-400">Role</th>
+                    <th className="w-[140px] px-3 py-3 text-xs font-bold uppercase tracking-wide text-slate-400">Department</th>
+                    <th className="w-[160px] px-3 py-3 text-xs font-bold uppercase tracking-wide text-slate-400">Archived</th>
+                    <th className="w-[160px] px-3 py-3 text-right text-xs font-bold uppercase tracking-wide text-slate-400">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {archivedLoading ? (
+                    <tr>
+                      <td colSpan={7} className="px-3 py-8 text-center text-sm text-slate-400">Loading archived employees...</td>
+                    </tr>
+                  ) : archivedEmployees.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-3 py-8 text-center text-sm text-slate-400">No archived employees found.</td>
+                    </tr>
+                  ) : (
+                    archivedEmployees.map((employee) => (
+                      <tr key={employee.id} className="border-b border-slate-700/60 last:border-b-0">
+                        <td className="px-3 py-4 text-sm font-mono text-white">{employee.id}</td>
+                        <td className="px-3 py-4 text-sm font-semibold text-white">{employee.employee_name || '-'}</td>
+                        <td className="px-3 py-4 text-sm text-slate-300">{employee.email || '-'}</td>
+                        <td className="px-3 py-4 text-sm capitalize text-slate-300">{employee.role || '-'}</td>
+                        <td className="px-3 py-4 text-sm text-slate-300">{employee.department || '-'}</td>
+                        <td className="px-3 py-4 text-sm text-slate-400">{employee.created_at ? new Date(employee.created_at).toLocaleDateString() : '--'}</td>
+                        <td className="px-3 py-4 text-right">
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void handleArchivedEmployeeAction(employee, 'restore')}
+                              disabled={archivedActionEmployeeId !== null}
+                              className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2 text-emerald-300 transition hover:bg-emerald-500/20 disabled:opacity-50"
+                              title="Restore employee"
+                              aria-label="Restore employee"
+                            >
+                              <ArrowPathIcon className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleArchivedEmployeeAction(employee, 'purge')}
+                              disabled={archivedActionEmployeeId !== null}
+                              className="rounded-lg border border-red-500/30 bg-red-500/10 p-2 text-red-300 transition hover:bg-red-500/20 disabled:opacity-50"
+                              title="Delete forever"
+                              aria-label="Delete forever"
+                            >
+                              <TrashIcon className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

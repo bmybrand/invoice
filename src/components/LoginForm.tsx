@@ -58,19 +58,19 @@ export function LoginForm() {
         { data: clientData, error: clientError },
         { data: latestRequest, error: requestError },
       ] = await Promise.all([
-        supabase.from('employees').select('id').eq('auth_id', authId).maybeSingle(),
+        supabase.from('employees').select('id').eq('auth_id', authId).neq('isdeleted', true).maybeSingle(),
         supabase
           .from('clients')
           .select('id')
           .eq('status', 'approved')
           .neq('isdeleted', true)
-          .or(`handler_id.eq.${authId},email.eq.${normalizedEmail}`)
+          .or(`auth_id.eq.${authId},email.eq.${normalizedEmail}`)
           .maybeSingle(),
         supabase
           .from('clients')
           .select('status')
           .neq('isdeleted', true)
-          .or(`handler_id.eq.${authId},email.eq.${normalizedEmail}`)
+          .or(`auth_id.eq.${authId},email.eq.${normalizedEmail}`)
           .order('created_date', { ascending: false })
           .limit(1)
           .maybeSingle(),
@@ -192,22 +192,22 @@ export function LoginForm() {
       { data: clientData, error: clientError },
       { data: latestRequest, error: requestError },
     ] = await Promise.all([
-      supabase.from('employees').select('id').eq('auth_id', authId).maybeSingle(),
-      supabase
-        .from('clients')
-        .select('id')
-        .eq('status', 'approved')
+      supabase.from('employees').select('id').eq('auth_id', authId).neq('isdeleted', true).maybeSingle(),
+        supabase
+          .from('clients')
+          .select('id')
+          .eq('status', 'approved')
           .neq('isdeleted', true)
-        .or(`handler_id.eq.${authId},email.eq.${normalizedEmail}`)
-        .maybeSingle(),
-      supabase
-        .from('clients')
-        .select('status')
-        .neq('isdeleted', true)
-          .or(`handler_id.eq.${authId},email.eq.${normalizedEmail}`)
-        .order('created_date', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
+          .or(`auth_id.eq.${authId},email.eq.${normalizedEmail}`)
+          .maybeSingle(),
+        supabase
+          .from('clients')
+          .select('status')
+          .neq('isdeleted', true)
+          .or(`auth_id.eq.${authId},email.eq.${normalizedEmail}`)
+          .order('created_date', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
     ])
 
     if (employeeError || clientError || requestError) {

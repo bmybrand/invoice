@@ -147,6 +147,8 @@ export default function Payments() {
   const { accountType, currentUserAuthId, displayRole, currentEmployeeId, profileLoaded } = useDashboardProfile()
   const normalizedRole = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '')
   const isUserRole = normalizedRole === 'user'
+  const isAdmin = normalizedRole === 'admin'
+  const isSuperAdmin = normalizedRole === 'superadmin'
   const clientData = useClientDashboardData()
   const scopedPaymentsCache = paymentsTableCache?.ownerAuthId === currentUserAuthId ? paymentsTableCache.rows : null
   const [payments, setPayments] = useState<PaymentRow[]>(() => scopedPaymentsCache ?? [])
@@ -170,7 +172,7 @@ export default function Payments() {
         return
       }
 
-      if (isUserRole && currentEmployeeId == null) {
+      if (isUserRole && !currentUserAuthId) {
         setPayments([])
         if (!isBackgroundRefresh) {
           setPaymentsLoading(false)
@@ -203,13 +205,13 @@ export default function Payments() {
 
         submissionData = (res.data ?? []) as PaymentSubmissionRow[]
         submissionError = res.error as Error | null
-      } else if (isUserRole && currentEmployeeId != null) {
+      } else if (isUserRole && currentUserAuthId) {
         const res = await supabase
           .from('payment_submissions')
           .select(
-            `${baseFields}, invoices!inner(id, brand_name, status, invoice_creator_id, client_id, employees:invoice_creator_id(employee_name))`
+            `${baseFields}, invoices!inner(id, brand_name, status, invoice_creator_id, client_id, employees:invoice_creator_id(employee_name), clients!inner(handler_id))`
           )
-          .eq('invoices.invoice_creator_id', currentEmployeeId)
+          .eq('invoices.clients.handler_id', currentUserAuthId)
           .order('created_at', { ascending: false })
 
         submissionData = (res.data ?? []) as PaymentSubmissionRow[]
@@ -290,7 +292,7 @@ export default function Payments() {
       window.clearInterval(intervalId)
       active = false
     }
-  }, [accountType, clientData?.client?.id, clientData?.loading, currentEmployeeId, currentUserAuthId, isUserRole, profileLoaded, scopedPaymentsCache])
+  }, [accountType, clientData?.client?.id, clientData?.loading, currentEmployeeId, currentUserAuthId, isAdmin, isSuperAdmin, isUserRole, profileLoaded, scopedPaymentsCache])
 
   const filteredPayments = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()

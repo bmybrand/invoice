@@ -255,6 +255,7 @@ export function Dashboard() {
           .from('employees')
           .select('id')
           .eq('auth_id', user.id)
+          .neq('isdeleted', true)
           .maybeSingle()
 
         if (employeeError || !employeeRow) {
@@ -366,6 +367,7 @@ export function Dashboard() {
         const { data: employeeData, error: employeeError } = await supabase
           .from('employees')
           .select('id, employee_name')
+          .neq('isdeleted', true)
           .in('id', creatorIds)
 
         if (employeeError) {

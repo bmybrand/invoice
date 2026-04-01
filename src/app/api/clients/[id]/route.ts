@@ -205,10 +205,10 @@ export async function POST(
     )
   }
 
-  const authIds = Array.from(new Set([row.auth_id, row.handler_id].filter((value): value is string => Boolean(value?.trim()))))
+  const clientAuthId = (row.auth_id || '').trim()
 
-  for (const authId of authIds) {
-    const { error: authDeleteError } = await auth.supabase.auth.admin.deleteUser(authId)
+  if (clientAuthId) {
+    const { error: authDeleteError } = await auth.supabase.auth.admin.deleteUser(clientAuthId)
     if (authDeleteError) {
       return NextResponse.json(
         { error: `Client row deleted but auth cleanup failed: ${authDeleteError.message}` },

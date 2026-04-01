@@ -65,6 +65,7 @@ export async function requireSuperAdmin(request: Request): Promise<SuperAdminAut
     .from('employees')
     .select('role')
     .eq('auth_id', user.id)
+    .neq('isdeleted', true)
     .maybeSingle()
 
   if (employeeError) {

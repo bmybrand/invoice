@@ -542,6 +542,7 @@ export default function Invoice() {
   const { displayRole, accountType, currentEmployeeId, currentUserAuthId, profileLoaded } = useDashboardProfile()
   const normalizedRole = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '')
   const isUserRole = normalizedRole === 'user'
+  const isSuperAdmin = normalizedRole === 'superadmin'
   const clientData = useClientDashboardData()
   const scopedInvoiceCache = invoiceTableCache?.ownerAuthId === currentUserAuthId ? invoiceTableCache.rows : null
   const [invoices, setInvoices] = useState<InvoiceRow[]>(() => scopedInvoiceCache ?? [])
@@ -773,24 +774,36 @@ export default function Invoice() {
   }, [])
 
   const fetchClients = useCallback(async () => {
-    const { data, error } = await supabase
+    if (!isSuperAdmin && !currentUserAuthId) {
+      setClients([])
+      return
+    }
+
+    let query = supabase
       .from('clients')
       .select('id, name, email')
       .eq('status', 'approved')
       .neq('isdeleted', true)
       .order('name')
+
+    if (!isSuperAdmin) {
+      query = query.eq('handler_id', currentUserAuthId)
+    }
+
+    const { data, error } = await query
     if (error) {
       console.error('Failed to fetch clients', error)
       setClients([])
       return
     }
     setClients((data as ClientOption[]) ?? [])
-  }, [])
+  }, [currentUserAuthId, isSuperAdmin])
 
   const fetchBrands = useCallback(async () => {
     const { data, error } = await supabase
       .from('brands')
       .select('id, brand_name, brand_url, logo_url')
+      .neq('isdeleted', true)
       .order('brand_name')
     if (error) {
       console.error('Failed to fetch brands', error)
@@ -824,8 +837,6 @@ export default function Invoice() {
   useEffect(() => {
     fetchBrands()
   }, [fetchBrands])
-
-  const isSuperAdmin = normalizedRole === 'superadmin'
 
   const statusOptions: { label: string; value: 'all' | 'paid' | 'unpaid' }[] = [
     { label: 'All Statuses', value: 'all' },
@@ -998,6 +1009,14 @@ export default function Invoice() {
     e.preventDefault()
     if (currentEmployeeId === null) return
     if (savedAddInvoiceId !== null) return
+    if (addClientId !== null && !clients.some((client) => client.id === addClientId)) {
+      const message = isSuperAdmin
+        ? 'Select a valid client before creating the invoice.'
+        : 'You can only create invoices for clients assigned to you.'
+      setAddError(message)
+      setActionMessage({ type: 'error', text: message })
+      return
+    }
     if (!addValidation.valid) {
       setAddError(addValidation.message)
       setActionMessage({ type: 'error', text: addValidation.message })
@@ -1144,6 +1163,14 @@ export default function Invoice() {
   async function handleEditSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!editingInvoice || !canEditInvoice(editingInvoice)) return
+    if (editClientId !== null && !clients.some((client) => client.id === editClientId)) {
+      const message = isSuperAdmin
+        ? 'Select a valid client before saving the invoice.'
+        : 'You can only assign invoices to clients assigned to you.'
+      setEditError(message)
+      setActionMessage({ type: 'error', text: message })
+      return
+    }
     if (!editValidation.valid) {
       setEditError(editValidation.message)
       setActionMessage({ type: 'error', text: editValidation.message })

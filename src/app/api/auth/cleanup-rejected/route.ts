@@ -52,7 +52,7 @@ export async function POST(request: Request) {
     .from('clients')
     .select('status, auth_id, handler_id, isdeleted')
     .neq('isdeleted', true)
-    .or(`handler_id.eq.${user.id},auth_id.eq.${user.id},email.eq.${normalizedEmail}`)
+    .or(`auth_id.eq.${user.id},email.eq.${normalizedEmail}`)
     .order('created_date', { ascending: false })
     .limit(1)
     .maybeSingle()
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
 
   const requestRow = latestRequest as { status?: string | null; auth_id?: string | null; handler_id?: string | null } | null
   const requestStatus = requestRow?.status?.trim().toLowerCase()
-  const requestAuthId = (requestRow?.handler_id || requestRow?.auth_id || '').trim()
+  const requestAuthId = (requestRow?.auth_id || '').trim()
 
   if (requestStatus !== 'rejected' || (requestAuthId && requestAuthId !== user.id)) {
     return NextResponse.json({ error: 'Account is not rejected' }, { status: 403 })

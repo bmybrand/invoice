@@ -105,7 +105,13 @@ function resolveInvoiceAmount(invoice: InvoiceRow): number | null {
 
 function isActiveGateway(status: string): boolean {
   const normalized = status.trim().toLowerCase()
-  return normalized === 'active' || normalized === 'enabled' || normalized === 'live'
+  return (
+    normalized === 'active' ||
+    normalized === 'enabled' ||
+    normalized === 'live' ||
+    normalized === 'testing' ||
+    normalized === 'test'
+  )
 }
 
 function shouldUseLiveKeys(): boolean {
@@ -130,7 +136,13 @@ function resolveGatewayKeys(gateway: PaymentGatewayRow): { secretKey: string; pu
   const testingPublishable = normalizeString(gateway.testing_publishable_key)
   const liveSecret = normalizeString(gateway.live_secret_key)
   const livePublishable = normalizeString(gateway.live_publishable_key)
-  const preferLiveKeys = shouldUseLiveKeys()
+  const gatewayStatus = normalizeString(gateway.status).toLowerCase()
+  const preferLiveKeys =
+    gatewayStatus === 'live'
+      ? true
+      : gatewayStatus === 'testing' || gatewayStatus === 'test'
+        ? false
+        : shouldUseLiveKeys()
 
   const secretKey = preferLiveKeys ? liveSecret || testingSecret : testingSecret || liveSecret
   const publishableKey = preferLiveKeys

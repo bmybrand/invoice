@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { flushSync } from 'react-dom'
 import { Plus_Jakarta_Sans } from 'next/font/google'
 import { supabase } from '@/lib/supabase'
 import { useDashboardProfile } from '@/components/DashboardLayout'
@@ -10,11 +11,12 @@ const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
 const PAGE_SIZE = 8
 const TABLE_REFRESH_INTERVAL_MS = 5000
-
 type ClientRow = {
   id: number
   name: string
   email: string
+  handler_id?: string | null
+  created_at?: string | null
 }
 
 type ArchivedClientRow = {
@@ -39,6 +41,7 @@ type ClientTableRow = {
   status: 'approved' | 'pending' | 'rejected'
   name: string
   email: string
+  created_at?: string | null
   client?: ClientRow
   request?: RegistrationRequestRow
 }
@@ -52,9 +55,15 @@ type ClientsTableCache = {
 let clientsTableCache: ClientsTableCache | null = null
 
 type RequestActionMode = 'approve' | 'reject' | 'delete'
+type RequestActionTarget = {
+  id: number
+  name: string
+  email: string
+  source: 'client' | 'request'
+}
 type RequestActionConfirmState = {
   mode: RequestActionMode
-  request: RegistrationRequestRow
+  request: RequestActionTarget
 }
 
 function areClientRowsEqual(a: ClientRow[], b: ClientRow[]) {
@@ -159,6 +168,7 @@ export default function Clients() {
   const [showArchivedModal, setShowArchivedModal] = useState(false)
   const [addName, setAddName] = useState('')
   const [addEmail, setAddEmail] = useState('')
+  const [addPhone, setAddPhone] = useState('')
   const [addPassword, setAddPassword] = useState('')
   const [addLoading, setAddLoading] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
@@ -187,7 +197,18 @@ export default function Clients() {
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [requestActionConfirm, setRequestActionConfirm] = useState<RequestActionConfirmState | null>(null)
   const pendingClientDeleteIdsRef = useRef<Set<number>>(new Set())
-  const pendingRequestActionsRef = useRef<Map<number, RequestActionMode>>(new Map())
+  const suppressBackgroundRefreshRef = useRef(false)
+  const refreshTimeoutRef = useRef<number | null>(null)
+  const fetchVersionRef = useRef(0)
+  const mutationVersionRef = useRef(0)
+  const requestActionLoadingIdRef = useRef<number | null>(null)
+  const isFetchingRef = useRef(false)
+  const queuedRefreshRef = useRef(false)
+  const fetchClientsRef = useRef<((options?: { background?: boolean }) => Promise<void>) | null>(null)
+
+  useEffect(() => {
+    requestActionLoadingIdRef.current = requestActionLoadingId
+  }, [requestActionLoadingId])
 
   async function getCurrentAuthToken() {
     const { data: { session } } = await supabase.auth.getSession()
@@ -199,20 +220,44 @@ export default function Clients() {
 
   const fetchClients = useCallback(async (options?: { background?: boolean }) => {
     const isBackgroundRefresh = options?.background ?? false
+    if (isFetchingRef.current) {
+      queuedRefreshRef.current = true
+      return
+    }
+    if (isBackgroundRefresh && suppressBackgroundRefreshRef.current) {
+      return
+    }
+    isFetchingRef.current = true
+    const fetchVersion = ++fetchVersionRef.current
+    const mutationVersionAtStart = mutationVersionRef.current
     if (!isBackgroundRefresh && !scopedClientsCache) {
       setClientsLoading(true)
     }
     const { data: clientsData, error: clientsError } = await supabase
       .from('clients')
-      .select('id, name, email, status, created_date')
+      .select('id, name, email, handler_id, status, created_date')
       .neq('isdeleted', true)
       .order('created_date', { ascending: false })
 
     if (clientsError) {
+      if (fetchVersion !== fetchVersionRef.current || mutationVersionAtStart !== mutationVersionRef.current) {
+        isFetchingRef.current = false
+        return
+      }
       console.error('Failed to fetch clients', clientsError)
       if (!isBackgroundRefresh) {
         setClientsLoading(false)
       }
+      isFetchingRef.current = false
+      if (queuedRefreshRef.current) {
+        queuedRefreshRef.current = false
+        void fetchClientsRef.current?.({ background: true })
+      }
+      return
+    }
+
+    if (fetchVersion !== fetchVersionRef.current || mutationVersionAtStart !== mutationVersionRef.current) {
+      isFetchingRef.current = false
       return
     }
 
@@ -221,20 +266,25 @@ export default function Clients() {
         id: number
         name: string
         email: string
+        handler_id?: string | null
         status: string | null
         created_date?: string | null
       }> | null) ?? [])
 
     const clientRows = allClientRows
+      .filter((row) => isAdmin || isSuperAdmin || row.handler_id === currentUserAuthId)
       .filter((row) => (row.status || '').trim().toLowerCase() === 'approved')
       .map((row) => ({
         id: row.id,
         name: row.name,
         email: row.email,
+        handler_id: row.handler_id ?? null,
+        created_at: row.created_date ?? null,
       }))
 
     const requestsData: RegistrationRequestRow[] = allClientRows
       .filter((row) => {
+        if (!isAdmin && !isSuperAdmin && row.handler_id !== currentUserAuthId) return false
         const status = (row.status || '').trim().toLowerCase()
         return status === 'pending' || status === 'rejected'
       })
@@ -256,27 +306,11 @@ export default function Clients() {
     })
 
     const requestRows = Array.from(latestRequestByEmail.values())
-      .map((row) => {
-        const pendingAction = pendingRequestActionsRef.current.get(row.id)
-        if (pendingAction === 'approve' || pendingAction === 'delete') return null
-        if (pendingAction === 'reject') return { ...row, status: 'rejected' }
-        return row
-      })
       .filter((row): row is RegistrationRequestRow => Boolean(row))
       .filter((row) => {
         const status = (row.status || '').trim().toLowerCase()
         return status === 'pending' || status === 'rejected'
       })
-
-    pendingRequestActionsRef.current.forEach((action, requestId) => {
-      const liveRow = allRequestRows.find((r) => r.id === requestId)
-      if ((action === 'approve' || action === 'delete') && !liveRow) {
-        pendingRequestActionsRef.current.delete(requestId)
-      }
-      if (action === 'reject' && (liveRow?.status || '').trim().toLowerCase() === 'rejected') {
-        pendingRequestActionsRef.current.delete(requestId)
-      }
-    })
 
     setClients((prev) => (areClientRowsEqual(prev, visibleClientRows) ? prev : visibleClientRows))
     setRegistrationRequests((prev) => (areRequestRowsEqual(prev, requestRows) ? prev : requestRows))
@@ -288,7 +322,16 @@ export default function Clients() {
     if (!isBackgroundRefresh) {
       setClientsLoading(false)
     }
-  }, [currentUserAuthId, scopedClientsCache])
+    isFetchingRef.current = false
+    if (queuedRefreshRef.current) {
+      queuedRefreshRef.current = false
+      void fetchClientsRef.current?.({ background: true })
+    }
+  }, [currentUserAuthId, isAdmin, isSuperAdmin, scopedClientsCache])
+
+  useEffect(() => {
+    fetchClientsRef.current = fetchClients
+  }, [fetchClients])
 
   const fetchArchivedClients = useCallback(async () => {
     setArchivedLoading(true)
@@ -296,7 +339,7 @@ export default function Clients() {
 
     const { data, error } = await supabase
       .from('clients')
-      .select('id, name, email, status, created_date')
+      .select('id, name, email, handler_id, status, created_date')
       .eq('isdeleted', true)
       .order('created_date', { ascending: false })
 
@@ -311,9 +354,12 @@ export default function Clients() {
         id: number
         name: string
         email: string
+        handler_id?: string | null
         status?: string | null
         created_date?: string | null
-      }> | null) ?? [])).map((row) => ({
+      }> | null) ?? []))
+        .filter((row) => isAdmin || isSuperAdmin || row.handler_id === currentUserAuthId)
+        .map((row) => ({
         id: row.id,
         name: row.name,
         email: row.email,
@@ -322,7 +368,7 @@ export default function Clients() {
       }))
     )
     setArchivedLoading(false)
-  }, [])
+  }, [currentUserAuthId, isAdmin, isSuperAdmin])
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -330,7 +376,7 @@ export default function Clients() {
     }, 0)
 
     const intervalId = window.setInterval(() => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === 'visible' && requestActionLoadingIdRef.current === null) {
         void fetchClients({ background: true })
       }
     }, TABLE_REFRESH_INTERVAL_MS)
@@ -338,6 +384,9 @@ export default function Clients() {
     return () => {
       window.clearTimeout(timeoutId)
       window.clearInterval(intervalId)
+      if (refreshTimeoutRef.current !== null) {
+        window.clearTimeout(refreshTimeoutRef.current)
+      }
     }
   }, [fetchClients])
 
@@ -351,35 +400,29 @@ export default function Clients() {
   }, [fetchArchivedClients, showArchivedModal])
 
   const tableRows: ClientTableRow[] = [
-    ...registrationRequests
-      .filter((row) => (row.status || '').trim().toLowerCase() === 'pending')
-      .map((row) => ({
-        rowType: 'request' as const,
-        rowKey: `request-${row.id}`,
-        status: 'pending' as const,
-        name: row.name,
-        email: row.email,
-        request: row,
-      })),
     ...clients.map((client) => ({
       rowType: 'client' as const,
-      rowKey: `client-${client.id}`,
+      rowKey: `client-record-${client.id}`,
       status: 'approved' as const,
       name: client.name,
       email: client.email,
+      created_at: client.created_at,
       client,
     })),
-    ...registrationRequests
-      .filter((row) => (row.status || '').trim().toLowerCase() === 'rejected')
-      .map((row) => ({
-        rowType: 'request' as const,
-        rowKey: `request-${row.id}`,
-        status: 'rejected' as const,
-        name: row.name,
-        email: row.email,
-        request: row,
-      })),
-  ]
+    ...registrationRequests.map((row) => ({
+      rowType: 'request' as const,
+      rowKey: `client-record-${row.id}`,
+      status: ((row.status || '').trim().toLowerCase() === 'rejected' ? 'rejected' : 'pending') as 'pending' | 'rejected',
+      name: row.name,
+      email: row.email,
+      created_at: row.created_at,
+      request: row,
+    })),
+  ].sort((a, b) => {
+    const aTime = a.created_at ? new Date(a.created_at).getTime() : 0
+    const bTime = b.created_at ? new Date(b.created_at).getTime() : 0
+    return bTime - aTime
+  })
 
   const filteredClients = searchQuery.trim()
     ? tableRows.filter(
@@ -395,6 +438,18 @@ export default function Clients() {
   const start = (effectivePage - 1) * PAGE_SIZE
   const end = start + PAGE_SIZE
   const paginatedClients = filteredClients.slice(start, end)
+
+  function scheduleClientsRefresh() {
+    suppressBackgroundRefreshRef.current = true
+    if (refreshTimeoutRef.current !== null) {
+      window.clearTimeout(refreshTimeoutRef.current)
+    }
+    refreshTimeoutRef.current = window.setTimeout(() => {
+      suppressBackgroundRefreshRef.current = false
+      refreshTimeoutRef.current = null
+      void fetchClients({ background: true })
+    }, 1250)
+  }
 
   async function handleAddSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -418,6 +473,7 @@ export default function Clients() {
       body: JSON.stringify({
         name: addName,
         email: addEmail,
+        phone: addPhone,
         password: addPassword,
       }),
     })
@@ -434,6 +490,7 @@ export default function Clients() {
     setShowAddModal(false)
     setAddName('')
     setAddEmail('')
+    setAddPhone('')
     setAddPassword('')
     setActionMessage({ type: 'success', text: `Client ${addName.trim()} added successfully.` })
     await fetchClients()
@@ -588,12 +645,32 @@ export default function Clients() {
   async function handleRejectApprovedClient(targetClient: ClientRow) {
     if (!canEditDelete) return
 
+    mutationVersionRef.current += 1
+    suppressBackgroundRefreshRef.current = true
     setRequestActionError(null)
-    setActionMessage(null)
-    setRequestActionLoadingId(targetClient.id)
+    flushSync(() => {
+      setRequestActionLoadingId(targetClient.id)
+      setClients((prev) => prev.filter((client) => client.id !== targetClient.id))
+      setRegistrationRequests((prev) => [
+        {
+          id: targetClient.id,
+          name: targetClient.name,
+          email: targetClient.email,
+          status: 'rejected',
+          created_at: targetClient.created_at ?? new Date().toISOString(),
+        },
+        ...prev.filter((row) => row.id !== targetClient.id),
+      ])
+    })
+    setActionMessage({ type: 'success', text: `Client ${targetClient.name} rejected successfully.` })
+    const previousClients = clients
+    const previousRequests = registrationRequests
 
     const token = await getCurrentAuthToken()
     if (!token) {
+      suppressBackgroundRefreshRef.current = false
+      setClients(previousClients)
+      setRegistrationRequests(previousRequests)
       setRequestActionLoadingId(null)
       setRequestActionError('Authentication expired. Sign in again and try again.')
       setActionMessage({ type: 'error', text: 'Authentication expired. Sign in again and try again.' })
@@ -608,15 +685,16 @@ export default function Clients() {
     const result = (await response.json().catch(() => null)) as { error?: string } | null
 
     if (!response.ok) {
+      suppressBackgroundRefreshRef.current = false
+      setClients(previousClients)
+      setRegistrationRequests(previousRequests)
       setRequestActionLoadingId(null)
       setRequestActionError(result?.error || 'Failed to reject client')
       setActionMessage({ type: 'error', text: result?.error || 'Failed to reject client' })
       return
     }
-
-    setActionMessage({ type: 'success', text: `Client ${targetClient.name} rejected successfully.` })
-    await fetchClients({ background: true })
     setRequestActionLoadingId(null)
+    scheduleClientsRefresh()
   }
 
   function getStatusStyle(status: ClientTableRow['status']) {
@@ -625,16 +703,53 @@ export default function Clients() {
     return 'border-red-500/20 bg-red-500/10 text-red-400'
   }
 
+  function getRowId(row: ClientTableRow) {
+    if (row.rowType === 'client' && row.client) return row.client.id
+    if (row.rowType === 'request' && row.request) return row.request.id
+    return null
+  }
+
   async function handleRequestDecision(requestId: number, decision: 'approve' | 'reject') {
     if (!canEditDelete) return
 
+    mutationVersionRef.current += 1
+    suppressBackgroundRefreshRef.current = true
     setRequestActionError(null)
-    setRequestActionLoadingId(requestId)
-    pendingRequestActionsRef.current.set(requestId, decision)
+    const previousClients = clients
+    const previousRequests = registrationRequests
+    const targetRequest = registrationRequests.find((row) => row.id === requestId) ?? null
+    flushSync(() => {
+      setRequestActionLoadingId(requestId)
+      if (!targetRequest) return
+
+      if (decision === 'approve') {
+        setRegistrationRequests((prev) => prev.filter((row) => row.id !== requestId))
+        setClients((prev) => [
+          {
+            id: targetRequest.id,
+            name: targetRequest.name,
+            email: targetRequest.email,
+            created_at: targetRequest.created_at,
+          },
+          ...prev.filter((client) => client.id !== requestId),
+        ])
+        return
+      }
+
+      setRegistrationRequests((prev) =>
+        prev.map((row) => (row.id === requestId ? { ...row, status: 'rejected' } : row))
+      )
+    })
+    setActionMessage({
+      type: 'success',
+      text: decision === 'approve' ? 'Request approved successfully.' : 'Request rejected successfully.',
+    })
 
     const token = await getCurrentAuthToken()
     if (!token) {
-      pendingRequestActionsRef.current.delete(requestId)
+      suppressBackgroundRefreshRef.current = false
+      setClients(previousClients)
+      setRegistrationRequests(previousRequests)
       setRequestActionLoadingId(null)
       setRequestActionError('Authentication expired. Sign in again and try again.')
       setActionMessage({ type: 'error', text: 'Authentication expired. Sign in again and try again.' })
@@ -652,35 +767,29 @@ export default function Clients() {
     const result = (await response.json().catch(() => null)) as { error?: string } | null
 
     if (!response.ok) {
-      pendingRequestActionsRef.current.delete(requestId)
+      suppressBackgroundRefreshRef.current = false
+      setClients(previousClients)
+      setRegistrationRequests(previousRequests)
       setRequestActionLoadingId(null)
       setRequestActionError(result?.error || `Failed to ${decision} request`)
       setActionMessage({ type: 'error', text: result?.error || `Failed to ${decision} request` })
       return
     }
-
-    setActionMessage({
-      type: 'success',
-      text: decision === 'approve' ? 'Request approved successfully.' : 'Request rejected successfully.',
-    })
-    await fetchClients({ background: true })
     setRequestActionLoadingId(null)
+    scheduleClientsRefresh()
   }
 
   async function handleRequestDelete(requestId: number) {
     if (!canEditDelete) return
 
+    suppressBackgroundRefreshRef.current = true
     setRequestActionError(null)
     setRequestActionLoadingId(requestId)
-
-    const previousRequests = registrationRequests
-    pendingRequestActionsRef.current.set(requestId, 'delete')
-    setRegistrationRequests((prev) => prev.filter((r) => r.id !== requestId))
+    setActionMessage({ type: 'success', text: 'Request deleted successfully.' })
 
     const token = await getCurrentAuthToken()
     if (!token) {
-      pendingRequestActionsRef.current.delete(requestId)
-      setRegistrationRequests(previousRequests)
+      suppressBackgroundRefreshRef.current = false
       setRequestActionLoadingId(null)
       setRequestActionError('Authentication expired. Sign in again and try again.')
       setActionMessage({ type: 'error', text: 'Authentication expired. Sign in again and try again.' })
@@ -698,15 +807,12 @@ export default function Clients() {
     setRequestActionLoadingId(null)
 
     if (!response.ok) {
-      pendingRequestActionsRef.current.delete(requestId)
-      setRegistrationRequests(previousRequests)
+      suppressBackgroundRefreshRef.current = false
       setRequestActionError(result?.error || 'Failed to delete request')
       setActionMessage({ type: 'error', text: result?.error || 'Failed to delete request' })
       return
     }
-
-    setActionMessage({ type: 'success', text: 'Request deleted successfully.' })
-    await fetchClients({ background: true })
+    scheduleClientsRefresh()
   }
 
   async function handleRequestActionConfirm() {
@@ -716,6 +822,15 @@ export default function Clients() {
 
     if (mode === 'delete') {
       await handleRequestDelete(request.id)
+      return
+    }
+
+    if (mode === 'reject' && request.source === 'client') {
+      await handleRejectApprovedClient({
+        id: request.id,
+        name: request.name,
+        email: request.email,
+      })
       return
     }
 
@@ -844,23 +959,23 @@ export default function Clients() {
                     </td>
                     <td className="px-4 sm:px-6 py-4 min-w-0">
                       <span
-                        className={`inline-flex rounded-lg border px-2 py-1 text-xs font-medium capitalize ${
-                          (c.rowType === 'client' && c.client && requestActionLoadingId === c.client.id) ||
-                          (c.rowType === 'request' && c.request && requestActionLoadingId === c.request.id)
-                            ? 'border-blue-500/20 bg-blue-500/10 text-blue-400'
-                            : getStatusStyle(c.status)
+                        className={`inline-flex rounded-lg border px-2 py-1 text-xs font-medium ${
+                          requestActionLoadingId === getRowId(c)
+                            ? 'border-slate-500/30 bg-slate-500/10 text-slate-300'
+                            : `capitalize ${getStatusStyle(c.status)}`
                         }`}
                       >
-                        {(c.rowType === 'client' && c.client && requestActionLoadingId === c.client.id) ||
-                        (c.rowType === 'request' && c.request && requestActionLoadingId === c.request.id)
-                          ? 'updating...'
-                          : c.status}
+                        {requestActionLoadingId === getRowId(c) ? 'Updating...' : c.status}
                       </span>
                     </td>
                     {canEditDelete && (
                       <td className="w-[180px] px-4 sm:px-6 py-4">
                         <div className="flex justify-end gap-1">
-                          {c.rowType === 'client' && c.client ? (
+                          {requestActionLoadingId === getRowId(c) ? (
+                            <span className="inline-flex items-center rounded-lg border border-slate-600/70 bg-slate-800/80 px-3 py-2 text-xs font-medium text-slate-300">
+                              Updating...
+                            </span>
+                          ) : c.rowType === 'client' && c.client ? (
                             <>
                               <button
                                 type="button"
@@ -873,13 +988,23 @@ export default function Clients() {
                               </button>
                               <button
                                 type="button"
-                                onClick={() => void handleRejectApprovedClient(c.client!)}
+                                onClick={() =>
+                                  setRequestActionConfirm({
+                                    mode: 'reject',
+                                    request: {
+                                      id: c.client!.id,
+                                      name: c.client!.name,
+                                      email: c.client!.email,
+                                      source: 'client',
+                                    },
+                                  })
+                                }
                                 disabled={requestActionLoadingId === c.client.id}
                                 className="p-2 rounded-lg text-slate-400 hover:bg-slate-700/50 hover:text-red-400 transition disabled:opacity-50"
                                 title="Reject client"
                                 aria-label="Reject client"
                               >
-                                {requestActionLoadingId === c.client.id ? '...' : <CloseIcon className="h-3.5 w-3.5" />}
+                                <CloseIcon className="h-3.5 w-3.5" />
                               </button>
                               <button
                                 type="button"
@@ -898,56 +1023,106 @@ export default function Clients() {
                             <>
                               <button
                                 type="button"
-                                onClick={() => setRequestActionConfirm({ mode: 'approve', request: c.request! })}
+                                onClick={() =>
+                                  setRequestActionConfirm({
+                                    mode: 'approve',
+                                    request: {
+                                      id: c.request!.id,
+                                      name: c.request!.name,
+                                      email: c.request!.email,
+                                      source: 'request',
+                                    },
+                                  })
+                                }
                                 disabled={requestActionLoadingId === c.request.id}
                                 className="group p-2 rounded-lg text-slate-400 hover:bg-slate-700/50 transition disabled:opacity-50"
                                 title="Accept request"
                                 aria-label="Accept request"
                               >
-                                {requestActionLoadingId === c.request.id ? '...' : <CheckIcon className="h-3.5 w-3.5 text-slate-400 transition-colors group-hover:text-emerald-400" />}
+                                <CheckIcon className="h-3.5 w-3.5 text-slate-400 transition-colors group-hover:text-emerald-400" />
                               </button>
                               <button
                                 type="button"
-                                onClick={() => setRequestActionConfirm({ mode: 'reject', request: c.request! })}
+                                onClick={() =>
+                                  setRequestActionConfirm({
+                                    mode: 'reject',
+                                    request: {
+                                      id: c.request!.id,
+                                      name: c.request!.name,
+                                      email: c.request!.email,
+                                      source: 'request',
+                                    },
+                                  })
+                                }
                                 disabled={requestActionLoadingId === c.request.id}
                                 className="p-2 rounded-lg text-slate-400 hover:bg-slate-700/50 hover:text-red-400 transition disabled:opacity-50"
                                 title="Reject request"
                                 aria-label="Reject request"
                               >
-                                {requestActionLoadingId === c.request.id ? '...' : <CloseIcon className="h-3.5 w-3.5" />}
+                                <CloseIcon className="h-3.5 w-3.5" />
                               </button>
                               <button
                                 type="button"
-                                onClick={() => setRequestActionConfirm({ mode: 'delete', request: c.request! })}
+                                onClick={() =>
+                                  setRequestActionConfirm({
+                                    mode: 'delete',
+                                    request: {
+                                      id: c.request!.id,
+                                      name: c.request!.name,
+                                      email: c.request!.email,
+                                      source: 'request',
+                                    },
+                                  })
+                                }
                                 disabled={requestActionLoadingId === c.request.id}
                                 className="p-2 rounded-lg text-slate-400 hover:bg-slate-700/50 hover:text-red-400 transition disabled:opacity-50"
                                 title="Delete request"
                                 aria-label="Delete request"
                               >
-                                {requestActionLoadingId === c.request.id ? '...' : <TrashIcon className="h-3.5 w-3.5" />}
+                                <TrashIcon className="h-3.5 w-3.5" />
                               </button>
                             </>
                           ) : c.rowType === 'request' && c.request && c.status === 'rejected' ? (
                             <>
                               <button
                                 type="button"
-                                onClick={() => setRequestActionConfirm({ mode: 'approve', request: c.request! })}
+                                onClick={() =>
+                                  setRequestActionConfirm({
+                                    mode: 'approve',
+                                    request: {
+                                      id: c.request!.id,
+                                      name: c.request!.name,
+                                      email: c.request!.email,
+                                      source: 'request',
+                                    },
+                                  })
+                                }
                                 disabled={requestActionLoadingId === c.request.id}
                                 className="group p-2 rounded-lg text-slate-400 hover:bg-slate-700/50 transition disabled:opacity-50"
                                 title="Accept request"
                                 aria-label="Accept request"
                               >
-                                {requestActionLoadingId === c.request.id ? '...' : <CheckIcon className="h-3.5 w-3.5 text-slate-400 transition-colors group-hover:text-emerald-400" />}
+                                <CheckIcon className="h-3.5 w-3.5 text-slate-400 transition-colors group-hover:text-emerald-400" />
                               </button>
                               <button
                                 type="button"
-                                onClick={() => setRequestActionConfirm({ mode: 'delete', request: c.request! })}
+                                onClick={() =>
+                                  setRequestActionConfirm({
+                                    mode: 'delete',
+                                    request: {
+                                      id: c.request!.id,
+                                      name: c.request!.name,
+                                      email: c.request!.email,
+                                      source: 'request',
+                                    },
+                                  })
+                                }
                                 disabled={requestActionLoadingId === c.request.id}
                                 className="p-2 rounded-lg text-slate-400 hover:bg-slate-700/50 hover:text-red-400 transition disabled:opacity-50"
                                 title="Delete request"
                                 aria-label="Delete request"
                               >
-                                {requestActionLoadingId === c.request.id ? '...' : <TrashIcon className="h-3.5 w-3.5" />}
+                                <TrashIcon className="h-3.5 w-3.5" />
                               </button>
                             </>
                           ) : (
@@ -1153,7 +1328,9 @@ export default function Clients() {
                 {requestActionConfirm.mode === 'approve'
                   ? 'Approve Request'
                   : requestActionConfirm.mode === 'reject'
-                    ? 'Reject Request'
+                    ? requestActionConfirm.request.source === 'client'
+                      ? 'Reject Client'
+                      : 'Reject Request'
                     : 'Delete Request'}
               </h2>
               <p className="mt-2 text-slate-400 text-sm">
@@ -1330,6 +1507,18 @@ export default function Clients() {
                     value={addEmail}
                     onChange={(e) => setAddEmail(e.target.value)}
                     placeholder="client@example.com"
+                    required
+                    className="w-full rounded-xl border border-slate-600 bg-slate-900/50 px-4 py-3 text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="add-phone" className="block text-sm font-medium text-slate-300 mb-1">Phone</label>
+                  <input
+                    id="add-phone"
+                    type="tel"
+                    value={addPhone}
+                    onChange={(e) => setAddPhone(e.target.value)}
+                    placeholder="+1 (555) 000-1234"
                     required
                     className="w-full rounded-xl border border-slate-600 bg-slate-900/50 px-4 py-3 text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
                   />

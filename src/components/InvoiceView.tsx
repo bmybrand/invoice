@@ -52,7 +52,7 @@ export default function InvoiceView({ invoiceId, invoiceToken, publicView = fals
 
       const [{ data: invoiceData, error: invoiceError }, { data: brandData, error: brandError }] = await Promise.all([
         supabase.from('invoices').select('*, employees!invoice_creator_id(employee_name), clients!client_id(name)').eq('id', invoiceId).maybeSingle(),
-        supabase.from('brands').select('id, brand_name, brand_url, logo_url').order('brand_name'),
+        supabase.from('brands').select('id, brand_name, brand_url, logo_url').neq('isdeleted', true).order('brand_name'),
       ])
 
       if (brandError) console.error('Failed to fetch brands', brandError)

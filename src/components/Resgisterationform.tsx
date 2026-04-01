@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
@@ -31,25 +31,92 @@ function UserIcon() {
   )
 }
 
+function PhoneIcon() {
+  return (
+    <svg className="h-5 w-5 shrink-0 text-slate-400 sm:h-6 sm:w-6 lg:h-7 lg:w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 7.456 6.044 13.5 13.5 13.5h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.09l-4.423-1.106a1.125 1.125 0 00-1.173.417l-.97 1.293a1.125 1.125 0 01-1.21.38 12.035 12.035 0 01-7.143-7.143 1.125 1.125 0 01.38-1.21l1.293-.97c.347-.26.52-.698.417-1.173L6.712 2.852A1.125 1.125 0 005.622 2H4.25A2.25 2.25 0 002 4.25v2.5z" />
+    </svg>
+  )
+}
+
 export function RegisterForm() {
   const router = useRouter()
 
+  const [salesAgents, setSalesAgents] = useState<Array<{ auth_id: string; employee_name: string }>>([])
+  const [agentsLoading, setAgentsLoading] = useState(true)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [agentAuthId, setAgentAuthId] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    let active = true
+
+    const loadSalesAgents = async () => {
+      const { data, error: fetchError } = await supabase
+        .from('employees')
+        .select('auth_id, employee_name')
+        .neq('isdeleted', true)
+        .ilike('department', '%sales%')
+        .order('employee_name', { ascending: true })
+
+      if (!active) return
+
+      if (fetchError) {
+        setAgentsLoading(false)
+        setError(fetchError.message || 'Failed to load sales agents.')
+        return
+      }
+
+      const rows = (((data as Array<{ auth_id?: string | null; employee_name?: string | null }> | null) ?? []))
+        .filter((row) => Boolean(row.auth_id?.trim()))
+        .map((row) => ({
+          auth_id: String(row.auth_id).trim(),
+          employee_name: row.employee_name?.trim() || 'Sales Agent',
+        }))
+
+      setSalesAgents(rows)
+      setAgentAuthId('')
+      setAgentsLoading(false)
+    }
+
+    void loadSalesAgents()
+
+    return () => {
+      active = false
+    }
+  }, [])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setError(null)
+
+    if (!agentAuthId) {
+      setError('Select a sales agent before creating your account.')
+      return
+    }
+
+    if (password.trim().length < 8) {
+      setError('Password must be at least 8 characters long.')
+      return
+    }
+
+    if (password !== confirmPassword) {
+      setError('Password and confirm password must match.')
+      return
+    }
+
     setLoading(true)
 
     const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { name },
+        data: { name, phone, assignedAgentAuthId: agentAuthId },
       },
     })
 
@@ -66,8 +133,9 @@ export function RegisterForm() {
         {
           name,
           email,
+          phone,
           auth_id: user.id,
-          handler_id: user.id,
+          handler_id: agentAuthId,
           status: 'pending',
           isdeleted: false,
         },
@@ -88,8 +156,8 @@ export function RegisterForm() {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-gray-900 p-4 sm:p-6 lg:p-8">
-      <div className="flex min-h-175 w-full max-w-6xl overflow-hidden rounded-2xl border border-slate-700 shadow-xl sm:rounded-3xl">
-        <div className="flex w-full flex-col justify-center bg-slate-800/80 px-5 py-8 sm:w-1/2 sm:px-8 sm:py-12 md:px-10 lg:px-20 lg:py-12 xl:px-24 xl:py-14">
+      <div className="flex min-h-175 w-full max-w-7xl overflow-hidden rounded-2xl border border-slate-700 shadow-xl sm:rounded-3xl">
+        <div className="flex w-full flex-col justify-center bg-slate-800/80 px-5 py-8 sm:w-1/2 sm:px-7 sm:py-12 md:px-8 lg:px-12 lg:py-12 xl:px-14 xl:py-14">
           <div className="mx-auto w-full max-w-md sm:max-w-lg lg:max-w-xl">
             <h1 className="text-3xl font-bold text-white sm:text-4xl lg:text-4xl xl:text-5xl">Create Account</h1>
             <p className="mt-2 text-sm text-slate-400 sm:mt-3 sm:text-base lg:text-base xl:text-lg">
@@ -103,60 +171,134 @@ export function RegisterForm() {
               onChangeCapture={clearRequiredFieldInvalid}
               className="mt-4 flex flex-col gap-3 sm:mt-5 sm:gap-4 lg:gap-4 xl:gap-5"
             >
-              <div className="flex flex-col gap-1">
-                <label htmlFor="name" className="text-sm font-medium text-slate-300 sm:text-base lg:text-base xl:text-lg">
-                  Name
+              <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 lg:gap-5">
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="name" className="text-sm font-medium text-slate-300 sm:text-base lg:text-base xl:text-lg">
+                    Name
+                  </label>
+                  <div className="flex items-center gap-3 rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-3 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 sm:rounded-xl sm:px-5 sm:py-4 lg:px-6 lg:py-4 xl:py-[18px]">
+                    <UserIcon />
+                    <input
+                      id="name"
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="John Doe"
+                      required
+                      autoComplete="name"
+                      className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none sm:text-base lg:text-base xl:text-lg"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="email" className="text-sm font-medium text-slate-300 sm:text-base lg:text-base xl:text-lg">
+                    Email
+                  </label>
+                  <div className="flex items-center gap-3 rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-3 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 sm:rounded-xl sm:px-5 sm:py-4 lg:px-6 lg:py-4 xl:py-[18px]">
+                    <EnvelopeIcon />
+                    <input
+                      id="email"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="name@company.com"
+                      required
+                      autoComplete="email"
+                      className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none sm:text-base lg:text-base xl:text-lg"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                <label htmlFor="agent" className="text-sm font-medium text-slate-300 sm:text-base lg:text-base xl:text-lg">
+                  Agent
                 </label>
                 <div className="flex items-center gap-3 rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-3 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 sm:rounded-xl sm:px-5 sm:py-4 lg:px-6 lg:py-4 xl:py-[18px]">
                   <UserIcon />
-                  <input
-                    id="name"
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="John Doe"
+                  <select
+                    id="agent"
+                    value={agentAuthId}
+                    onChange={(e) => setAgentAuthId(e.target.value)}
                     required
-                    autoComplete="name"
-                    className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none sm:text-base lg:text-base xl:text-lg"
-                  />
+                    disabled={agentsLoading || salesAgents.length === 0}
+                    className="min-w-0 flex-1 bg-transparent text-sm text-white focus:outline-none sm:text-base lg:text-base xl:text-lg"
+                  >
+                    {agentsLoading ? (
+                      <option value="" className="bg-slate-900 text-white">Loading sales agents...</option>
+                    ) : salesAgents.length === 0 ? (
+                      <option value="" className="bg-slate-900 text-white">No sales agents available</option>
+                    ) : (
+                      <>
+                        <option value="" className="bg-slate-900 text-white">Select Agent</option>
+                        {salesAgents.map((agent) => (
+                          <option key={agent.auth_id} value={agent.auth_id} className="bg-slate-900 text-white">
+                            {agent.employee_name}
+                          </option>
+                        ))}
+                      </>
+                    )}
+                  </select>
                 </div>
               </div>
 
-              <div className="flex flex-col gap-1">
-                <label htmlFor="email" className="text-sm font-medium text-slate-300 sm:text-base lg:text-base xl:text-lg">
-                  Email
-                </label>
-                <div className="flex items-center gap-3 rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-3 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 sm:rounded-xl sm:px-5 sm:py-4 lg:px-6 lg:py-4 xl:py-[18px]">
-                  <EnvelopeIcon />
-                  <input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="name@company.com"
-                    required
-                    autoComplete="email"
-                    className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none sm:text-base lg:text-base xl:text-lg"
-                  />
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="phone" className="text-sm font-medium text-slate-300 sm:text-base lg:text-base xl:text-lg">
+                    Phone
+                  </label>
+                  <div className="flex items-center gap-3 rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-3 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 sm:rounded-xl sm:px-5 sm:py-4 lg:px-6 lg:py-4 xl:py-[18px]">
+                    <PhoneIcon />
+                    <input
+                      id="phone"
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="+1 (555) 000-1234"
+                      required
+                      autoComplete="tel"
+                      className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none sm:text-base lg:text-base xl:text-lg"
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <div className="flex flex-col gap-1">
-                <label htmlFor="password" className="text-sm font-medium text-slate-300 sm:text-base lg:text-base xl:text-lg">
-                  Password
-                </label>
-                <div className="flex items-center gap-3 rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-3 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 sm:rounded-xl sm:px-5 sm:py-4 lg:px-6 lg:py-4 xl:py-[18px]">
-                  <LockIcon />
-                  <input
-                    id="password"
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="********"
-                    required
-                    autoComplete="new-password"
-                    className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none sm:text-base lg:text-base xl:text-lg"
-                  />
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="password" className="text-sm font-medium text-slate-300 sm:text-base lg:text-base xl:text-lg">
+                    Password
+                  </label>
+                  <div className="flex items-center gap-3 rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-3 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 sm:rounded-xl sm:px-5 sm:py-4 lg:px-6 lg:py-4 xl:py-[18px]">
+                    <LockIcon />
+                    <input
+                      id="password"
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="********"
+                      required
+                      minLength={8}
+                      autoComplete="new-password"
+                      className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none sm:text-base lg:text-base xl:text-lg"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="confirm-password" className="text-sm font-medium text-slate-300 sm:text-base lg:text-base xl:text-lg">
+                    Confirm Password
+                  </label>
+                  <div className="flex items-center gap-3 rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-3 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 sm:rounded-xl sm:px-5 sm:py-4 lg:px-6 lg:py-4 xl:py-[18px]">
+                    <LockIcon />
+                    <input
+                      id="confirm-password"
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="********"
+                      required
+                      minLength={8}
+                      autoComplete="new-password"
+                      className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none sm:text-base lg:text-base xl:text-lg"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -168,7 +310,7 @@ export function RegisterForm() {
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || agentsLoading || salesAgents.length === 0}
                 className="mt-1 flex items-center justify-center gap-2 rounded-lg bg-orange-500 px-4 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-orange-600 disabled:opacity-50 sm:mt-2 sm:rounded-xl sm:px-5 sm:py-4 sm:text-base lg:px-6 lg:py-4 lg:text-base xl:py-5 xl:text-lg"
               >
                 {loading ? 'Creating Account...' : 'Create Account'}

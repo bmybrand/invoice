@@ -25,6 +25,7 @@ export default function InvoiceRouteShell({ invoiceId, invoiceToken }: { invoice
         .from('employees')
         .select('id')
         .eq('auth_id', user.id)
+        .neq('isdeleted', true)
         .maybeSingle()
 
       setIsEmployee(!!employee)

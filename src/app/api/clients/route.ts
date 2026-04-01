@@ -11,6 +11,8 @@ export async function POST(request: Request) {
   const email = String(body?.email ?? '').trim().toLowerCase()
   const password = String(body?.password ?? '').trim()
   const name = String(body?.name ?? '').trim()
+  const phone = String(body?.phone ?? '').trim()
+  const handlerId = String(body?.handlerId ?? body?.agentAuthId ?? '').trim() || null
 
   if (!name) {
     return NextResponse.json({ error: 'Client name is required' }, { status: 400 })
@@ -30,6 +32,7 @@ export async function POST(request: Request) {
     email_confirm: true,
     user_metadata: {
       display_name: name,
+      phone,
     },
   })
 
@@ -42,7 +45,8 @@ export async function POST(request: Request) {
     .insert({
       name,
       email,
-      handler_id: createdUser.user.id,
+      phone,
+      handler_id: handlerId,
       auth_id: createdUser.user.id,
       status: 'approved',
       isdeleted: false,

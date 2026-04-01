@@ -2,7 +2,14 @@ import { NextResponse } from 'next/server'
 import { requirePaymentGatewayAdmin } from '@/lib/server-payment-gateway-auth'
 
 function normalizeStatus(value: unknown): string {
-  return String(value ?? 'Active').trim() || 'Active'
+  const normalized = String(value ?? 'Testing').trim().toLowerCase()
+  if (normalized === 'live') return 'Live'
+  if (normalized === 'inactive') return 'Inactive'
+  return 'Testing'
+}
+
+function normalizeMode(value: unknown): 'Testing' | 'Live' {
+  return String(value ?? 'Testing').trim().toLowerCase() === 'live' ? 'Live' : 'Testing'
 }
 
 function parseAmount(value: unknown): number | null {
@@ -38,6 +45,11 @@ export async function POST(request: Request) {
   const name = String(body?.name ?? '').trim()
   const testingPublishableKey = String(body?.testingPublishableKey ?? '').trim()
   const testingSecretKey = String(body?.testingSecretKey ?? '').trim()
+  const livePublishableKey = String(body?.livePublishableKey ?? '').trim()
+  const liveSecretKey = String(body?.liveSecretKey ?? '').trim()
+  const status = normalizeStatus(body?.status)
+  const lastActiveMode =
+    status === 'Inactive' ? normalizeMode(body?.lastActiveMode) : normalizeMode(status)
 
   if (!name) {
     return NextResponse.json({ error: 'Gateway name is required' }, { status: 400 })
@@ -62,6 +74,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Deposit amounts are invalid' }, { status: 400 })
   }
 
+  if (status === 'Live' && (!livePublishableKey || !liveSecretKey)) {
+    return NextResponse.json(
+      { error: 'Gateway live publishable key and live secret key are required for Live mode' },
+      { status: 400 }
+    )
+  }
+
   const { data, error } = await auth.supabase
     .from('payment_gateways')
     .insert({
@@ -70,9 +89,10 @@ export async function POST(request: Request) {
       maximum_deposit_amount: maximumDepositAmount,
       testing_publishable_key: testingPublishableKey,
       testing_secret_key: testingSecretKey,
-      live_publishable_key: String(body?.livePublishableKey ?? '').trim(),
-      live_secret_key: String(body?.liveSecretKey ?? '').trim(),
-      status: normalizeStatus(body?.status),
+      live_publishable_key: livePublishableKey,
+      live_secret_key: liveSecretKey,
+      status,
+      last_active_mode: lastActiveMode,
     })
     .select('*')
     .single()
