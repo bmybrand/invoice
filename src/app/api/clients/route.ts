@@ -26,6 +26,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Password must be at least 8 characters long' }, { status: 400 })
   }
 
+  if (!handlerId) {
+    return NextResponse.json({ error: 'Handler is required' }, { status: 400 })
+  }
+
   const { data: createdUser, error: createError } = await auth.supabase.auth.admin.createUser({
     email,
     password,

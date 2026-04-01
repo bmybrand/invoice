@@ -35,6 +35,11 @@ type RegistrationRequestRow = {
   created_at?: string | null
 }
 
+type SalesAgentOption = {
+  auth_id: string
+  employee_name: string
+}
+
 type ClientTableRow = {
   rowType: 'client' | 'request'
   rowKey: string
@@ -138,6 +143,19 @@ function TrashIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
   )
 }
 
+function MessageIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 10.5h9m-9 3h5.25" />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M6.75 18.75h10.5A2.25 2.25 0 0019.5 16.5V7.5a2.25 2.25 0 00-2.25-2.25H6.75A2.25 2.25 0 004.5 7.5v12l2.25-2.25z"
+      />
+    </svg>
+  )
+}
+
 function ArchiveIcon({ className = 'h-4 w-4' }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -170,6 +188,9 @@ export default function Clients() {
   const [addEmail, setAddEmail] = useState('')
   const [addPhone, setAddPhone] = useState('')
   const [addPassword, setAddPassword] = useState('')
+  const [salesAgents, setSalesAgents] = useState<SalesAgentOption[]>([])
+  const [agentsLoading, setAgentsLoading] = useState(false)
+  const [addHandlerId, setAddHandlerId] = useState('')
   const [addLoading, setAddLoading] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
   const [archivedClients, setArchivedClients] = useState<ArchivedClientRow[]>([])
@@ -217,6 +238,43 @@ export default function Clients() {
     if (error) return ''
     return refreshedData.session?.access_token?.trim() || ''
   }
+
+  const fetchSalesAgents = useCallback(async () => {
+    setAgentsLoading(true)
+
+    const { data, error } = await supabase
+      .from('employees')
+      .select('auth_id, employee_name')
+      .neq('isdeleted', true)
+      .ilike('department', '%sales%')
+      .order('employee_name', { ascending: true })
+
+    if (error) {
+      setSalesAgents([])
+      setAgentsLoading(false)
+      return
+    }
+
+    const rows = (((data as Array<{ auth_id?: string | null; employee_name?: string | null }> | null) ?? []))
+      .filter((row) => Boolean(row.auth_id?.trim()))
+      .map((row) => ({
+        auth_id: String(row.auth_id).trim(),
+        employee_name: row.employee_name?.trim() || 'Sales Agent',
+      }))
+
+    setSalesAgents(rows)
+    setAgentsLoading(false)
+  }, [])
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void fetchSalesAgents()
+    }, 0)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [fetchSalesAgents])
 
   const fetchClients = useCallback(async (options?: { background?: boolean }) => {
     const isBackgroundRefresh = options?.background ?? false
@@ -455,6 +513,12 @@ export default function Clients() {
     e.preventDefault()
     if (!canAddClient) return
     setAddError(null)
+
+    if (!addHandlerId) {
+      setAddError('Select a sales agent before creating the client.')
+      return
+    }
+
     setAddLoading(true)
 
     const token = await getCurrentAuthToken()
@@ -475,6 +539,7 @@ export default function Clients() {
         email: addEmail,
         phone: addPhone,
         password: addPassword,
+        handlerId: addHandlerId,
       }),
     })
 
@@ -492,6 +557,7 @@ export default function Clients() {
     setAddEmail('')
     setAddPhone('')
     setAddPassword('')
+    setAddHandlerId('')
     setActionMessage({ type: 'success', text: `Client ${addName.trim()} added successfully.` })
     await fetchClients()
   }
@@ -925,6 +991,9 @@ export default function Clients() {
                 <th className="px-4 sm:px-6 py-4 text-left">
                   <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Status</span>
                 </th>
+                <th className="w-[96px] px-4 sm:px-6 py-4 text-center">
+                  <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Message</span>
+                </th>
                 {canEditDelete && (
                   <th className="w-[180px] px-4 sm:px-6 py-4 text-right">
                     <span className="text-slate-400 text-xs font-bold uppercase tracking-wide">Actions</span>
@@ -935,13 +1004,13 @@ export default function Clients() {
             <tbody>
               {clientsLoading ? (
                 <tr>
-                  <td colSpan={canEditDelete ? 5 : 4} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
+                  <td colSpan={canEditDelete ? 6 : 5} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
                     Loading clients…
                   </td>
                 </tr>
               ) : paginatedClients.length === 0 ? (
                 <tr>
-                  <td colSpan={canEditDelete ? 5 : 4} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
+                  <td colSpan={canEditDelete ? 6 : 5} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
                     {searchQuery.trim() ? 'No matching clients' : 'No clients yet. Add a client to get started.'}
                   </td>
                 </tr>
@@ -967,6 +1036,20 @@ export default function Clients() {
                       >
                         {requestActionLoadingId === getRowId(c) ? 'Updating...' : c.status}
                       </span>
+                    </td>
+                    <td className="w-[96px] px-4 sm:px-6 py-4 text-center">
+                      {c.email?.trim() ? (
+                        <a
+                          href={`mailto:${c.email.trim()}`}
+                          className="inline-flex rounded-lg p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-orange-400"
+                          title={`Message ${c.name || c.email}`}
+                          aria-label={`Message ${c.name || c.email}`}
+                        >
+                          <MessageIcon className="h-4 w-4" />
+                        </a>
+                      ) : (
+                        <span className="text-xs text-slate-500">--</span>
+                      )}
                     </td>
                     {canEditDelete && (
                       <td className="w-[180px] px-4 sm:px-6 py-4">
@@ -1522,6 +1605,24 @@ export default function Clients() {
                     required
                     className="w-full rounded-xl border border-slate-600 bg-slate-900/50 px-4 py-3 text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
                   />
+                </div>
+                <div>
+                  <label htmlFor="add-handler" className="block text-sm font-medium text-slate-300 mb-1">Handler</label>
+                  <select
+                    id="add-handler"
+                    value={addHandlerId}
+                    onChange={(e) => setAddHandlerId(e.target.value)}
+                    required
+                    disabled={agentsLoading || addLoading}
+                    className="w-full rounded-xl border border-slate-600 bg-slate-900/50 px-4 py-3 text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:opacity-60"
+                  >
+                    <option value="">{agentsLoading ? 'Loading handlers...' : 'Select Handler'}</option>
+                    {salesAgents.map((agent) => (
+                      <option key={agent.auth_id} value={agent.auth_id}>
+                        {agent.employee_name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label htmlFor="add-password" className="block text-sm font-medium text-slate-300 mb-1">Password</label>
