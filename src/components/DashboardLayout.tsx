@@ -11,6 +11,7 @@ import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/for
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 const PROFILE_AVATAR_BUCKET = 'profile-images'
+const SESSION_GUARD_POLL_MS = 5000
 
 type DashboardProfile = {
   displayName: string
@@ -534,6 +535,71 @@ if (clientError) {
       void channel.unsubscribe()
     }
   }, [accountType, currentUserAuthId, redirectToLoginHard, resetDashboardProfile])
+
+  useEffect(() => {
+    if (!currentUserAuthId || !accountType) return
+
+    let cancelled = false
+
+    const enforceSessionGuard = async () => {
+      if (cancelled) return
+
+      if (accountType === 'employee') {
+        const { data } = await supabase
+          .from('employees')
+          .select('id')
+          .eq('auth_id', currentUserAuthId)
+          .eq('isdeleted', true)
+          .maybeSingle()
+
+        if (!cancelled && data) {
+          resetDashboardProfile(false)
+          await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+          redirectToLoginHard()
+        }
+
+        return
+      }
+
+      const identifierFilters = [`auth_id.eq.${currentUserAuthId}`]
+      if (currentUserEmail.trim()) {
+        identifierFilters.push(`email.eq.${currentUserEmail.trim()}`)
+      }
+
+      const { data } = await supabase
+        .from('clients')
+        .select('isdeleted, status')
+        .or(identifierFilters.join(','))
+        .order('created_date', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      const row = data as { isdeleted?: boolean | null; status?: string | null } | null
+      const status = (row?.status || '').trim().toLowerCase()
+
+      if (!cancelled && (row?.isdeleted === true || status === 'rejected')) {
+        resetDashboardProfile(false)
+        await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+        redirectToLoginHard()
+      }
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void enforceSessionGuard()
+    }, 0)
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void enforceSessionGuard()
+      }
+    }, SESSION_GUARD_POLL_MS)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeoutId)
+      window.clearInterval(intervalId)
+    }
+  }, [accountType, currentUserAuthId, currentUserEmail, redirectToLoginHard, resetDashboardProfile])
 
   useEffect(() => {
     if (!currentUserAuthId || accountType !== 'employee') return
