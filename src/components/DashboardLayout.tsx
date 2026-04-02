@@ -98,6 +98,18 @@ function GearIcon({ className = 'h-5 w-5 text-slate-400' }: { className?: string
   )
 }
 
+function ChatIcon({ className = 'h-5 w-5 text-slate-400' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M7.5 8.25h9m-9 3h5.25M6.75 18l-3 2.25V6A2.25 2.25 0 016 3.75h12A2.25 2.25 0 0120.25 6v8.25A2.25 2.25 0 0118 16.5H9.75L6.75 18z"
+      />
+    </svg>
+  )
+}
+
 function LogoutIcon() {
   return (
     <svg className="h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -146,6 +158,8 @@ function NavIcon({ label, active }: { label: string; active: boolean }) {
       return <DollarIcon className={className} />
     case 'Payment':
       return <DollarIcon className={className} />
+    case 'Chat':
+      return <ChatIcon className={className} />
     case 'Settings':
       return <GearIcon className={className} />
     default:
@@ -247,6 +261,7 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
           { label: 'Dashboard', href: '/dashboard' },
           { label: 'Invoice', href: '/dashboard/invoices' },
           { label: 'Payment', href: '/dashboard/payments' },
+          { label: 'Chat', href: '/dashboard/chat' },
         ]
       : allNavItems
 
@@ -266,6 +281,8 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
               ? 'Invoice'
               : pathname === '/dashboard/payments'
                 ? 'Payment'
+                : pathname === '/dashboard/chat'
+                  ? 'Chat'
                 : pathname === '/dashboard/settings'
                   ? 'Settings'
                 : pathname.startsWith('/dashboard/')

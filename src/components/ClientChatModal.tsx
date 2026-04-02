@@ -22,6 +22,8 @@ type ChatMessage = {
   createdAt: string | null
   updatedAt: string | null
   isOwnMessage: boolean
+  isPending?: boolean
+  attachmentMetaLabel?: string | null
 }
 
 type ChatResponse = {
@@ -40,6 +42,12 @@ type ChatInvoice = {
   amount: string
   payableAmount: number | null
   status: string
+}
+
+type PendingAttachmentPreview = {
+  file: File
+  previewUrl: string | null
+  isImage: boolean
 }
 
 function CloseIcon({ className = 'h-4 w-4' }: { className?: string }) {
@@ -68,6 +76,37 @@ function SendIcon({ className = 'h-4 w-4' }: { className?: string }) {
       <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0121.485 12 59.77 59.77 0 013.27 20.875L6 12zm0 0h7.5" />
     </svg>
   )
+}
+
+function FileIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M14.25 3.75H7.5A2.25 2.25 0 005.25 6v12A2.25 2.25 0 007.5 20.25h9A2.25 2.25 0 0018.75 18V8.25L14.25 3.75z"
+      />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M14.25 3.75V8.25H18.75" />
+    </svg>
+  )
+}
+
+function formatAttachmentSize(sizeBytes: number | null | undefined) {
+  const size = Number(sizeBytes ?? 0)
+  if (!Number.isFinite(size) || size <= 0) return '--'
+  if (size >= 1024 * 1024) return `${(size / 1024 / 1024).toFixed(0)} MB`
+  return `${Math.max(1, Math.round(size / 1024))} kB`
+}
+
+function getAttachmentExtension(name: string) {
+  const ext = name.split('.').pop()?.trim().toUpperCase()
+  return ext || 'FILE'
+}
+
+function formatAttachmentMeta(name: string, sizeBytes?: number | null) {
+  const ext = getAttachmentExtension(name)
+  const size = formatAttachmentSize(sizeBytes)
+  return size === '--' ? ext : `${size} - ${ext}`
 }
 
 function initials(name: string) {
@@ -123,18 +162,27 @@ function invoiceStatusClass(status: string) {
   return 'border-amber-500/20 bg-amber-500/10 text-amber-300'
 }
 
+function isPreviewableImage(name: string, url: string | null) {
+  const source = `${name} ${url || ''}`.toLowerCase()
+  return ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg', '.avif'].some((ext) =>
+    source.includes(ext)
+  )
+}
+
 export function ClientChatModal({
   open,
   clientId,
   title,
   subtitle,
   onClose,
+  variant = 'modal',
 }: {
   open: boolean
   clientId: number | null
   title: string
   subtitle?: string
   onClose: () => void
+  variant?: 'modal' | 'page'
 }) {
   const router = useRouter()
   const { accountType, currentUserAuthId, displayName } = useDashboardProfile()
@@ -149,6 +197,7 @@ export function ClientChatModal({
   const [headerTitle, setHeaderTitle] = useState(title)
   const [headerSubtitle, setHeaderSubtitle] = useState(subtitle || '')
   const [typingLabel, setTypingLabel] = useState('')
+  const [pendingAttachment, setPendingAttachment] = useState<PendingAttachmentPreview | null>(null)
   const [invoices, setInvoices] = useState<ChatInvoice[]>([])
   const [invoicesLoading, setInvoicesLoading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -163,6 +212,8 @@ export function ClientChatModal({
   const remoteTypingTimeoutRef = useRef<number | null>(null)
   const typingChannelRef = useRef<RealtimeChannel | null>(null)
   const invoiceFetchVersionRef = useRef(0)
+  const localMessageIdRef = useRef(-1)
+  const shouldStickToBottomRef = useRef(true)
 
   const getCurrentAuthToken = useCallback(async () => {
     const {
@@ -369,6 +420,23 @@ export function ClientChatModal({
     if (!open) return
     const node = messagesRef.current
     if (!node) return
+
+    const handleScroll = () => {
+      const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight
+      shouldStickToBottomRef.current = distanceFromBottom < 80
+    }
+
+    handleScroll()
+    node.addEventListener('scroll', handleScroll)
+    return () => {
+      node.removeEventListener('scroll', handleScroll)
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const node = messagesRef.current
+    if (!node || !shouldStickToBottomRef.current) return
     node.scrollTop = node.scrollHeight
   }, [messages, open])
 
@@ -415,10 +483,17 @@ export function ClientChatModal({
     }
   }, [clientId, open])
 
-  const canSend = useMemo(() => draft.trim().length > 0 && !sending && !uploading, [draft, sending, uploading])
+  const canSend = useMemo(
+    () => (draft.trim().length > 0 || pendingAttachment !== null) && !sending && !uploading,
+    [draft, pendingAttachment, sending, uploading]
+  )
 
   async function handleSendMessage() {
     if (!clientId || !canSend) return
+    if (pendingAttachment) {
+      await handleUploadFile(pendingAttachment.file)
+      return
+    }
     mutationVersionRef.current += 1
     const draftMessage = draft.trim()
     const token = await getCurrentAuthToken()
@@ -430,7 +505,7 @@ export function ClientChatModal({
     setSending(true)
     setError(null)
     const optimisticMessage: ChatMessage = {
-      id: -(Date.now()),
+      id: localMessageIdRef.current--,
       clientId,
       senderAuthId: currentUserAuthId || 'local-user',
       senderName: displayName || 'You',
@@ -546,11 +621,30 @@ export function ClientChatModal({
 
     setUploading(true)
     setError(null)
+    const attachmentMessage = draft.trim()
+    const optimisticMessage: ChatMessage = {
+      id: localMessageIdRef.current--,
+      clientId,
+      senderAuthId: currentUserAuthId || 'local-user',
+      senderName: displayName || 'You',
+      message: attachmentMessage,
+      attachmentName: file.name,
+      attachmentUrl: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: null,
+      isOwnMessage: true,
+      isPending: true,
+      attachmentMetaLabel: formatAttachmentMeta(file.name, file.size),
+    }
+    optimisticMessagesRef.current = [...optimisticMessagesRef.current, optimisticMessage]
+    setMessages((prev) => [...prev, optimisticMessage])
+    setDraft('')
+    setPendingAttachment(null)
 
     const formData = new FormData()
     formData.append('file', file)
-    if (draft.trim()) {
-      formData.append('message', draft.trim())
+    if (attachmentMessage) {
+      formData.append('message', attachmentMessage)
     }
 
     const response = await fetch(`/api/client-chat/${clientId}/attachments`, {
@@ -565,11 +659,18 @@ export function ClientChatModal({
     setUploading(false)
 
     if (!response.ok) {
+      optimisticMessagesRef.current = optimisticMessagesRef.current.filter((message) => message.id !== optimisticMessage.id)
+      setMessages((prev) => prev.filter((message) => message.id !== optimisticMessage.id))
+      setDraft(attachmentMessage)
+      setPendingAttachment({
+        file,
+        previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
+        isImage: file.type.startsWith('image/'),
+      })
       setError(result?.error || 'Failed to share file')
       return
     }
 
-    setDraft('')
     void broadcastTyping(false)
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
@@ -577,220 +678,383 @@ export function ClientChatModal({
     suppressPolling()
   }
 
+  function handleSelectAttachment(file: File | null) {
+    if (!file) return
+    setError(null)
+    setPendingAttachment((prev) => {
+      if (prev?.previewUrl) {
+        URL.revokeObjectURL(prev.previewUrl)
+      }
+      const isImage = file.type.startsWith('image/')
+      return {
+        file,
+        previewUrl: isImage ? URL.createObjectURL(file) : null,
+        isImage,
+      }
+    })
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      if (pendingAttachment?.previewUrl) {
+        URL.revokeObjectURL(pendingAttachment.previewUrl)
+      }
+    }
+  }, [pendingAttachment])
+
   if (!open || !clientId) return null
+
+  const isPageVariant = variant === 'page'
+  const shell = (
+    <div className={`flex ${isPageVariant ? 'h-[calc(100vh-11rem)] min-h-[640px]' : 'h-[min(82vh,720px)]'} w-full ${isPageVariant ? '' : 'max-w-5xl'} overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl`}>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex items-start justify-between border-b border-slate-700 px-5 py-4">
+          <div>
+            <h2 className="text-lg font-bold text-white">{headerTitle || title}</h2>
+            <p className="text-sm text-slate-400">{headerSubtitle || subtitle || ''}</p>
+          </div>
+          {!isPageVariant ? (
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white"
+              aria-label="Close chat"
+            >
+              <CloseIcon />
+            </button>
+          ) : null}
+        </div>
+
+        <div ref={messagesRef} className="flex-1 overflow-y-auto px-5 py-5">
+          {loading ? (
+            <div className="py-12 text-center text-sm text-slate-400">Loading chat...</div>
+          ) : messages.length === 0 ? (
+            <div className="py-12 text-center text-sm text-slate-400">No messages yet.</div>
+          ) : (
+            <div className="space-y-6">
+              {messages.map((message) => (
+                <div
+                  key={message.id}
+                  className={`flex items-start gap-4 ${message.isOwnMessage ? 'lg:flex-row-reverse' : ''}`}
+                >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-900/70 text-sm font-bold text-white">
+                    {initials(message.senderName).toUpperCase()}
+                  </div>
+                  <div className={`min-w-0 flex-1 ${message.isOwnMessage ? 'lg:flex lg:justify-end' : ''}`}>
+                    <div
+                      className={`min-w-0 ${
+                        message.attachmentUrl
+                          ? 'lg:w-[58%] lg:max-w-[58%]'
+                          : 'lg:w-[75%] lg:max-w-[75%]'
+                      }`}
+                    >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-lg font-bold text-white">{message.senderName}</span>
+                      <span className="text-xs text-sky-300">{formatStamp(message.createdAt)}</span>
+                    </div>
+                    <div className="mt-2 rounded-2xl bg-slate-800/80 px-4 py-3.5">
+                        {editingId === message.id ? (
+                          <textarea
+                            value={editingDraft}
+                            onChange={(e) => setEditingDraft(e.target.value)}
+                            rows={3}
+                            className="w-full resize-none rounded-xl border border-slate-700 bg-slate-900/70 px-3.5 py-2.5 text-[13px] text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                          />
+                        ) : (
+                          <>
+                            {message.attachmentName ? (
+                              message.attachmentUrl ? (
+                              isPreviewableImage(message.attachmentName, message.attachmentUrl) ? (
+                                <a
+                                  href={message.attachmentUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="block overflow-hidden rounded-2xl border border-slate-700 bg-slate-900/70 transition hover:border-sky-500/40"
+                                >
+                                  <img
+                                    src={message.attachmentUrl}
+                                    alt={message.attachmentName || 'Attachment preview'}
+                                    className="h-48 w-full bg-slate-950 object-contain"
+                                  />
+                                  <div className="flex items-center gap-2 border-t border-slate-700 px-3 py-2 text-xs text-sky-300">
+                                    <AttachmentIcon className="h-4 w-4" />
+                                    <span className="truncate">{message.attachmentName || 'Attachment'}</span>
+                                  </div>
+                                </a>
+                              ) : (
+                                <a
+                                  href={message.attachmentUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="block overflow-hidden rounded-2xl border border-slate-700 bg-slate-900/70 transition hover:border-sky-500/40"
+                                >
+                                  <div className="flex h-56 flex-col items-center justify-center px-6 text-center">
+                                    <div className="flex h-20 w-20 items-center justify-center rounded-2xl border border-slate-700 bg-slate-950 text-slate-400">
+                                      <FileIcon className="h-9 w-9" />
+                                    </div>
+                                    <p className="mt-5 break-all text-2xl font-medium leading-tight text-slate-200">
+                                      {message.attachmentName || 'Attachment'}
+                                    </p>
+                                    <p className="mt-2 text-base text-slate-400">
+                                      No preview available
+                                    </p>
+                                    <p className="mt-1 text-sm text-slate-500">
+                                      {message.attachmentMetaLabel || getAttachmentExtension(message.attachmentName || 'Attachment')}
+                                    </p>
+                                  </div>
+                                </a>
+                              )
+                              ) : (
+                                <div className="overflow-hidden rounded-2xl border border-slate-700 bg-slate-900/70">
+                                  <div className="flex h-56 flex-col items-center justify-center px-6 text-center">
+                                    <div className="flex h-20 w-20 items-center justify-center rounded-2xl border border-slate-700 bg-slate-950/90">
+                                      <img
+                                        src="/bmybrand-B.svg"
+                                        alt=""
+                                        className="h-10 w-10 animate-spin object-contain opacity-80"
+                                      />
+                                    </div>
+                                    <p className="mt-5 break-all text-2xl font-medium leading-tight text-slate-200">
+                                      {message.attachmentName || 'Attachment'}
+                                    </p>
+                                    <p className="mt-2 text-base text-slate-400">
+                                      Uploading attachment...
+                                    </p>
+                                    <p className="mt-1 text-sm text-slate-500">
+                                      {message.attachmentMetaLabel || 'Preparing preview'}
+                                    </p>
+                                  </div>
+                                </div>
+                              )
+                            ) : null}
+
+                            {message.message ? (
+                              <p className={`${message.attachmentUrl ? 'mt-3' : ''} whitespace-pre-wrap break-words text-sm text-white`}>
+                                {message.message}
+                              </p>
+                            ) : !message.attachmentUrl ? (
+                              <p className="text-xs italic text-slate-400">Shared an attachment</p>
+                            ) : null}
+                          </>
+                        )}
+                      </div>
+                    {message.isOwnMessage ? (
+                      <div className={`mt-2 flex items-center gap-3 text-xs text-sky-300 ${message.isOwnMessage ? 'lg:justify-end' : ''}`}>
+                        {editingId === message.id ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => void handleSaveEdit(message.id)}
+                              className="transition hover:text-white"
+                            >
+                              Save
+                            </button>
+                            <span className="text-slate-600">.</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingId(null)
+                                setEditingDraft('')
+                              }}
+                              className="transition hover:text-white"
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingId(message.id)
+                                setEditingDraft(message.message)
+                              }}
+                              className="transition hover:text-white"
+                            >
+                              Edit
+                            </button>
+                            <span className="text-slate-600">.</span>
+                            <button
+                              type="button"
+                              onClick={() => void handleDelete(message.id)}
+                              className="transition hover:text-white"
+                            >
+                              Delete
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    ) : null}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-slate-800 px-5 py-4">
+          <div className="mb-2 flex min-h-[17px] items-center justify-end">
+            {typingLabel ? <span className="text-[11px] text-sky-300">{typingLabel}</span> : null}
+          </div>
+          {pendingAttachment ? (
+            <div className="mb-3 rounded-2xl border border-slate-700 bg-slate-800/80 p-3">
+              <div className="relative overflow-hidden rounded-2xl border border-slate-700 bg-slate-900/70">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPendingAttachment((prev) => {
+                      if (prev?.previewUrl) {
+                        URL.revokeObjectURL(prev.previewUrl)
+                      }
+                      return null
+                    })
+                  }
+                  className="absolute right-3 top-3 z-10 rounded-full bg-slate-950/80 p-1.5 text-slate-300 transition hover:bg-slate-900 hover:text-white"
+                  aria-label="Remove attachment"
+                >
+                  <CloseIcon className="h-3.5 w-3.5" />
+                </button>
+
+                {pendingAttachment.isImage && pendingAttachment.previewUrl ? (
+                  <img
+                    src={pendingAttachment.previewUrl}
+                    alt={pendingAttachment.file.name}
+                    className="h-56 w-full bg-slate-950 object-contain"
+                  />
+                ) : (
+                  <div className="flex h-56 flex-col items-center justify-center px-6 text-center">
+                    <div className="flex h-20 w-20 items-center justify-center rounded-2xl border border-slate-700 bg-slate-950 text-slate-400">
+                      <FileIcon className="h-9 w-9" />
+                    </div>
+                    <p className="mt-5 break-all text-2xl font-medium leading-tight text-slate-200">
+                      {pendingAttachment.file.name}
+                    </p>
+                    <p className="mt-2 text-base text-slate-400">
+                      No preview available
+                    </p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      {formatAttachmentSize(pendingAttachment.file.size)} - {getAttachmentExtension(pendingAttachment.file.name)}
+                    </p>
+                  </div>
+                )}
+              </div>
+              {pendingAttachment.isImage ? (
+                <div className="mt-3 px-1">
+                  <p className="truncate text-xs font-semibold text-white">{pendingAttachment.file.name}</p>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    {formatAttachmentSize(pendingAttachment.file.size)} - {getAttachmentExtension(pendingAttachment.file.name)}
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          <div className="flex items-end gap-3">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading || sending}
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-700 bg-slate-800 text-slate-200 transition hover:border-slate-600 hover:bg-slate-700 disabled:opacity-50"
+              aria-label="Share file"
+            >
+              <AttachmentIcon className="h-4 w-4" />
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              onChange={(e) => handleSelectAttachment(e.target.files?.[0] ?? null)}
+            />
+            <div className="min-w-0 flex-1">
+              <textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                placeholder="Write a message..."
+                rows={2}
+                className="w-full resize-none rounded-2xl border border-slate-700 bg-slate-800/80 px-3.5 py-2.5 text-[13px] text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+              />
+              {error ? <p className="mt-2 text-xs text-rose-300">{error}</p> : null}
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleSendMessage()}
+              disabled={!canSend}
+              className="inline-flex h-10 shrink-0 items-center gap-2 rounded-full bg-orange-500 px-4 text-xs font-semibold text-white transition hover:bg-orange-600 disabled:opacity-50"
+            >
+              <SendIcon className="h-4 w-4" />
+              {sending || uploading ? 'Sending...' : 'Send'}
+            </button>
+          </div>
+        </div>
+      </div>
+      <aside className="hidden w-64 border-l border-slate-800 bg-slate-950/50 p-5 lg:flex lg:flex-col">
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
+          <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-500">
+            {accountType === 'client' ? 'Agent' : 'Client'}
+          </p>
+          <p className="mt-2 text-sm font-semibold text-white">{headerTitle || title}</p>
+          <p className="mt-1 text-xs text-slate-400">{headerSubtitle || subtitle || '--'}</p>
+        </div>
+        <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
+          <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-500">Invoices</p>
+          <p className="mt-2 text-xs leading-5 text-slate-400">
+            Compact recent invoices for this client.
+          </p>
+          <div className="mt-4 space-y-2">
+            {invoicesLoading ? (
+              <div className="rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-3 text-xs text-slate-400">
+                Loading invoices...
+              </div>
+            ) : invoices.length === 0 ? (
+              <div className="rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-3 text-xs text-slate-400">
+                No invoices yet.
+              </div>
+            ) : (
+              invoices.map((invoice) => (
+                <button
+                  key={invoice.id}
+                  type="button"
+                  onClick={() => {
+                    onClose()
+                    router.push(
+                      accountType === 'client'
+                        ? '/dashboard/invoices'
+                        : `/dashboard/invoices?clientId=${clientId}`
+                    )
+                  }}
+                  className="w-full rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-3 text-left transition hover:border-slate-700 hover:bg-slate-900"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-white">INV-{invoice.id}</p>
+                      <p className="mt-1 text-[11px] text-slate-400">{formatInvoiceDate(invoice.invoiceDate)}</p>
+                    </div>
+                    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${invoiceStatusClass(invoice.status)}`}>
+                      {invoice.status}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs font-semibold text-orange-300">{formatInvoiceAmount(invoice)}</p>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      </aside>
+    </div>
+  )
+
+  if (isPageVariant) {
+    return <div className={plusJakarta.className}>{shell}</div>
+  }
 
   return (
     <>
       <div className="fixed inset-0 z-40 bg-black/60" onClick={onClose} />
       <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 ${plusJakarta.className}`}>
-        <div className="flex h-[min(82vh,720px)] w-full max-w-5xl overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl">
-          <div className="flex min-w-0 flex-1 flex-col">
-            <div className="flex items-start justify-between border-b border-slate-700 px-5 py-4">
-              <div>
-                <h2 className="text-lg font-bold text-white">{headerTitle || title}</h2>
-                <p className="text-sm text-slate-400">{headerSubtitle || subtitle || ''}</p>
-              </div>
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white"
-                aria-label="Close chat"
-              >
-                <CloseIcon />
-              </button>
-            </div>
-
-            <div ref={messagesRef} className="flex-1 overflow-y-auto px-5 py-5">
-              {loading ? (
-                <div className="py-12 text-center text-sm text-slate-400">Loading chat...</div>
-              ) : messages.length === 0 ? (
-                <div className="py-12 text-center text-sm text-slate-400">No messages yet.</div>
-              ) : (
-                <div className="space-y-6">
-                  {messages.map((message) => (
-                    <div key={message.id} className="flex items-start gap-4">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-900/70 text-sm font-bold text-white">
-                        {initials(message.senderName).toUpperCase()}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-lg font-bold text-white">{message.senderName}</span>
-                          <span className="text-xs text-sky-300">{formatStamp(message.createdAt)}</span>
-                        </div>
-                        <div className="mt-2 rounded-2xl bg-slate-800/80 px-4 py-3.5">
-                          {editingId === message.id ? (
-                            <textarea
-                              value={editingDraft}
-                              onChange={(e) => setEditingDraft(e.target.value)}
-                              rows={3}
-                              className="w-full resize-none rounded-xl border border-slate-700 bg-slate-900/70 px-3.5 py-2.5 text-[13px] text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
-                            />
-                          ) : message.message ? (
-                            <p className="whitespace-pre-wrap break-words text-sm text-white">{message.message}</p>
-                          ) : (
-                            <p className="text-xs italic text-slate-400">Shared an attachment</p>
-                          )}
-
-                          {message.attachmentUrl ? (
-                            <a
-                              href={message.attachmentUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="mt-3 inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2 text-xs text-sky-300 transition hover:border-sky-500/40 hover:text-sky-200"
-                            >
-                              <AttachmentIcon className="h-4 w-4" />
-                              {message.attachmentName || 'Attachment'}
-                            </a>
-                          ) : null}
-                        </div>
-                        {message.isOwnMessage ? (
-                          <div className="mt-2 flex items-center gap-3 text-xs text-sky-300">
-                            {editingId === message.id ? (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => void handleSaveEdit(message.id)}
-                                  className="transition hover:text-white"
-                                >
-                                  Save
-                                </button>
-                                <span className="text-slate-600">.</span>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setEditingId(null)
-                                    setEditingDraft('')
-                                  }}
-                                  className="transition hover:text-white"
-                                >
-                                  Cancel
-                                </button>
-                              </>
-                            ) : (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setEditingId(message.id)
-                                    setEditingDraft(message.message)
-                                  }}
-                                  className="transition hover:text-white"
-                                >
-                                  Edit
-                                </button>
-                                <span className="text-slate-600">.</span>
-                                <button
-                                  type="button"
-                                  onClick={() => void handleDelete(message.id)}
-                                  className="transition hover:text-white"
-                                >
-                                  Delete
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="border-t border-slate-800 px-5 py-4">
-              <div className="mb-2 flex min-h-[17px] items-center justify-end">
-                {typingLabel ? <span className="text-[11px] text-sky-300">{typingLabel}</span> : null}
-              </div>
-              <div className="flex items-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading || sending}
-                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-700 bg-slate-800 text-slate-200 transition hover:border-slate-600 hover:bg-slate-700 disabled:opacity-50"
-                  aria-label="Share file"
-                >
-                  <AttachmentIcon className="h-4 w-4" />
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  className="hidden"
-                  onChange={(e) => void handleUploadFile(e.target.files?.[0] ?? null)}
-                />
-                <div className="min-w-0 flex-1">
-                  <textarea
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    placeholder="Write a message..."
-                    rows={2}
-                    className="w-full resize-none rounded-2xl border border-slate-700 bg-slate-800/80 px-3.5 py-2.5 text-[13px] text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  />
-                  {error ? <p className="mt-2 text-xs text-rose-300">{error}</p> : null}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void handleSendMessage()}
-                  disabled={!canSend}
-                  className="inline-flex h-10 shrink-0 items-center gap-2 rounded-full bg-orange-500 px-4 text-xs font-semibold text-white transition hover:bg-orange-600 disabled:opacity-50"
-                >
-                  <SendIcon className="h-4 w-4" />
-                  {sending ? 'Sending...' : 'Send'}
-                </button>
-              </div>
-            </div>
-          </div>
-          <aside className="hidden w-64 border-l border-slate-800 bg-slate-950/50 p-5 lg:flex lg:flex-col">
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
-              <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-500">Client</p>
-              <p className="mt-2 text-sm font-semibold text-white">{headerTitle || title}</p>
-              <p className="mt-1 text-xs text-slate-400">{headerSubtitle || subtitle || '--'}</p>
-            </div>
-            <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
-              <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-500">Invoices</p>
-              <p className="mt-2 text-xs leading-5 text-slate-400">
-                Compact recent invoices for this client.
-              </p>
-              <div className="mt-4 space-y-2">
-                {invoicesLoading ? (
-                  <div className="rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-3 text-xs text-slate-400">
-                    Loading invoices...
-                  </div>
-                ) : invoices.length === 0 ? (
-                  <div className="rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-3 text-xs text-slate-400">
-                    No invoices yet.
-                  </div>
-                ) : (
-                  invoices.map((invoice) => (
-                    <button
-                      key={invoice.id}
-                      type="button"
-                      onClick={() => {
-                        onClose()
-                        router.push(
-                          accountType === 'client'
-                            ? '/dashboard/invoices'
-                            : `/dashboard/invoices?clientId=${clientId}`
-                        )
-                      }}
-                      className="w-full rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-3 text-left transition hover:border-slate-700 hover:bg-slate-900"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="text-xs font-semibold text-white">INV-{invoice.id}</p>
-                          <p className="mt-1 text-[11px] text-slate-400">{formatInvoiceDate(invoice.invoiceDate)}</p>
-                        </div>
-                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${invoiceStatusClass(invoice.status)}`}>
-                          {invoice.status}
-                        </span>
-                      </div>
-                      <p className="mt-2 text-xs font-semibold text-orange-300">{formatInvoiceAmount(invoice)}</p>
-                    </button>
-                  ))
-                )}
-              </div>
-            </div>
-          </aside>
-        </div>
+        {shell}
       </div>
     </>
   )

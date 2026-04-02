@@ -1,8 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useClientDashboardData } from '@/context/ClientDashboardDataContext'
-import { ClientChatModal } from '@/components/ClientChatModal'
 import {
   ResponsiveContainer,
   PieChart,
@@ -127,8 +126,6 @@ export default function ClientDashboardPage() {
       error: null,
       refetch: async () => {},
     }
-  const [chatOpen, setChatOpen] = useState(false)
-
   const stats = useMemo<DashboardStats>(() => {
     const today = new Date()
 
@@ -312,14 +309,6 @@ export default function ClientDashboardPage() {
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setChatOpen(true)}
-            disabled={!client?.id}
-            className="rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:opacity-50"
-          >
-            Message Handler
-          </button>
           <button
             type="button"
             onClick={() => void refetch()}
@@ -712,13 +701,6 @@ export default function ClientDashboardPage() {
           </ResponsiveContainer>
         </div>
       </div>
-      <ClientChatModal
-        open={chatOpen}
-        clientId={client?.id ?? null}
-        title={client?.name || 'Chat'}
-        subtitle={clientEmail}
-        onClose={() => setChatOpen(false)}
-      />
     </div>
   )
 }
