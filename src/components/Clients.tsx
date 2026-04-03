@@ -1049,13 +1049,15 @@ export default function Clients() {
                       {c.email?.trim() ? (
                         <button
                           type="button"
-                          onClick={() =>
+                          onClick={() => {
+                            const rowId = getRowId(c)
+                            if (rowId == null) return
                             setChatTarget({
-                              clientId: getRowId(c),
+                              clientId: rowId,
                               title: c.name || c.email,
                               subtitle: c.email || '',
                             })
-                          }
+                          }}
                           className="inline-flex rounded-lg p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-orange-400"
                           title={`Message ${c.name || c.email}`}
                           aria-label={`Message ${c.name || c.email}`}
