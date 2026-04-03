@@ -27,6 +27,15 @@ type MessageNotification = {
   handlerId?: string
 }
 
+const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || ''
+
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const rawData = window.atob(base64)
+  return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)))
+}
+
 function normalizeRole(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, '')
 }
@@ -94,6 +103,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
   const isFetchingRef = useRef(false)
   const queuedRefreshRef = useRef(false)
   const notifiedMessageIdsRef = useRef<Set<number>>(new Set())
+  const pushSetupStartedRef = useRef(false)
 
   const normalizedRole = useMemo(() => normalizeRole(displayRole || ''), [displayRole])
   const isAdminBell = accountType === 'employee' && (normalizedRole === 'admin' || normalizedRole === 'superadmin')
@@ -120,14 +130,6 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
       const latestMessageId = Number(item.latestMessageId ?? 0)
       if (!Number.isFinite(latestMessageId) || latestMessageId <= 0) continue
       if (notifiedMessageIdsRef.current.has(latestMessageId)) continue
-
-      console.log('desktop notification fired', {
-        clientId: item.clientId,
-        latestMessageId,
-        clientName: item.clientName,
-        latestMessage: item.latestMessage,
-        permission: Notification.permission,
-      })
 
       const notification = new Notification(`New message from ${item.clientName}`, {
         body: item.latestMessage || item.clientEmail || 'Open chat to reply.',
@@ -178,11 +180,6 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
     }
 
     try {
-      console.log('fetchNotifications:start', {
-        isAdminBell,
-        permission: typeof Notification !== 'undefined' ? Notification.permission : 'unsupported',
-      })
-
       if (isAdminBell) {
         const [requestsRes, messagesRes] = await Promise.all([
           fetch('/api/clients/registration-requests', {
@@ -199,11 +196,6 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
         const messagesJson = messagesRes.ok ? await messagesRes.json() : null
         setRequests(requestsJson?.requests ?? [])
         const nextMessages = messagesJson?.items ?? []
-        console.log('fetchNotifications:adminResult', {
-          requests: (requestsJson?.requests ?? []).length,
-          messages: nextMessages.length,
-          latestMessageIds: nextMessages.map((item: MessageNotification) => item.latestMessageId ?? null),
-        })
         setMessages(nextMessages)
         maybeNotifyDesktop(nextMessages)
       } else {
@@ -215,10 +207,6 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
 
         const json = await res.json()
         const nextMessages = json.items ?? []
-        console.log('fetchNotifications:userResult', {
-          messages: nextMessages.length,
-          latestMessageIds: nextMessages.map((item: MessageNotification) => item.latestMessageId ?? null),
-        })
         setMessages(nextMessages)
         maybeNotifyDesktop(nextMessages)
         setRequests([])
@@ -262,6 +250,53 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
   }, [shouldShowBell])
 
   useEffect(() => {
+    if (!shouldShowBell || typeof window === 'undefined') return
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
+    if (!VAPID_PUBLIC_KEY || pushSetupStartedRef.current) return
+
+    pushSetupStartedRef.current = true
+    let cancelled = false
+
+    const setupPush = async () => {
+      const token = await getAccessToken()
+      if (!token || Notification.permission !== 'granted') return
+
+      await navigator.serviceWorker.register('/sw.js')
+      const readyRegistration = await navigator.serviceWorker.ready
+      if (cancelled) return
+
+      let subscription = await readyRegistration.pushManager.getSubscription()
+      if (!subscription) {
+        subscription = await readyRegistration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        })
+      }
+
+      await fetch('/api/push/subscriptions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          subscription: subscription.toJSON(),
+        }),
+      })
+    }
+
+    void setupPush().finally(() => {
+      if (!cancelled) {
+        pushSetupStartedRef.current = false
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [getAccessToken, shouldShowBell])
+
+  useEffect(() => {
     if (!shouldShowBell) return
 
     void fetchNotifications({ showLoading: true })
@@ -283,7 +318,6 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
             table: 'client_chat_messages',
           },
           (payload) => {
-            console.log('notificationsBell:chatEvent', payload.eventType, payload)
             void fetchNotifications({
               forceDesktopNotify: payload.eventType === 'INSERT',
             })
@@ -303,7 +337,6 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
               table: 'clients',
             },
             () => {
-              console.log('notificationsBell:clientEvent')
               void fetchNotifications()
             }
           )

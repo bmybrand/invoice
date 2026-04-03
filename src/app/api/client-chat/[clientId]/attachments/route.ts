@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto'
 import { NextResponse } from 'next/server'
 import { requireClientChatAccess } from '@/lib/server-client-chat-auth'
+import { sendHandlerChatPush } from '@/lib/server-push-notifications'
 
 type RouteParams = { clientId: string }
 
@@ -78,6 +79,15 @@ export async function POST(
   if (insertError) {
     return NextResponse.json({ error: insertError.message || 'Failed to save attachment message' }, { status: 500 })
   }
+
+  await sendHandlerChatPush({
+    supabase: auth.actor.supabase,
+    clientId,
+    senderAuthId: auth.actor.user.id,
+    title: `New file from ${auth.actor.clientRow.name || auth.actor.clientRow.email || 'Client'}`,
+    body: message || `Attachment: ${file.name || fileName}`,
+    url: '/dashboard/clients',
+  })
 
   return NextResponse.json({ ok: true, id: messageData?.id ?? null })
 }

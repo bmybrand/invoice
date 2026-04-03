@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireClientChatAccess } from '@/lib/server-client-chat-auth'
+import { sendHandlerChatPush } from '@/lib/server-push-notifications'
 
 type RouteParams = { clientId: string }
 
@@ -256,6 +257,15 @@ export async function POST(
   if (error) {
     return NextResponse.json({ error: error.message || 'Failed to send message' }, { status: 500 })
   }
+
+  await sendHandlerChatPush({
+    supabase: auth.actor.supabase,
+    clientId,
+    senderAuthId: auth.actor.user.id,
+    title: `New message from ${auth.actor.clientRow.name || auth.actor.clientRow.email || 'Client'}`,
+    body: message,
+    url: '/dashboard/clients',
+  })
 
   return NextResponse.json({ ok: true, id: data?.id ?? null })
 }

@@ -21,7 +21,8 @@
     "react-countup": "^6.5.3",
     "react-dom": "19.2.3",
     "recharts": "^3.7.0",
-    "stripe": "^20.4.1"
+    "stripe": "^20.4.1",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
