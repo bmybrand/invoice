@@ -898,18 +898,12 @@ export function ClientChatModal({
                     {initials(message.senderName).toUpperCase()}
                   </div>
                   <div className={`min-w-0 flex-1 ${message.isOwnMessage ? 'lg:flex lg:justify-end' : ''}`}>
-                    <div
-                      className={`min-w-0 ${
-                        message.attachmentUrl
-                          ? 'lg:w-[58%] lg:max-w-[58%]'
-                          : 'lg:w-[75%] lg:max-w-[75%]'
-                      }`}
-                    >
+                    <div className="min-w-0 w-fit max-w-[min(92vw,44rem)]">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-lg font-bold text-white">{message.senderName}</span>
                       <span className="text-xs text-sky-300">{formatStamp(message.createdAt)}</span>
                     </div>
-                    <div className="mt-2 rounded-2xl bg-slate-800/80 px-4 py-3.5">
+                    <div className={`mt-2 inline-block max-w-full rounded-2xl bg-slate-800/80 px-4 py-3.5 ${message.isOwnMessage ? 'lg:ml-auto' : ''}`}>
                         {editingId === message.id ? (
                           <textarea
                             value={editingDraft}
@@ -926,16 +920,21 @@ export function ClientChatModal({
                                   href={message.attachmentUrl}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="block overflow-hidden rounded-2xl border border-slate-700 bg-slate-900/70 transition hover:border-sky-500/40"
+                                  className="inline-flex w-fit max-w-full flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-900/70 transition hover:border-sky-500/40"
                                 >
                                   <img
                                     src={message.attachmentUrl}
                                     alt={message.attachmentName || 'Attachment preview'}
-                                    className="h-48 w-full bg-slate-950 object-contain"
+                                    className="block h-auto max-h-88 w-auto max-w-full object-contain"
                                   />
-                                  <div className="flex items-center gap-2 border-t border-slate-700 px-3 py-2 text-xs text-sky-300">
+                                  <div className="flex w-full min-w-0 items-center gap-2 border-t border-slate-700 px-3 py-2 text-xs text-sky-300">
                                     <AttachmentIcon className="h-4 w-4" />
-                                    <span className="truncate">{message.attachmentName || 'Attachment'}</span>
+                                    <span
+                                      className="min-w-0 max-w-40 flex-1 truncate"
+                                      title={message.attachmentName || 'Attachment'}
+                                    >
+                                      {message.attachmentName || 'Attachment'}
+                                    </span>
                                   </div>
                                 </a>
                               ) : (
@@ -1077,7 +1076,7 @@ export function ClientChatModal({
                   <img
                     src={pendingAttachment.previewUrl}
                     alt={pendingAttachment.file.name}
-                    className="h-56 w-full bg-slate-950 object-contain"
+                    className="block h-auto max-h-88 w-auto max-w-full object-contain"
                   />
                 ) : (
                   <div className="flex h-56 flex-col items-center justify-center px-6 text-center">
