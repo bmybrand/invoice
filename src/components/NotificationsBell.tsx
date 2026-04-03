@@ -27,6 +27,13 @@ type MessageNotification = {
   handlerId?: string
 }
 
+type PushDebugState = {
+  permission: string
+  serviceWorkerReady: boolean
+  hasSubscription: boolean
+  lastSync: string
+}
+
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || ''
 
 function urlBase64ToUint8Array(base64String: string) {
@@ -98,6 +105,12 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
   const [messages, setMessages] = useState<MessageNotification[]>([])
   const [loading, setLoading] = useState(false)
   const [processingId, setProcessingId] = useState<number | null>(null)
+  const [pushDebug, setPushDebug] = useState<PushDebugState>({
+    permission: typeof Notification === 'undefined' ? 'unsupported' : Notification.permission,
+    serviceWorkerReady: false,
+    hasSubscription: false,
+    lastSync: '',
+  })
   const dropdownRef = useRef<HTMLDivElement>(null)
   const hasLoadedRef = useRef(false)
   const isFetchingRef = useRef(false)
@@ -152,6 +165,41 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
     } = await supabase.auth.getSession()
 
     return session?.access_token?.trim() || ''
+  }, [])
+
+  const refreshPushDebug = useCallback(async () => {
+    if (typeof window === 'undefined') return
+
+    const nextPermission = typeof Notification === 'undefined' ? 'unsupported' : Notification.permission
+
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      setPushDebug({
+        permission: nextPermission,
+        serviceWorkerReady: false,
+        hasSubscription: false,
+        lastSync: new Date().toLocaleTimeString(),
+      })
+      return
+    }
+
+    try {
+      const registration = await navigator.serviceWorker.getRegistration('/sw.js')
+      const subscription = registration ? await registration.pushManager.getSubscription() : null
+
+      setPushDebug({
+        permission: nextPermission,
+        serviceWorkerReady: Boolean(registration?.active),
+        hasSubscription: Boolean(subscription),
+        lastSync: new Date().toLocaleTimeString(),
+      })
+    } catch {
+      setPushDebug({
+        permission: nextPermission,
+        serviceWorkerReady: false,
+        hasSubscription: false,
+        lastSync: new Date().toLocaleTimeString(),
+      })
+    }
   }, [])
 
   const fetchNotifications = useCallback(async (options?: { showLoading?: boolean; forceDesktopNotify?: boolean }) => {
@@ -250,6 +298,11 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
   }, [shouldShowBell])
 
   useEffect(() => {
+    if (!shouldShowBell) return
+    void refreshPushDebug()
+  }, [refreshPushDebug, shouldShowBell])
+
+  useEffect(() => {
     if (!shouldShowBell || typeof window === 'undefined') return
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
     if (!VAPID_PUBLIC_KEY || pushSetupStartedRef.current) return
@@ -283,6 +336,8 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
           subscription: subscription.toJSON(),
         }),
       })
+
+      await refreshPushDebug()
     }
 
     void setupPush().finally(() => {
@@ -294,7 +349,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
     return () => {
       cancelled = true
     }
-  }, [getAccessToken, shouldShowBell])
+  }, [getAccessToken, refreshPushDebug, shouldShowBell])
 
   useEffect(() => {
     if (!shouldShowBell) return
@@ -362,7 +417,8 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
   useEffect(() => {
     if (!open || !shouldShowBell) return
     void fetchNotifications({ showLoading: !hasLoadedRef.current })
-  }, [fetchNotifications, open, shouldShowBell])
+    void refreshPushDebug()
+  }, [fetchNotifications, open, refreshPushDebug, shouldShowBell])
 
   useEffect(() => {
     if (!open) return
@@ -559,6 +615,32 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
                 </button>
               ))
             )}
+          </div>
+          <div className="border-t border-slate-700/80 bg-slate-900/40 px-4 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Push Debug</p>
+                <p className="mt-1 text-[11px] text-slate-400">
+                  Permission: <span className="text-slate-200">{pushDebug.permission}</span>
+                </p>
+                <p className="text-[11px] text-slate-400">
+                  Service worker: <span className="text-slate-200">{pushDebug.serviceWorkerReady ? 'ready' : 'missing'}</span>
+                </p>
+                <p className="text-[11px] text-slate-400">
+                  Push subscription: <span className="text-slate-200">{pushDebug.hasSubscription ? 'saved' : 'missing'}</span>
+                </p>
+                {pushDebug.lastSync ? (
+                  <p className="text-[10px] text-slate-500">Last check {pushDebug.lastSync}</p>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={() => void refreshPushDebug()}
+                className="rounded-lg border border-slate-700 px-2.5 py-1.5 text-[11px] font-medium text-slate-300 transition hover:border-slate-600 hover:bg-slate-800 hover:text-white"
+              >
+                Refresh
+              </button>
+            </div>
           </div>
         </div>
       )}
