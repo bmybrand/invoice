@@ -84,15 +84,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Employee not found' }, { status: 403 })
   }
 
-  const role = normalizeRole((employeeRow as { role?: string | null }).role)
-  let clientsQuery = setup.serviceClient
+  normalizeRole((employeeRow as { role?: string | null }).role)
+  const clientsQuery = setup.serviceClient
     .from('clients')
     .select('id, name, email, handler_id')
     .neq('isdeleted', true)
-
-  if (role === 'user') {
-    clientsQuery = clientsQuery.eq('handler_id', user.id)
-  }
+    .eq('handler_id', user.id)
 
   const { data: handledClients, error: clientsError } = await clientsQuery
 

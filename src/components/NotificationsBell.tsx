@@ -111,7 +111,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
   const shouldShowBell = isAdminBell || isUserBell
 
   const maybeNotifyDesktop = useCallback((nextMessages: MessageNotification[]) => {
-    if (!shouldShowBell || typeof window === 'undefined' || !('Notification' in window)) {
+    if (!isUserBell || typeof window === 'undefined' || !('Notification' in window)) {
       return
     }
 
@@ -144,7 +144,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
 
       notifiedMessageIdsRef.current.add(latestMessageId)
     }
-  }, [router, shouldShowBell])
+  }, [isUserBell, router])
 
   const getAccessToken = useCallback(async () => {
     const {
@@ -181,23 +181,15 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
 
     try {
       if (isAdminBell) {
-        const [requestsRes, messagesRes] = await Promise.all([
-          fetch('/api/clients/registration-requests', {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          fetch('/api/client-chat/notifications', {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-        ])
+        const requestsRes = await fetch('/api/clients/registration-requests', {
+          headers: { Authorization: `Bearer ${token}` },
+        })
 
-        if (!requestsRes.ok && !messagesRes.ok) return
+        if (!requestsRes.ok) return
 
-        const requestsJson = requestsRes.ok ? await requestsRes.json() : null
-        const messagesJson = messagesRes.ok ? await messagesRes.json() : null
+        const requestsJson = await requestsRes.json()
         setRequests(requestsJson?.requests ?? [])
-        const nextMessages = messagesJson?.items ?? []
-        setMessages(nextMessages)
-        maybeNotifyDesktop(nextMessages)
+        setMessages([])
       } else {
         const res = await fetch('/api/client-chat/notifications', {
           headers: { Authorization: `Bearer ${token}` },
@@ -229,7 +221,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
   }, [getAccessToken, isAdminBell, maybeNotifyDesktop, shouldShowBell])
 
   useEffect(() => {
-    if (!shouldShowBell || typeof window === 'undefined' || !('Notification' in window)) return
+    if (!isUserBell || typeof window === 'undefined' || !('Notification' in window)) return
     if (Notification.permission !== 'default') return
 
     const requestPermission = async () => {
@@ -247,10 +239,10 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
     return () => {
       window.clearTimeout(timeoutId)
     }
-  }, [shouldShowBell])
+  }, [isUserBell])
 
   useEffect(() => {
-    if (!shouldShowBell || typeof window === 'undefined') return
+    if (!isUserBell || typeof window === 'undefined') return
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
     if (!VAPID_PUBLIC_KEY || pushSetupStartedRef.current) return
 
@@ -295,7 +287,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
     return () => {
       cancelled = true
     }
-  }, [getAccessToken, shouldShowBell])
+  }, [getAccessToken, isUserBell])
 
   useEffect(() => {
     if (!shouldShowBell) return
@@ -308,23 +300,27 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
       }
     }, 5000)
 
-    const channels = [
-      supabase
-        .channel(isAdminBell ? 'admin-registration-requests' : 'handler-chat-notifications')
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'client_chat_messages',
-          },
-          (payload) => {
-            void fetchNotifications({
-              forceDesktopNotify: payload.eventType === 'INSERT',
-            })
-          }
-        ),
-    ]
+    const channels = []
+
+    if (isUserBell) {
+      channels.push(
+        supabase
+          .channel('handler-chat-notifications')
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'client_chat_messages',
+            },
+            (payload) => {
+              void fetchNotifications({
+                forceDesktopNotify: payload.eventType === 'INSERT',
+              })
+            }
+          )
+      )
+    }
 
     if (isAdminBell) {
       channels.push(
@@ -358,7 +354,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
         void supabase.removeChannel(channel)
       })
     }
-  }, [fetchNotifications, isAdminBell, shouldShowBell])
+  }, [fetchNotifications, isAdminBell, isUserBell, shouldShowBell])
 
   useEffect(() => {
     if (!open || !shouldShowBell) return
@@ -415,7 +411,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
   }
 
   const messageCount = messages.reduce((total, item) => total + item.count, 0)
-  const count = isAdminBell ? requests.length + messageCount : messageCount
+  const count = isAdminBell ? requests.length : messageCount
 
   if (!shouldShowBell) {
     return null
@@ -448,9 +444,9 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
       {open && (
         <div className="absolute right-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-xl border border-slate-700 bg-slate-800 shadow-xl">
           <div className="border-b border-slate-700 px-4 py-3">
-            <h3 className="text-sm font-bold text-white">{isAdminBell ? 'Notifications' : 'Client Messages'}</h3>
+            <h3 className="text-sm font-bold text-white">{isAdminBell ? 'Client Registration Requests' : 'Client Messages'}</h3>
             <p className="mt-0.5 text-xs text-slate-400">
-              {count === 0 ? 'All caught up' : `${count} unread`}
+              {count === 0 ? (isAdminBell ? 'No pending requests' : 'All caught up') : isAdminBell ? `${count} pending` : `${count} unread`}
             </p>
           </div>
 
@@ -458,47 +454,10 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
             {loading ? (
               <div className="px-4 py-6 text-center text-sm text-slate-400">Loading...</div>
             ) : isAdminBell ? (
-              requests.length === 0 && messages.length === 0 ? (
+              requests.length === 0 ? (
                 <div className="px-4 py-6 text-center text-sm text-slate-400">All caught up</div>
               ) : (
                 <>
-                  {messages.length > 0 && (
-                    <div className="border-b border-slate-700/80 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                      Client Messages
-                    </div>
-                  )}
-                  {messages.map((item) => (
-                    <button
-                      key={`message-${item.clientId}`}
-                      type="button"
-                      onClick={() => {
-                        setOpen(false)
-                        router.push('/dashboard/clients')
-                      }}
-                      className="flex w-full items-start gap-3 border-b border-slate-700/80 px-4 py-3 text-left transition hover:bg-slate-700/30"
-                    >
-                      <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-orange-500/15 text-orange-400">
-                        <ChatBubbleIcon className="h-4.5 w-4.5" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-3">
-                          <p className="truncate text-sm font-medium text-white">{item.clientName}</p>
-                          <span className="shrink-0 text-[11px] text-slate-500">{formatRelativeTime(item.createdAt)}</span>
-                        </div>
-                        <p className="truncate text-xs text-slate-400">{item.clientEmail}</p>
-                        <p className="mt-1 truncate text-xs text-slate-300">{item.latestMessage}</p>
-                      </div>
-                      <span className="mt-0.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-orange-500 px-1.5 text-[10px] font-bold text-white">
-                        {item.count > 99 ? '99+' : item.count}
-                      </span>
-                    </button>
-                  ))}
-
-                  {requests.length > 0 && (
-                    <div className="border-b border-t border-slate-700/80 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                      Client Registration Requests
-                    </div>
-                  )}
                   {requests.map((r) => (
                     <div
                       key={`request-${r.id}`}
