@@ -93,59 +93,33 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
   const hasLoadedRef = useRef(false)
   const isFetchingRef = useRef(false)
   const queuedRefreshRef = useRef(false)
-  const desktopNotificationsPrimedRef = useRef(false)
-  const previousMessageIdByClientRef = useRef<Map<number, number>>(new Map())
+  const notifiedMessageIdsRef = useRef<Set<number>>(new Set())
 
   const normalizedRole = useMemo(() => normalizeRole(displayRole || ''), [displayRole])
   const isAdminBell = accountType === 'employee' && (normalizedRole === 'admin' || normalizedRole === 'superadmin')
   const isUserBell = accountType === 'employee' && normalizedRole === 'user'
   const shouldShowBell = isAdminBell || isUserBell
 
-  const maybeNotifyDesktop = useCallback((nextMessages: MessageNotification[], options?: { force?: boolean }) => {
-    const force = options?.force ?? false
-
+  const maybeNotifyDesktop = useCallback((nextMessages: MessageNotification[]) => {
     if (!shouldShowBell || typeof window === 'undefined' || !('Notification' in window)) {
-      previousMessageIdByClientRef.current = new Map(
-        nextMessages
-          .filter((item) => Number.isFinite(item.latestMessageId))
-          .map((item) => [item.clientId, Number(item.latestMessageId)])
-      )
-      desktopNotificationsPrimedRef.current = true
-      return
-    }
-
-    const nextIds = new Map(
-      nextMessages
-        .filter((item) => Number.isFinite(item.latestMessageId))
-        .map((item) => [item.clientId, Number(item.latestMessageId)])
-    )
-
-    if (!desktopNotificationsPrimedRef.current && !force) {
-      previousMessageIdByClientRef.current = nextIds
-      desktopNotificationsPrimedRef.current = true
       return
     }
 
     if (Notification.permission !== 'granted') {
-      previousMessageIdByClientRef.current = nextIds
       return
     }
 
     for (const item of nextMessages) {
       const latestMessageId = Number(item.latestMessageId ?? 0)
       if (!Number.isFinite(latestMessageId) || latestMessageId <= 0) continue
-
-      const previousMessageId = previousMessageIdByClientRef.current.get(item.clientId) ?? 0
-      if (latestMessageId <= previousMessageId) continue
+      if (notifiedMessageIdsRef.current.has(latestMessageId)) continue
 
       console.log('desktop notification fired', {
         clientId: item.clientId,
         latestMessageId,
-        previousMessageId,
         clientName: item.clientName,
         latestMessage: item.latestMessage,
         permission: Notification.permission,
-        force,
       })
 
       const notification = new Notification(`New message from ${item.clientName}`, {
@@ -158,10 +132,9 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
         router.push('/dashboard/clients')
         notification.close()
       }
-    }
 
-    previousMessageIdByClientRef.current = nextIds
-    desktopNotificationsPrimedRef.current = true
+      notifiedMessageIdsRef.current.add(latestMessageId)
+    }
   }, [router, shouldShowBell])
 
   const getAccessToken = useCallback(async () => {
@@ -200,7 +173,6 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
     try {
       console.log('fetchNotifications:start', {
         isAdminBell,
-        forceDesktopNotify: options?.forceDesktopNotify ?? false,
         permission: typeof Notification !== 'undefined' ? Notification.permission : 'unsupported',
       })
 
@@ -226,7 +198,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
           latestMessageIds: nextMessages.map((item: MessageNotification) => item.latestMessageId ?? null),
         })
         setMessages(nextMessages)
-        maybeNotifyDesktop(nextMessages, { force: options?.forceDesktopNotify })
+        maybeNotifyDesktop(nextMessages)
       } else {
         const res = await fetch('/api/client-chat/notifications', {
           headers: { Authorization: `Bearer ${token}` },
@@ -241,7 +213,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
           latestMessageIds: nextMessages.map((item: MessageNotification) => item.latestMessageId ?? null),
         })
         setMessages(nextMessages)
-        maybeNotifyDesktop(nextMessages, { force: options?.forceDesktopNotify })
+        maybeNotifyDesktop(nextMessages)
         setRequests([])
       }
       hasLoadedRef.current = true
