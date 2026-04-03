@@ -148,6 +148,7 @@ export async function GET(request: Request) {
       handlerId: string
       count: number
       latestMessage: string
+      latestMessageId: number
       createdAt: string
     }
   >()
@@ -169,6 +170,7 @@ export async function GET(request: Request) {
         handlerId: client.handlerId,
         count: 1,
         latestMessage: preview,
+        latestMessageId: Number(row.id ?? 0),
         createdAt,
       })
       continue

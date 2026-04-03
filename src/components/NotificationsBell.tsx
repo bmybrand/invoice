@@ -21,6 +21,7 @@ type MessageNotification = {
   clientName: string
   clientEmail: string
   latestMessage: string
+  latestMessageId?: number
   count: number
   createdAt: string
   handlerId?: string
@@ -93,7 +94,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
   const isFetchingRef = useRef(false)
   const queuedRefreshRef = useRef(false)
   const desktopNotificationsPrimedRef = useRef(false)
-  const previousMessageCountByClientRef = useRef<Map<number, number>>(new Map())
+  const previousMessageIdByClientRef = useRef<Map<number, number>>(new Map())
 
   const normalizedRole = useMemo(() => normalizeRole(displayRole || ''), [displayRole])
   const isAdminBell = accountType === 'employee' && (normalizedRole === 'admin' || normalizedRole === 'superadmin')
@@ -102,39 +103,42 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
 
   const maybeNotifyDesktop = useCallback((nextMessages: MessageNotification[]) => {
     if (!shouldShowBell || typeof window === 'undefined' || !('Notification' in window)) {
-      previousMessageCountByClientRef.current = new Map(nextMessages.map((item) => [item.clientId, item.count]))
+      previousMessageIdByClientRef.current = new Map(
+        nextMessages
+          .filter((item) => Number.isFinite(item.latestMessageId))
+          .map((item) => [item.clientId, Number(item.latestMessageId)])
+      )
       desktopNotificationsPrimedRef.current = true
       return
     }
 
-    const nextCounts = new Map(nextMessages.map((item) => [item.clientId, item.count]))
+    const nextIds = new Map(
+      nextMessages
+        .filter((item) => Number.isFinite(item.latestMessageId))
+        .map((item) => [item.clientId, Number(item.latestMessageId)])
+    )
 
     if (!desktopNotificationsPrimedRef.current) {
-      previousMessageCountByClientRef.current = nextCounts
+      previousMessageIdByClientRef.current = nextIds
       desktopNotificationsPrimedRef.current = true
       return
     }
 
     if (Notification.permission !== 'granted') {
-      previousMessageCountByClientRef.current = nextCounts
-      return
-    }
-
-    const shouldSurfaceSystemNotification =
-      document.visibilityState !== 'visible' || !document.hasFocus()
-
-    if (!shouldSurfaceSystemNotification) {
-      previousMessageCountByClientRef.current = nextCounts
+      previousMessageIdByClientRef.current = nextIds
       return
     }
 
     for (const item of nextMessages) {
-      const previousCount = previousMessageCountByClientRef.current.get(item.clientId) ?? 0
-      if (item.count <= previousCount) continue
+      const latestMessageId = Number(item.latestMessageId ?? 0)
+      if (!Number.isFinite(latestMessageId) || latestMessageId <= 0) continue
+
+      const previousMessageId = previousMessageIdByClientRef.current.get(item.clientId) ?? 0
+      if (latestMessageId <= previousMessageId) continue
 
       const notification = new Notification(`New message from ${item.clientName}`, {
         body: item.latestMessage || item.clientEmail || 'Open chat to reply.',
-        tag: `client-chat-${item.clientId}`,
+        tag: `client-chat-${item.clientId}-${latestMessageId}`,
       })
 
       notification.onclick = () => {
@@ -144,7 +148,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
       }
     }
 
-    previousMessageCountByClientRef.current = nextCounts
+    previousMessageIdByClientRef.current = nextIds
   }, [router, shouldShowBell])
 
   const getAccessToken = useCallback(async () => {
@@ -198,6 +202,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
         setRequests(requestsJson?.requests ?? [])
         const nextMessages = messagesJson?.items ?? []
         setMessages(nextMessages)
+        maybeNotifyDesktop(nextMessages)
       } else {
         const res = await fetch('/api/client-chat/notifications', {
           headers: { Authorization: `Bearer ${token}` },
