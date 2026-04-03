@@ -37,19 +37,32 @@ export async function GET(
   }
 
   const { actor } = auth
+  const { searchParams } = new URL(request.url)
+  const requestedLimit = Number.parseInt(searchParams.get('limit') || '4', 10)
+  const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 20) : 4
+  const requestedBeforeId = Number.parseInt(searchParams.get('beforeId') || '', 10)
+  const beforeId = Number.isFinite(requestedBeforeId) && requestedBeforeId > 0 ? requestedBeforeId : null
 
-  const { data: messagesData, error: messagesError } = await actor.supabase
+  let messagesQuery = actor.supabase
     .from('client_chat_messages')
     .select('id, client_id, sender_auth_id, message, attachment_name, attachment_path, created_at, updated_at, isdeleted')
     .eq('client_id', clientId)
     .eq('isdeleted', false)
     .order('created_at', { ascending: false })
 
+  if (beforeId !== null) {
+    messagesQuery = messagesQuery.lt('id', beforeId)
+  }
+
+  const { data: messagesData, error: messagesError } = await messagesQuery.limit(limit + 1)
+
   if (messagesError) {
     return NextResponse.json({ error: messagesError.message || 'Failed to load messages' }, { status: 500 })
   }
 
-  const rows = ((messagesData as ClientChatRow[] | null) ?? []).reverse()
+  const rawRows = (messagesData as ClientChatRow[] | null) ?? []
+  const hasMore = rawRows.length > limit
+  const rows = rawRows.slice(0, limit).reverse()
   const senderAuthIds = Array.from(new Set(rows.map((row) => row.sender_auth_id).filter(Boolean)))
 
   const [employeesResult, clientsResult] = await Promise.all([
@@ -132,6 +145,7 @@ export async function GET(
       handlerName,
     },
     messages,
+    hasMore,
   })
 }
 

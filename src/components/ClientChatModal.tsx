@@ -34,6 +34,7 @@ type ChatResponse = {
     handlerName: string
   }
   messages: ChatMessage[]
+  hasMore?: boolean
 }
 
 type ChatInvoice = {
@@ -200,6 +201,8 @@ export function ClientChatModal({
   const [pendingAttachment, setPendingAttachment] = useState<PendingAttachmentPreview | null>(null)
   const [invoices, setInvoices] = useState<ChatInvoice[]>([])
   const [invoicesLoading, setInvoicesLoading] = useState(false)
+  const [hasOlderMessages, setHasOlderMessages] = useState(false)
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const messagesRef = useRef<HTMLDivElement | null>(null)
   const fetchVersionRef = useRef(0)
@@ -207,6 +210,7 @@ export function ClientChatModal({
   const suppressRefreshRef = useRef(false)
   const suppressRefreshTimeoutRef = useRef<number | null>(null)
   const optimisticMessagesRef = useRef<ChatMessage[]>([])
+  const loadedMessagesRef = useRef<ChatMessage[]>([])
   const pendingDeletedIdsRef = useRef<Set<number>>(new Set())
   const typingTimeoutRef = useRef<number | null>(null)
   const remoteTypingTimeoutRef = useRef<number | null>(null)
@@ -214,6 +218,18 @@ export function ClientChatModal({
   const invoiceFetchVersionRef = useRef(0)
   const localMessageIdRef = useRef(-1)
   const shouldStickToBottomRef = useRef(true)
+  const loadingOlderMessagesRef = useRef(false)
+
+  const mergeChatMessages = useCallback((existing: ChatMessage[], incoming: ChatMessage[]) => {
+    const byId = new Map<number, ChatMessage>()
+    existing.forEach((message) => byId.set(message.id, message))
+    incoming.forEach((message) => byId.set(message.id, message))
+    return Array.from(byId.values()).sort((a, b) => {
+      const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0
+      const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0
+      return aTime - bTime
+    })
+  }, [])
 
   const getCurrentAuthToken = useCallback(async () => {
     const {
@@ -226,12 +242,16 @@ export function ClientChatModal({
   }, [])
 
   const loadMessages = useCallback(
-    async (options?: { background?: boolean }) => {
+    async (options?: { background?: boolean; older?: boolean }) => {
       if (!open || !clientId) return
       const isBackground = options?.background ?? false
+      const isOlder = options?.older ?? false
       const fetchVersion = ++fetchVersionRef.current
       const mutationVersionAtStart = mutationVersionRef.current
-      if (!isBackground) {
+      if (isOlder) {
+        loadingOlderMessagesRef.current = true
+        setLoadingOlderMessages(true)
+      } else if (!isBackground) {
         setLoading(true)
       }
       setError(null)
@@ -243,7 +263,18 @@ export function ClientChatModal({
         return
       }
 
-      const response = await fetch(`/api/client-chat/${clientId}`, {
+      const params = new URLSearchParams({ limit: '4' })
+      if (isOlder) {
+        const oldestMessage = loadedMessagesRef.current.find((message) => message.id > 0)
+        if (!oldestMessage?.id) {
+          loadingOlderMessagesRef.current = false
+          setLoadingOlderMessages(false)
+          return
+        }
+        params.set('beforeId', String(oldestMessage.id))
+      }
+
+      const response = await fetch(`/api/client-chat/${clientId}?${params.toString()}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -257,6 +288,8 @@ export function ClientChatModal({
 
       if (!response.ok) {
         setLoading(false)
+        loadingOlderMessagesRef.current = false
+        setLoadingOlderMessages(false)
         setError(result?.error || 'Failed to load chat')
         return
       }
@@ -268,13 +301,19 @@ export function ClientChatModal({
       )
       optimisticMessagesRef.current = remainingOptimisticMessages
 
-      setMessages(
-        [...serverMessages, ...remainingOptimisticMessages].sort((a, b) => {
-          const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0
-          const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0
-          return aTime - bTime
-        })
-      )
+      setMessages((prev) => {
+        if (isOlder) {
+          const next = mergeChatMessages(prev, serverMessages)
+          loadedMessagesRef.current = next
+          return next
+        }
+        const persistedMessages = prev.filter((message) => message.id > 0)
+        const mergedPersisted = mergeChatMessages(persistedMessages, serverMessages)
+        const next = mergeChatMessages(mergedPersisted, remainingOptimisticMessages)
+        loadedMessagesRef.current = next
+        return next
+      })
+      setHasOlderMessages(Boolean(result.hasMore))
       if (result.client?.name) {
         if (accountType === 'client') {
           setHeaderTitle(result.client.handlerName ? `Chat with ${result.client.handlerName}` : 'Chat')
@@ -285,8 +324,10 @@ export function ClientChatModal({
         }
       }
       setLoading(false)
+      loadingOlderMessagesRef.current = false
+      setLoadingOlderMessages(false)
     },
-    [accountType, clientId, getCurrentAuthToken, open]
+    [accountType, clientId, getCurrentAuthToken, mergeChatMessages, open]
   )
 
   const suppressPolling = useCallback((delayMs = CHAT_REFRESH_MS) => {
@@ -331,7 +372,11 @@ export function ClientChatModal({
     }, 0)
 
     const intervalId = window.setInterval(() => {
-      if (document.visibilityState === 'visible' && !suppressRefreshRef.current) {
+      if (
+        document.visibilityState === 'visible' &&
+        !suppressRefreshRef.current &&
+        !loadingOlderMessagesRef.current
+      ) {
         void loadMessages({ background: true })
       }
     }, CHAT_REFRESH_MS)
@@ -476,10 +521,13 @@ export function ClientChatModal({
       setInvoicesLoading(false)
     }
 
-    void loadInvoices()
+    const timeoutId = window.setTimeout(() => {
+      void loadInvoices()
+    }, 350)
 
     return () => {
       cancelled = true
+      window.clearTimeout(timeoutId)
     }
   }, [clientId, open])
 
@@ -729,6 +777,18 @@ export function ClientChatModal({
         </div>
 
         <div ref={messagesRef} className="flex-1 overflow-y-auto px-5 py-5">
+          {hasOlderMessages ? (
+            <div className="mb-4 flex justify-center">
+              <button
+                type="button"
+                onClick={() => void loadMessages({ older: true })}
+                disabled={loadingOlderMessages}
+                className="rounded-full border border-slate-700 bg-slate-800/80 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:bg-slate-700 disabled:opacity-50"
+              >
+                {loadingOlderMessages ? 'Loading older...' : 'Load older messages'}
+              </button>
+            </div>
+          ) : null}
           {loading ? (
             <div className="py-12 text-center text-sm text-slate-400">Loading chat...</div>
           ) : messages.length === 0 ? (
