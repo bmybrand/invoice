@@ -24,6 +24,14 @@ export async function PATCH(
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
 
+  const canMessage =
+    auth.actor.accountType === 'client' ||
+    (auth.actor.clientRow.handler_id || '').trim() === auth.actor.user.id
+
+  if (!canMessage) {
+    return NextResponse.json({ error: 'Only the assigned handler can message this client' }, { status: 403 })
+  }
+
   const body = (await request.json().catch(() => null)) as { message?: string } | null
   const message = String(body?.message ?? '').trim()
   if (!message) {
@@ -76,6 +84,14 @@ export async function DELETE(
   const auth = await requireClientChatAccess(request, clientId)
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
+
+  const canMessage =
+    auth.actor.accountType === 'client' ||
+    (auth.actor.clientRow.handler_id || '').trim() === auth.actor.user.id
+
+  if (!canMessage) {
+    return NextResponse.json({ error: 'Only the assigned handler can message this client' }, { status: 403 })
   }
 
   const { data: existing, error: fetchError } = await auth.actor.supabase

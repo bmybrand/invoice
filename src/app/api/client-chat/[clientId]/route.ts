@@ -10,6 +10,8 @@ type ClientChatRow = {
   message: string | null
   attachment_name: string | null
   attachment_path: string | null
+  read_by_client: boolean | null
+  read_by_employee: boolean | null
   created_at: string | null
   updated_at: string | null
   isdeleted: boolean | null
@@ -37,6 +39,31 @@ export async function GET(
   }
 
   const { actor } = auth
+  const canMessage =
+    actor.accountType === 'client' ||
+    (actor.clientRow.handler_id || '').trim() === actor.user.id
+
+  if (actor.accountType === 'client') {
+    await actor.supabase
+      .from('client_chat_messages')
+      .update({ read_by_client: true })
+      .eq('client_id', clientId)
+      .eq('isdeleted', false)
+      .neq('sender_auth_id', actor.user.id)
+      .eq('read_by_client', false)
+  } else {
+    const isAssignedHandler = (actor.clientRow.handler_id || '').trim() === actor.user.id
+    if (isAssignedHandler) {
+      await actor.supabase
+        .from('client_chat_messages')
+        .update({ read_by_employee: true })
+        .eq('client_id', clientId)
+        .eq('isdeleted', false)
+        .neq('sender_auth_id', actor.user.id)
+        .eq('read_by_employee', false)
+    }
+  }
+
   const { searchParams } = new URL(request.url)
   const requestedLimit = Number.parseInt(searchParams.get('limit') || '4', 10)
   const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 20) : 4
@@ -45,7 +72,7 @@ export async function GET(
 
   let messagesQuery = actor.supabase
     .from('client_chat_messages')
-    .select('id, client_id, sender_auth_id, message, attachment_name, attachment_path, created_at, updated_at, isdeleted')
+    .select('id, client_id, sender_auth_id, message, attachment_name, attachment_path, read_by_client, read_by_employee, created_at, updated_at, isdeleted')
     .eq('client_id', clientId)
     .eq('isdeleted', false)
     .order('created_at', { ascending: false })
@@ -121,6 +148,12 @@ export async function GET(
         createdAt: row.created_at,
         updatedAt: row.updated_at,
         isOwnMessage: row.sender_auth_id === actor.user.id,
+        seenByRecipient:
+          row.sender_auth_id === actor.clientRow.auth_id
+            ? Boolean(row.read_by_employee)
+            : row.sender_auth_id === actor.clientRow.handler_id
+              ? Boolean(row.read_by_client)
+              : false,
       }
     })
   )
@@ -146,6 +179,7 @@ export async function GET(
     },
     messages,
     hasMore,
+    canMessage,
   })
 }
 
@@ -164,6 +198,14 @@ export async function POST(
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
 
+  const canMessage =
+    auth.actor.accountType === 'client' ||
+    (auth.actor.clientRow.handler_id || '').trim() === auth.actor.user.id
+
+  if (!canMessage) {
+    return NextResponse.json({ error: 'Only the assigned handler can message this client' }, { status: 403 })
+  }
+
   const body = (await request.json().catch(() => null)) as { message?: string } | null
   const message = String(body?.message ?? '').trim()
 
@@ -178,6 +220,8 @@ export async function POST(
       sender_auth_id: auth.actor.user.id,
       message,
       isdeleted: false,
+      read_by_client: auth.actor.accountType === 'client',
+      read_by_employee: auth.actor.accountType === 'employee',
     })
     .select('id')
     .single()

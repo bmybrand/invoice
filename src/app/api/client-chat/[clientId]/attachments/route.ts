@@ -29,6 +29,14 @@ export async function POST(
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
 
+  const canMessage =
+    auth.actor.accountType === 'client' ||
+    (auth.actor.clientRow.handler_id || '').trim() === auth.actor.user.id
+
+  if (!canMessage) {
+    return NextResponse.json({ error: 'Only the assigned handler can message this client' }, { status: 403 })
+  }
+
   const formData = await request.formData().catch(() => null)
   const file = formData?.get('file')
   const message = String(formData?.get('message') ?? '').trim()
@@ -61,6 +69,8 @@ export async function POST(
       attachment_name: file.name || fileName,
       attachment_path: filePath,
       isdeleted: false,
+      read_by_client: auth.actor.accountType === 'client',
+      read_by_employee: auth.actor.accountType === 'employee',
     })
     .select('id')
     .single()

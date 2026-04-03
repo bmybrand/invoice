@@ -31,6 +31,7 @@ type ChatMessage = {
   createdAt: string | null
   updatedAt: string | null
   isOwnMessage: boolean
+  seenByRecipient?: boolean
   isPending?: boolean
   attachmentMetaLabel?: string | null
 }
@@ -44,6 +45,7 @@ type ChatResponse = {
   }
   messages: ChatMessage[]
   hasMore?: boolean
+  canMessage?: boolean
 }
 
 type ChatInvoice = {
@@ -84,6 +86,22 @@ function SendIcon({ className = 'h-4 w-4' }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0121.485 12 59.77 59.77 0 013.27 20.875L6 12zm0 0h7.5" />
+    </svg>
+  )
+}
+
+function DoubleTickIcon({ seen }: { seen: boolean }) {
+  return (
+    <svg
+      className={`h-3.5 w-3.5 ${seen ? 'text-sky-300' : 'text-slate-500'}`}
+      fill="none"
+      viewBox="0 0 16 16"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      aria-label={seen ? 'Seen' : 'Sent'}
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M1.75 8.5 4.5 11.25 9.25 5.5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6.25 8.5 9 11.25 13.75 5.5" />
     </svg>
   )
 }
@@ -186,6 +204,7 @@ export function ClientChatModal({
   subtitle,
   onClose,
   variant = 'modal',
+  pageHeightClass = 'h-[calc(100dvh-12rem)]',
 }: {
   open: boolean
   clientId: number | null
@@ -193,12 +212,14 @@ export function ClientChatModal({
   subtitle?: string
   onClose: () => void
   variant?: 'modal' | 'page'
+  pageHeightClass?: string
 }) {
   const router = useRouter()
   const { accountType, currentUserAuthId, displayName } = useDashboardProfile()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [permissionError, setPermissionError] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -311,6 +332,9 @@ export function ClientChatModal({
         setError(result?.error || 'Failed to load chat')
         return
       }
+
+      const canMessage = result.canMessage !== false
+      setPermissionError(canMessage ? null : 'Only the assigned handler can message this client')
 
       const serverMessages = (result.messages || []).filter((message) => !pendingDeletedIdsRef.current.has(message.id))
       const remainingOptimisticMessages = optimisticMessagesRef.current.filter(
@@ -638,8 +662,12 @@ export function ClientChatModal({
   }, [clientId, open])
 
   const canSend = useMemo(
-    () => (draft.trim().length > 0 || pendingAttachment !== null) && !sending && !uploading,
-    [draft, pendingAttachment, sending, uploading]
+    () =>
+      (draft.trim().length > 0 || pendingAttachment !== null) &&
+      !sending &&
+      !uploading &&
+      !permissionError,
+    [draft, pendingAttachment, sending, uploading, permissionError]
   )
 
   async function handleSendMessage() {
@@ -669,6 +697,7 @@ export function ClientChatModal({
       createdAt: new Date().toISOString(),
       updatedAt: null,
       isOwnMessage: true,
+      seenByRecipient: false,
     }
     optimisticMessagesRef.current = [...optimisticMessagesRef.current, optimisticMessage]
     setMessages((prev) => [...prev, optimisticMessage])
@@ -787,6 +816,7 @@ export function ClientChatModal({
       createdAt: new Date().toISOString(),
       updatedAt: null,
       isOwnMessage: true,
+      seenByRecipient: false,
       isPending: true,
       attachmentMetaLabel: formatAttachmentMeta(file.name, file.size),
     }
@@ -863,7 +893,7 @@ export function ClientChatModal({
 
   const isPageVariant = variant === 'page'
   const shell = (
-    <div className={`flex ${isPageVariant ? 'h-[calc(100vh-11rem)] min-h-[640px]' : 'h-[min(82vh,720px)]'} w-full ${isPageVariant ? '' : 'max-w-5xl'} overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl`}>
+    <div className={`flex ${isPageVariant ? pageHeightClass : 'h-[min(82vh,720px)]'} w-full ${isPageVariant ? '' : 'max-w-5xl'} overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl`}>
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex items-start justify-between border-b border-slate-700 px-5 py-4">
           <div>
@@ -892,18 +922,21 @@ export function ClientChatModal({
               {messages.map((message) => (
                 <div
                   key={message.id}
-                  className={`flex items-start gap-4 ${message.isOwnMessage ? 'lg:flex-row-reverse' : ''}`}
+                  className={`flex items-start gap-4 ${message.isOwnMessage ? 'flex-row-reverse' : ''}`}
                 >
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-900/70 text-sm font-bold text-white">
                     {initials(message.senderName).toUpperCase()}
                   </div>
-                  <div className={`min-w-0 flex-1 ${message.isOwnMessage ? 'lg:flex lg:justify-end' : ''}`}>
-                    <div className="min-w-0 w-fit max-w-[min(92vw,44rem)]">
+                  <div className={`min-w-0 flex-1 ${message.isOwnMessage ? 'flex justify-end' : ''}`}>
+                    <div className={`min-w-0 w-fit max-w-[min(92vw,44rem)] ${message.isOwnMessage ? 'flex flex-col items-end' : ''}`}>
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-lg font-bold text-white">{message.senderName}</span>
                       <span className="text-xs text-sky-300">{formatStamp(message.createdAt)}</span>
+                      {message.isOwnMessage ? (
+                        <DoubleTickIcon seen={Boolean(message.seenByRecipient)} />
+                      ) : null}
                     </div>
-                    <div className={`mt-2 inline-block max-w-full rounded-2xl bg-slate-800/80 px-4 py-3.5 ${message.isOwnMessage ? 'lg:ml-auto' : ''}`}>
+                    <div className="mt-2 inline-block max-w-full rounded-2xl bg-slate-800/80 px-4 py-3.5">
                         {editingId === message.id ? (
                           <textarea
                             value={editingDraft}
@@ -925,7 +958,7 @@ export function ClientChatModal({
                                   <img
                                     src={message.attachmentUrl}
                                     alt={message.attachmentName || 'Attachment preview'}
-                                    className="block h-auto max-h-88 w-auto max-w-full object-contain"
+                                    className="block h-80 w-full object-cover object-center"
                                   />
                                   <div className="flex w-full min-w-0 items-center gap-2 border-t border-slate-700 px-3 py-2 text-xs text-sky-300">
                                     <AttachmentIcon className="h-4 w-4" />
@@ -995,7 +1028,7 @@ export function ClientChatModal({
                         )}
                       </div>
                     {message.isOwnMessage ? (
-                      <div className={`mt-2 flex items-center gap-3 text-xs text-sky-300 ${message.isOwnMessage ? 'lg:justify-end' : ''}`}>
+                      <div className={`mt-2 flex items-center gap-3 text-xs text-sky-300 ${message.isOwnMessage ? 'justify-end' : ''}`}>
                         {editingId === message.id ? (
                           <>
                             <button
@@ -1049,99 +1082,106 @@ export function ClientChatModal({
           )}
         </div>
 
-        <div className="border-t border-slate-800 px-5 py-4">
-          <div className="mb-2 flex min-h-[17px] items-center justify-end">
-            {typingLabel ? <span className="text-[11px] text-sky-300">{typingLabel}</span> : null}
-          </div>
-          {pendingAttachment ? (
-            <div className="mb-3 rounded-2xl border border-slate-700 bg-slate-800/80 p-3">
-              <div className="relative overflow-hidden rounded-2xl border border-slate-700 bg-slate-900/70">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setPendingAttachment((prev) => {
-                      if (prev?.previewUrl) {
-                        URL.revokeObjectURL(prev.previewUrl)
-                      }
-                      return null
-                    })
-                  }
-                  className="absolute right-3 top-3 z-10 rounded-full bg-slate-950/80 p-1.5 text-slate-300 transition hover:bg-slate-900 hover:text-white"
-                  aria-label="Remove attachment"
-                >
-                  <CloseIcon className="h-3.5 w-3.5" />
-                </button>
-
-                {pendingAttachment.isImage && pendingAttachment.previewUrl ? (
-                  <img
-                    src={pendingAttachment.previewUrl}
-                    alt={pendingAttachment.file.name}
-                    className="block h-auto max-h-88 w-auto max-w-full object-contain"
-                  />
-                ) : (
-                  <div className="flex h-56 flex-col items-center justify-center px-6 text-center">
-                    <div className="flex h-20 w-20 items-center justify-center rounded-2xl border border-slate-700 bg-slate-950 text-slate-400">
-                      <FileIcon className="h-9 w-9" />
-                    </div>
-                    <p className="mt-5 break-all text-2xl font-medium leading-tight text-slate-200">
-                      {pendingAttachment.file.name}
-                    </p>
-                    <p className="mt-2 text-base text-slate-400">
-                      No preview available
-                    </p>
-                    <p className="mt-1 text-sm text-slate-500">
-                      {formatAttachmentSize(pendingAttachment.file.size)} - {getAttachmentExtension(pendingAttachment.file.name)}
-                    </p>
-                  </div>
-                )}
+        {!permissionError ? (
+          <div className="border-t border-slate-800 px-5 py-4">
+            {typingLabel ? (
+              <div className="mb-2 flex items-center justify-end">
+                <span className="text-[11px] text-sky-300">{typingLabel}</span>
               </div>
-              {pendingAttachment.isImage ? (
-                <div className="mt-3 px-1">
-                  <p className="truncate text-xs font-semibold text-white">{pendingAttachment.file.name}</p>
-                  <p className="mt-1 text-[11px] text-slate-400">
-                    {formatAttachmentSize(pendingAttachment.file.size)} - {getAttachmentExtension(pendingAttachment.file.name)}
-                  </p>
+            ) : null}
+              {pendingAttachment ? (
+                <div className="mb-3 rounded-2xl border border-slate-700 bg-slate-800/80 p-3">
+                  <div className="relative overflow-hidden rounded-2xl border border-slate-700 bg-slate-900/70">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPendingAttachment((prev) => {
+                          if (prev?.previewUrl) {
+                            URL.revokeObjectURL(prev.previewUrl)
+                          }
+                          return null
+                        })
+                      }
+                      className="absolute right-3 top-3 z-10 rounded-full bg-slate-950/80 p-1.5 text-slate-300 transition hover:bg-slate-900 hover:text-white"
+                      aria-label="Remove attachment"
+                    >
+                      <CloseIcon className="h-3.5 w-3.5" />
+                    </button>
+
+                    {pendingAttachment.isImage && pendingAttachment.previewUrl ? (
+                      <img
+                        src={pendingAttachment.previewUrl}
+                        alt={pendingAttachment.file.name}
+                        className="block h-80 w-full object-cover object-center"
+                      />
+                    ) : (
+                      <div className="flex h-56 flex-col items-center justify-center px-6 text-center">
+                        <div className="flex h-20 w-20 items-center justify-center rounded-2xl border border-slate-700 bg-slate-950 text-slate-400">
+                          <FileIcon className="h-9 w-9" />
+                        </div>
+                        <p className="mt-5 break-all text-2xl font-medium leading-tight text-slate-200">
+                          {pendingAttachment.file.name}
+                        </p>
+                        <p className="mt-2 text-base text-slate-400">
+                          No preview available
+                        </p>
+                        <p className="mt-1 text-sm text-slate-500">
+                          {formatAttachmentSize(pendingAttachment.file.size)} - {getAttachmentExtension(pendingAttachment.file.name)}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  {pendingAttachment.isImage ? (
+                    <div className="mt-3 px-1">
+                      <p className="truncate text-xs font-semibold text-white">{pendingAttachment.file.name}</p>
+                      <p className="mt-1 text-[11px] text-slate-400">
+                        {formatAttachmentSize(pendingAttachment.file.size)} - {getAttachmentExtension(pendingAttachment.file.name)}
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
-            </div>
-          ) : null}
-          <div className="flex items-end gap-3">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading || sending}
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-700 bg-slate-800 text-slate-200 transition hover:border-slate-600 hover:bg-slate-700 disabled:opacity-50"
-              aria-label="Share file"
-            >
-              <AttachmentIcon className="h-4 w-4" />
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              className="hidden"
-              onChange={(e) => handleSelectAttachment(e.target.files?.[0] ?? null)}
-            />
-            <div className="min-w-0 flex-1">
-              <textarea
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                placeholder="Write a message..."
-                rows={2}
-                className="w-full resize-none rounded-2xl border border-slate-700 bg-slate-800/80 px-3.5 py-2.5 text-[13px] text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
-              />
-              {error ? <p className="mt-2 text-xs text-rose-300">{error}</p> : null}
-            </div>
-            <button
-              type="button"
-              onClick={() => void handleSendMessage()}
-              disabled={!canSend}
-              className="inline-flex h-10 shrink-0 items-center gap-2 rounded-full bg-orange-500 px-4 text-xs font-semibold text-white transition hover:bg-orange-600 disabled:opacity-50"
-            >
-              <SendIcon className="h-4 w-4" />
-              {sending || uploading ? 'Sending...' : 'Send'}
-            </button>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading || sending || Boolean(permissionError)}
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-700 bg-slate-800 text-slate-200 transition hover:border-slate-600 hover:bg-slate-700 disabled:opacity-50"
+                  aria-label="Share file"
+                >
+                  <AttachmentIcon className="h-4 w-4" />
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={(e) => handleSelectAttachment(e.target.files?.[0] ?? null)}
+                />
+                <div className="min-w-0 w-full flex">
+                  <textarea
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    placeholder={permissionError ? 'Only assigned handler can message' : 'Write a message...'}
+                    rows={2}
+                    disabled={Boolean(permissionError)}
+                    className="w-full resize-none rounded-2xl border border-slate-700 bg-slate-800/80 px-3.5 py-2.5 text-[13px] text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleSendMessage()}
+                  disabled={!canSend}
+                  className="inline-flex h-10 shrink-0 items-center gap-2 rounded-full bg-orange-500 px-4 text-xs font-semibold text-white transition hover:bg-orange-600 disabled:opacity-50"
+                >
+                  <SendIcon className="h-4 w-4" />
+                  {sending || uploading ? 'Sending...' : 'Send'}
+                </button>
+              </div>
+              {error ? (
+                <p className="mt-2 text-xs text-rose-300">{error}</p>
+              ) : null}
           </div>
-        </div>
+        ) : null}
       </div>
       <aside className="hidden w-64 border-l border-slate-800 bg-slate-950/50 p-5 lg:flex lg:flex-col">
         <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">

@@ -37,6 +37,7 @@ export function ClientChatPage() {
         subtitle={clientData.clientEmail}
         onClose={() => {}}
         variant="page"
+        pageHeightClass="h-[calc(100dvh-15rem)]"
       />
     </div>
   )

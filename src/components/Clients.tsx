@@ -17,6 +17,7 @@ type ClientRow = {
   name: string
   email: string
   handler_id?: string | null
+  handler_name?: string | null
   created_at?: string | null
 }
 
@@ -47,6 +48,7 @@ type ClientTableRow = {
   status: 'approved' | 'pending' | 'rejected'
   name: string
   email: string
+  handlerName?: string | null
   created_at?: string | null
   client?: ClientRow
   request?: RegistrationRequestRow
@@ -337,6 +339,33 @@ export default function Clients() {
         created_date?: string | null
       }> | null) ?? [])
 
+    const handlerIds = Array.from(
+      new Set(
+        allClientRows
+          .map((row) => (row.handler_id || '').trim())
+          .filter((id) => Boolean(id))
+      )
+    )
+
+    const handlerNameByAuthId = new Map<string, string>()
+    if (handlerIds.length > 0) {
+      const { data: handlersData, error: handlersError } = await supabase
+        .from('employees')
+        .select('auth_id, employee_name')
+        .in('auth_id', handlerIds)
+        .neq('isdeleted', true)
+
+      if (!handlersError) {
+        ;(((handlersData as Array<{ auth_id?: string | null; employee_name?: string | null }> | null) ?? [])).forEach(
+          (row) => {
+            const authId = (row.auth_id || '').trim()
+            if (!authId) return
+            handlerNameByAuthId.set(authId, row.employee_name?.trim() || 'Unassigned')
+          }
+        )
+      }
+    }
+
     const clientRows = allClientRows
       .filter((row) => isAdmin || isSuperAdmin || row.handler_id === currentUserAuthId)
       .filter((row) => (row.status || '').trim().toLowerCase() === 'approved')
@@ -345,6 +374,7 @@ export default function Clients() {
         name: row.name,
         email: row.email,
         handler_id: row.handler_id ?? null,
+        handler_name: row.handler_id ? handlerNameByAuthId.get(row.handler_id) || 'Unassigned' : 'Unassigned',
         created_at: row.created_date ?? null,
       }))
 
@@ -472,6 +502,7 @@ export default function Clients() {
       status: 'approved' as const,
       name: client.name,
       email: client.email,
+      handlerName: client.handler_name ?? 'Unassigned',
       created_at: client.created_at,
       client,
     })),
@@ -481,6 +512,7 @@ export default function Clients() {
       status: ((row.status || '').trim().toLowerCase() === 'rejected' ? 'rejected' : 'pending') as 'pending' | 'rejected',
       name: row.name,
       email: row.email,
+      handlerName: 'Unassigned',
       created_at: row.created_at,
       request: row,
     })),
@@ -495,6 +527,7 @@ export default function Clients() {
         (c) =>
         (c.name || '').toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
         (c.email || '').toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
+        (c.handlerName || '').toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
         c.status.toLowerCase().includes(searchQuery.trim().toLowerCase())
       )
     : tableRows
@@ -911,6 +944,32 @@ export default function Clients() {
     await handleRequestDecision(request.id, mode)
   }
 
+  if (chatTarget) {
+    return (
+      <div className={`${plusJakarta.className} w-full flex flex-col text-white`}>
+        <div className="mb-2 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => setChatTarget(null)}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900/85 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:border-slate-600 hover:bg-slate-800 hover:text-white"
+          >
+            <ChevronLeftIcon className="h-4 w-4" />
+            Back to clients
+          </button>
+        </div>
+
+        <ClientChatModal
+          open={Boolean(chatTarget)}
+          clientId={chatTarget.clientId}
+          title={chatTarget.title || 'Chat'}
+          subtitle={chatTarget.subtitle}
+          onClose={() => setChatTarget(null)}
+          variant="page"
+        />
+      </div>
+    )
+  }
+
   return (
     <div className={`${plusJakarta.className} w-full flex flex-col text-white`}>
       <div className="w-full pb-6">
@@ -984,7 +1043,7 @@ export default function Clients() {
       {/* Table */}
       <div className="w-full bg-slate-800/80 rounded-xl border border-slate-700 overflow-hidden">
         <div className="w-full overflow-x-auto scrollbar-thin">
-          <table className="w-full min-w-[760px] table-fixed">
+          <table className="w-full min-w-[900px] table-fixed">
             <thead>
               <tr className="bg-slate-900/50 border-b border-slate-700">
                 <th className="w-[72px] px-4 sm:px-6 py-4 text-left">
@@ -999,6 +1058,9 @@ export default function Clients() {
                 <th className="px-4 sm:px-6 py-4 text-left">
                   <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Status</span>
                 </th>
+                <th className="px-4 sm:px-6 py-4 text-left">
+                  <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Handler</span>
+                </th>
                 <th className="w-[96px] px-4 sm:px-6 py-4 text-center">
                   <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Message</span>
                 </th>
@@ -1012,13 +1074,13 @@ export default function Clients() {
             <tbody>
               {clientsLoading ? (
                 <tr>
-                  <td colSpan={canEditDelete ? 6 : 5} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
+                  <td colSpan={canEditDelete ? 7 : 6} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
                     Loading clients…
                   </td>
                 </tr>
               ) : paginatedClients.length === 0 ? (
                 <tr>
-                  <td colSpan={canEditDelete ? 6 : 5} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
+                  <td colSpan={canEditDelete ? 7 : 6} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
                     {searchQuery.trim() ? 'No matching clients' : 'No clients yet. Add a client to get started.'}
                   </td>
                 </tr>
@@ -1043,6 +1105,11 @@ export default function Clients() {
                         }`}
                       >
                         {requestActionLoadingId === getRowId(c) ? 'Updating...' : c.status}
+                      </span>
+                    </td>
+                    <td className="px-4 sm:px-6 py-4 min-w-0">
+                      <span className="text-slate-300 text-sm truncate block whitespace-nowrap" title={c.handlerName || 'Unassigned'}>
+                        {c.handlerName || 'Unassigned'}
                       </span>
                     </td>
                     <td className="w-[96px] px-4 sm:px-6 py-4 text-center">
@@ -1680,14 +1747,6 @@ export default function Clients() {
           </div>
         </>
       )}
-
-      <ClientChatModal
-        open={Boolean(chatTarget)}
-        clientId={chatTarget?.clientId ?? null}
-        title={chatTarget?.title ?? 'Chat'}
-        subtitle={chatTarget?.subtitle}
-        onClose={() => setChatTarget(null)}
-      />
     </div>
   )
 }
