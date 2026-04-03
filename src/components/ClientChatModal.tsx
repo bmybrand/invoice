@@ -352,6 +352,7 @@ export function ClientChatModal({
           const node = messagesRef.current
           if (!node) return
           node.scrollTop = node.scrollHeight
+          topAutoLoadArmedRef.current = false
         })
       }
       if (isOlder && olderLoadAnchorRef.current) {
@@ -408,12 +409,18 @@ export function ClientChatModal({
   useEffect(() => {
     if (!open || !clientId) return
 
+    shouldStickToBottomRef.current = true
+    topAutoLoadArmedRef.current = false
+    olderLoadAnchorRef.current = null
+    loadingOlderMessagesRef.current = false
+
     const cached = cacheKey ? clientChatCache.get(cacheKey) : null
     let cacheRestoreTimeoutId: number | null = null
     if (cached) {
       cacheRestoreTimeoutId = window.setTimeout(() => {
         loadedMessagesRef.current = cached.messages
         shouldStickToBottomRef.current = true
+        topAutoLoadArmedRef.current = false
         setMessages(cached.messages)
         setHeaderTitle(cached.headerTitle)
         setHeaderSubtitle(cached.headerSubtitle)
@@ -548,7 +555,6 @@ export function ClientChatModal({
       }
     }
 
-    handleScroll()
     node.addEventListener('scroll', handleScroll)
     return () => {
       node.removeEventListener('scroll', handleScroll)
