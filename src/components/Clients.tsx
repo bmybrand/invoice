@@ -153,19 +153,6 @@ function TrashIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
   )
 }
 
-function MessageIcon({ className = 'h-4 w-4' }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 10.5h9m-9 3h5.25" />
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M6.75 18.75h10.5A2.25 2.25 0 0019.5 16.5V7.5a2.25 2.25 0 00-2.25-2.25H6.75A2.25 2.25 0 004.5 7.5v12l2.25-2.25z"
-      />
-    </svg>
-  )
-}
-
 function ArchiveIcon({ className = 'h-4 w-4' }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1168,11 +1155,11 @@ export default function Clients() {
                         <button
                           type="button"
                           onClick={() => openChatInNewTab(c)}
-                          className="inline-flex rounded-lg p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-orange-400"
+                          className="inline-flex items-center rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-300 transition hover:border-slate-600 hover:bg-slate-700/50 hover:text-orange-300"
                           title={`Message ${c.name || c.email}`}
                           aria-label={`Message ${c.name || c.email}`}
                         >
-                          <MessageIcon className="h-4 w-4" />
+                          Chat
                         </button>
                       ) : (
                         <span className="text-xs text-slate-500">--</span>

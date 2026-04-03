@@ -26,6 +26,7 @@ type ChatMessage = {
   clientId: number
   senderAuthId: string
   senderName: string
+  senderAvatarUrl?: string | null
   message: string
   attachmentName: string
   attachmentUrl: string | null
@@ -143,6 +144,26 @@ function initials(name: string) {
   return (tokens[0]?.[0] || '') + (tokens[1]?.[0] || tokens[0]?.[1] || '')
 }
 
+function MessageAvatar({ name, imageUrl }: { name: string; imageUrl?: string | null }) {
+  const [imageFailed, setImageFailed] = useState(false)
+  const showImage = Boolean(imageUrl && !imageFailed)
+
+  return (
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-sky-900/70 text-sm font-bold text-white">
+      {showImage ? (
+        <img
+          src={imageUrl || ''}
+          alt={name}
+          className="h-full w-full object-cover"
+          onError={() => setImageFailed(true)}
+        />
+      ) : (
+        <span>{initials(name).toUpperCase()}</span>
+      )}
+    </div>
+  )
+}
+
 function formatStamp(value: string | null) {
   if (!value) return '--'
   const date = new Date(value)
@@ -254,6 +275,7 @@ export function ClientChatModal({
   const olderLoadAnchorRef = useRef<{ scrollTop: number; scrollHeight: number } | null>(null)
   const loadInFlightRef = useRef(false)
   const queuedOlderLoadRef = useRef(false)
+  const hasOlderMessagesRef = useRef(false)
 
   const mergeChatMessages = useCallback((existing: ChatMessage[], incoming: ChatMessage[]) => {
     const byId = new Map<number, ChatMessage>()
@@ -286,6 +308,11 @@ export function ClientChatModal({
       if (!open || !clientId) return
       const isBackground = options?.background ?? false
       const isOlder = options?.older ?? false
+      const stopOlderLoading = () => {
+        loadingOlderMessagesRef.current = false
+        setLoadingOlderMessages(false)
+      }
+      if (isOlder && !hasOlderMessagesRef.current) return
       if (loadInFlightRef.current) {
         if (isOlder) {
           queuedOlderLoadRef.current = true
@@ -313,6 +340,7 @@ export function ClientChatModal({
         const token = await getCurrentAuthToken()
         if (!token) {
           setLoading(false)
+          stopOlderLoading()
           setError('Authentication expired. Sign in again and try again.')
           return
         }
@@ -321,8 +349,10 @@ export function ClientChatModal({
         if (isOlder) {
           const oldestMessage = loadedMessagesRef.current.find((message) => message.id > 0)
           if (!oldestMessage?.id) {
-            loadingOlderMessagesRef.current = false
-            setLoadingOlderMessages(false)
+            hasOlderMessagesRef.current = false
+            setHasOlderMessages(false)
+            topAutoLoadArmedRef.current = false
+            stopOlderLoading()
             return
           }
           params.set('beforeId', String(oldestMessage.id))
@@ -337,13 +367,13 @@ export function ClientChatModal({
         const result = (await response.json().catch(() => null)) as ChatResponse & { error?: string }
 
         if (fetchVersion !== fetchVersionRef.current || mutationVersionAtStart !== mutationVersionRef.current) {
+          stopOlderLoading()
           return
         }
 
         if (!response.ok) {
           setLoading(false)
-          loadingOlderMessagesRef.current = false
-          setLoadingOlderMessages(false)
+          stopOlderLoading()
           setError(result?.error || 'Failed to load chat')
           return
         }
@@ -352,6 +382,13 @@ export function ClientChatModal({
         setPermissionError(canMessage ? null : 'Only the assigned handler can message this client')
 
         const serverMessages = (result.messages || []).filter((message) => !pendingDeletedIdsRef.current.has(message.id))
+        if (isOlder && serverMessages.length === 0) {
+          hasOlderMessagesRef.current = false
+          setHasOlderMessages(false)
+          topAutoLoadArmedRef.current = false
+          stopOlderLoading()
+          return
+        }
         const remainingOptimisticMessages = optimisticMessagesRef.current.filter(
           (optimisticMessage) =>
             !serverMessages.some((serverMessage) => matchesOptimisticMessage(serverMessage, optimisticMessage))
@@ -384,6 +421,7 @@ export function ClientChatModal({
           return next
         })
         setHasOlderMessages(Boolean(result.hasMore))
+        hasOlderMessagesRef.current = Boolean(result.hasMore)
         if (result.client?.name) {
           if (accountType === 'client') {
             setHeaderTitle(result.client.handlerName ? `Chat with ${result.client.handlerName}` : 'Chat')
@@ -394,8 +432,7 @@ export function ClientChatModal({
           }
         }
         setLoading(false)
-        loadingOlderMessagesRef.current = false
-        setLoadingOlderMessages(false)
+        stopOlderLoading()
         if (!result.hasMore) {
           topAutoLoadArmedRef.current = false
         }
@@ -423,14 +460,14 @@ export function ClientChatModal({
         }
       } catch {
         setLoading(false)
-        loadingOlderMessagesRef.current = false
-        setLoadingOlderMessages(false)
+        stopOlderLoading()
         setError('Failed to load chat')
       } finally {
+        stopOlderLoading()
         loadInFlightRef.current = false
         if (queuedOlderLoadRef.current && open && clientId) {
           queuedOlderLoadRef.current = false
-          if (!loadingOlderMessagesRef.current) {
+          if (!loadingOlderMessagesRef.current && hasOlderMessagesRef.current) {
             void loadMessages({ older: true })
           }
         }
@@ -492,6 +529,7 @@ export function ClientChatModal({
         setHeaderTitle(cached.headerTitle)
         setHeaderSubtitle(cached.headerSubtitle)
         setHasOlderMessages(cached.hasOlderMessages)
+        hasOlderMessagesRef.current = cached.hasOlderMessages
         setLoading(false)
       }, 0)
     }
@@ -957,9 +995,7 @@ export function ClientChatModal({
                   key={message.id}
                   className={`flex items-start gap-4 ${message.isOwnMessage ? 'flex-row-reverse' : ''}`}
                 >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-900/70 text-sm font-bold text-white">
-                    {initials(message.senderName).toUpperCase()}
-                  </div>
+                  <MessageAvatar name={message.senderName} imageUrl={message.senderAvatarUrl} />
                   <div className={`min-w-0 flex-1 ${message.isOwnMessage ? 'flex justify-end' : ''}`}>
                     <div className={`min-w-0 w-fit max-w-[min(92vw,44rem)] ${message.isOwnMessage ? 'flex flex-col items-end' : ''}`}>
                     <div className="flex flex-wrap items-center gap-2">

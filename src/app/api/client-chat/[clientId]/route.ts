@@ -18,6 +18,7 @@ type ClientChatRow = {
 }
 
 const CHAT_BUCKET = 'client-chat-files'
+const PROFILE_AVATAR_BUCKET = 'profile-images'
 
 function getParams(params: RouteParams | Promise<RouteParams>) {
   return params instanceof Promise ? params : Promise.resolve(params)
@@ -128,6 +129,31 @@ export async function GET(
     senderNameByAuthId.set(authId, row.name?.trim() || 'Client')
   })
 
+  const senderAvatarByAuthId = new Map<string, string>()
+  await Promise.all(
+    senderAuthIds.map(async (authId) => {
+      const senderFolder = authId.trim()
+      if (!senderFolder) return
+
+      const { data: files, error } = await actor.supabase.storage
+        .from(PROFILE_AVATAR_BUCKET)
+        .list(senderFolder, {
+          limit: 20,
+          sortBy: { column: 'created_at', order: 'desc' },
+        })
+
+      if (error || !files?.length) return
+      const avatarFile = files.find((file) => Boolean(file.name))
+      if (!avatarFile?.name) return
+
+      const avatarPath = `${senderFolder}/${avatarFile.name}`
+      const { data } = actor.supabase.storage.from(PROFILE_AVATAR_BUCKET).getPublicUrl(avatarPath)
+      if (data?.publicUrl) {
+        senderAvatarByAuthId.set(senderFolder, data.publicUrl)
+      }
+    })
+  )
+
   const messages = await Promise.all(
     rows.map(async (row) => {
       let attachmentUrl: string | null = null
@@ -142,6 +168,7 @@ export async function GET(
         clientId: row.client_id,
         senderAuthId: row.sender_auth_id,
         senderName: senderNameByAuthId.get(row.sender_auth_id) || 'User',
+        senderAvatarUrl: senderAvatarByAuthId.get(row.sender_auth_id) || null,
         message: row.message || '',
         attachmentName: row.attachment_name || '',
         attachmentUrl,

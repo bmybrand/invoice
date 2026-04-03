@@ -1109,11 +1109,8 @@ if (clientError) {
             </div>
 
             <div className="flex items-center gap-2 sm:gap-4">
-              {accountType === 'employee' && (() => {
-                const r = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '')
-                return r === 'admin' || r === 'superadmin'
-              })() && (
-                <NotificationsBell />
+              {accountType === 'employee' && (
+                <NotificationsBell accountType={accountType} displayRole={displayRole} />
               )}
               <button
                 type="button"
