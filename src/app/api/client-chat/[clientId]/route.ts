@@ -44,7 +44,7 @@ export async function GET(
     (actor.clientRow.handler_id || '').trim() === actor.user.id
 
   if (actor.accountType === 'client') {
-    await actor.supabase
+    void actor.supabase
       .from('client_chat_messages')
       .update({ read_by_client: true })
       .eq('client_id', clientId)
@@ -54,7 +54,7 @@ export async function GET(
   } else {
     const isAssignedHandler = (actor.clientRow.handler_id || '').trim() === actor.user.id
     if (isAssignedHandler) {
-      await actor.supabase
+      void actor.supabase
         .from('client_chat_messages')
         .update({ read_by_employee: true })
         .eq('client_id', clientId)

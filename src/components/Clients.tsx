@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { flushSync } from 'react-dom'
 import { Plus_Jakarta_Sans } from 'next/font/google'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useDashboardProfile } from '@/components/DashboardLayout'
 import { ClientChatModal } from '@/components/ClientChatModal'
@@ -182,6 +183,8 @@ function ArrowPathIcon({ className = 'h-4 w-4' }: { className?: string }) {
 }
 
 export default function Clients() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const { currentUserAuthId, displayRole } = useDashboardProfile()
   const scopedClientsCache = clientsTableCache?.ownerAuthId === currentUserAuthId ? clientsTableCache : null
   const [clients, setClients] = useState<ClientRow[]>(() => scopedClientsCache?.clients ?? [])
@@ -226,7 +229,19 @@ export default function Clients() {
   const [requestActionError, setRequestActionError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [requestActionConfirm, setRequestActionConfirm] = useState<RequestActionConfirmState | null>(null)
-  const [chatTarget, setChatTarget] = useState<ChatTarget | null>(null)
+  const [chatTarget, setChatTarget] = useState<ChatTarget | null>(() => {
+    const chatClientId = Number.parseInt(searchParams.get('chatClientId') || '', 10)
+    if (!Number.isFinite(chatClientId) || chatClientId < 1) return null
+
+    const chatTitle = (searchParams.get('chatTitle') || '').trim() || 'Chat'
+    const chatSubtitle = (searchParams.get('chatSubtitle') || '').trim()
+
+    return {
+      clientId: chatClientId,
+      title: chatTitle,
+      subtitle: chatSubtitle || undefined,
+    }
+  })
   const pendingClientDeleteIdsRef = useRef<Set<number>>(new Set())
   const suppressBackgroundRefreshRef = useRef(false)
   const refreshTimeoutRef = useRef<number | null>(null)
@@ -277,6 +292,7 @@ export default function Clients() {
   }, [])
 
   useEffect(() => {
+    if (chatTarget) return
     const timeoutId = window.setTimeout(() => {
       void fetchSalesAgents()
     }, 0)
@@ -284,7 +300,7 @@ export default function Clients() {
     return () => {
       window.clearTimeout(timeoutId)
     }
-  }, [fetchSalesAgents])
+  }, [chatTarget, fetchSalesAgents])
 
   const fetchClients = useCallback(async (options?: { background?: boolean }) => {
     const isBackgroundRefresh = options?.background ?? false
@@ -467,6 +483,7 @@ export default function Clients() {
   }, [currentUserAuthId, isAdmin, isSuperAdmin])
 
   useEffect(() => {
+    if (chatTarget) return
     const timeoutId = window.setTimeout(() => {
       void fetchClients()
     }, 0)
@@ -484,7 +501,7 @@ export default function Clients() {
         window.clearTimeout(refreshTimeoutRef.current)
       }
     }
-  }, [fetchClients])
+  }, [chatTarget, fetchClients])
 
   useEffect(() => {
     if (!showArchivedModal) return
@@ -944,13 +961,47 @@ export default function Clients() {
     await handleRequestDecision(request.id, mode)
   }
 
+  useEffect(() => {
+    const chatClientId = Number.parseInt(searchParams.get('chatClientId') || '', 10)
+    if (!Number.isFinite(chatClientId) || chatClientId < 1) return
+
+    const chatTitle = (searchParams.get('chatTitle') || '').trim() || 'Chat'
+    const chatSubtitle = (searchParams.get('chatSubtitle') || '').trim()
+
+    setChatTarget((prev) => {
+      if (prev?.clientId === chatClientId) return prev
+      return {
+        clientId: chatClientId,
+        title: chatTitle,
+        subtitle: chatSubtitle || undefined,
+      }
+    })
+  }, [searchParams])
+
+  function openChatInNewTab(row: ClientTableRow) {
+    const rowId = getRowId(row)
+    if (rowId == null) return
+
+    const params = new URLSearchParams({
+      chatClientId: String(rowId),
+      chatTitle: row.name || row.email || 'Chat',
+      chatSubtitle: row.email || '',
+    })
+
+    const nextUrl = `/dashboard/clients?${params.toString()}`
+    window.open(nextUrl, '_blank')
+  }
+
   if (chatTarget) {
     return (
       <div className={`${plusJakarta.className} w-full flex flex-col text-white`}>
         <div className="mb-2 flex items-center justify-between">
           <button
             type="button"
-            onClick={() => setChatTarget(null)}
+            onClick={() => {
+              setChatTarget(null)
+              router.replace('/dashboard/clients')
+            }}
             className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900/85 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:border-slate-600 hover:bg-slate-800 hover:text-white"
           >
             <ChevronLeftIcon className="h-4 w-4" />
@@ -1116,15 +1167,7 @@ export default function Clients() {
                       {c.email?.trim() ? (
                         <button
                           type="button"
-                          onClick={() => {
-                            const rowId = getRowId(c)
-                            if (rowId == null) return
-                            setChatTarget({
-                              clientId: rowId,
-                              title: c.name || c.email,
-                              subtitle: c.email || '',
-                            })
-                          }}
+                          onClick={() => openChatInNewTab(c)}
                           className="inline-flex rounded-lg p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-orange-400"
                           title={`Message ${c.name || c.email}`}
                           aria-label={`Message ${c.name || c.email}`}

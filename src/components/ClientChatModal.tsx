@@ -10,6 +10,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 const CHAT_REFRESH_MS = 3000
 const TYPING_STOP_DELAY_MS = 1800
+const OLDER_LOAD_TRIGGER_PX = 140
 
 type ChatCacheEntry = {
   messages: ChatMessage[]
@@ -232,6 +233,7 @@ export function ClientChatModal({
   const [invoices, setInvoices] = useState<ChatInvoice[]>([])
   const [invoicesLoading, setInvoicesLoading] = useState(false)
   const [hasOlderMessages, setHasOlderMessages] = useState(false)
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const messagesRef = useRef<HTMLDivElement | null>(null)
   const fetchVersionRef = useRef(0)
@@ -250,6 +252,8 @@ export function ClientChatModal({
   const loadingOlderMessagesRef = useRef(false)
   const topAutoLoadArmedRef = useRef(true)
   const olderLoadAnchorRef = useRef<{ scrollTop: number; scrollHeight: number } | null>(null)
+  const loadInFlightRef = useRef(false)
+  const queuedOlderLoadRef = useRef(false)
 
   const mergeChatMessages = useCallback((existing: ChatMessage[], incoming: ChatMessage[]) => {
     const byId = new Map<number, ChatMessage>()
@@ -282,10 +286,18 @@ export function ClientChatModal({
       if (!open || !clientId) return
       const isBackground = options?.background ?? false
       const isOlder = options?.older ?? false
+      if (loadInFlightRef.current) {
+        if (isOlder) {
+          queuedOlderLoadRef.current = true
+        }
+        return
+      }
+      loadInFlightRef.current = true
       const fetchVersion = ++fetchVersionRef.current
       const mutationVersionAtStart = mutationVersionRef.current
       if (isOlder) {
         loadingOlderMessagesRef.current = true
+        setLoadingOlderMessages(true)
         const node = messagesRef.current
         olderLoadAnchorRef.current = node
           ? { scrollTop: node.scrollTop, scrollHeight: node.scrollHeight }
@@ -297,113 +309,131 @@ export function ClientChatModal({
       }
       setError(null)
 
-      const token = await getCurrentAuthToken()
-      if (!token) {
-        setLoading(false)
-        setError('Authentication expired. Sign in again and try again.')
-        return
-      }
-
-      const params = new URLSearchParams({ limit: '4' })
-      if (isOlder) {
-        const oldestMessage = loadedMessagesRef.current.find((message) => message.id > 0)
-        if (!oldestMessage?.id) {
-          loadingOlderMessagesRef.current = false
+      try {
+        const token = await getCurrentAuthToken()
+        if (!token) {
+          setLoading(false)
+          setError('Authentication expired. Sign in again and try again.')
           return
         }
-        params.set('beforeId', String(oldestMessage.id))
-      }
 
-      const response = await fetch(`/api/client-chat/${clientId}?${params.toString()}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      })
-
-      const result = (await response.json().catch(() => null)) as ChatResponse & { error?: string }
-
-      if (fetchVersion !== fetchVersionRef.current || mutationVersionAtStart !== mutationVersionRef.current) {
-        return
-      }
-
-      if (!response.ok) {
-        setLoading(false)
-        loadingOlderMessagesRef.current = false
-        setError(result?.error || 'Failed to load chat')
-        return
-      }
-
-      const canMessage = result.canMessage !== false
-      setPermissionError(canMessage ? null : 'Only the assigned handler can message this client')
-
-      const serverMessages = (result.messages || []).filter((message) => !pendingDeletedIdsRef.current.has(message.id))
-      const remainingOptimisticMessages = optimisticMessagesRef.current.filter(
-        (optimisticMessage) =>
-          !serverMessages.some((serverMessage) => matchesOptimisticMessage(serverMessage, optimisticMessage))
-      )
-      optimisticMessagesRef.current = remainingOptimisticMessages
-
-      setMessages((prev) => {
+        const params = new URLSearchParams({ limit: '4' })
         if (isOlder) {
-          const next = mergeChatMessages(prev, serverMessages)
-          loadedMessagesRef.current = next
-          return next
-        }
-        const persistedMessages = prev.filter(
-          (message) => message.id > 0 && !pendingDeletedIdsRef.current.has(message.id)
-        )
-
-        // Replace the latest server window instead of union-merging it, so deletes
-        // made on another tab/user are reflected locally.
-        let nextBase: ChatMessage[]
-        if (serverMessages.length === 0) {
-          nextBase = []
-        } else {
-          const oldestServerId = Math.min(...serverMessages.map((message) => message.id))
-          const olderPersisted = persistedMessages.filter((message) => message.id < oldestServerId)
-          nextBase = mergeChatMessages(olderPersisted, serverMessages)
-        }
-
-        const next = mergeChatMessages(nextBase, remainingOptimisticMessages)
-        loadedMessagesRef.current = next
-        return next
-      })
-      setHasOlderMessages(Boolean(result.hasMore))
-      if (result.client?.name) {
-        if (accountType === 'client') {
-          setHeaderTitle(result.client.handlerName ? `Chat with ${result.client.handlerName}` : 'Chat')
-          setHeaderSubtitle(result.client.email || '')
-        } else {
-          setHeaderTitle(result.client.name)
-          setHeaderSubtitle(result.client.email || '')
-        }
-      }
-      setLoading(false)
-      loadingOlderMessagesRef.current = false
-      if (!result.hasMore) {
-        topAutoLoadArmedRef.current = false
-      }
-      if (!isOlder && !isBackground) {
-        shouldStickToBottomRef.current = true
-        window.requestAnimationFrame(() => {
-          const node = messagesRef.current
-          if (!node) return
-          node.scrollTop = node.scrollHeight
-          topAutoLoadArmedRef.current = false
-        })
-      }
-      if (isOlder && olderLoadAnchorRef.current) {
-        const anchor = olderLoadAnchorRef.current
-        olderLoadAnchorRef.current = null
-        window.requestAnimationFrame(() => {
-          const node = messagesRef.current
-          if (!node) return
-          const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight
-          if (distanceFromBottom < 80 || node.scrollTop > 80) {
+          const oldestMessage = loadedMessagesRef.current.find((message) => message.id > 0)
+          if (!oldestMessage?.id) {
+            loadingOlderMessagesRef.current = false
+            setLoadingOlderMessages(false)
             return
           }
-          node.scrollTop = node.scrollHeight - anchor.scrollHeight + anchor.scrollTop
+          params.set('beforeId', String(oldestMessage.id))
+        }
+
+        const response = await fetch(`/api/client-chat/${clientId}?${params.toString()}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         })
+
+        const result = (await response.json().catch(() => null)) as ChatResponse & { error?: string }
+
+        if (fetchVersion !== fetchVersionRef.current || mutationVersionAtStart !== mutationVersionRef.current) {
+          return
+        }
+
+        if (!response.ok) {
+          setLoading(false)
+          loadingOlderMessagesRef.current = false
+          setLoadingOlderMessages(false)
+          setError(result?.error || 'Failed to load chat')
+          return
+        }
+
+        const canMessage = result.canMessage !== false
+        setPermissionError(canMessage ? null : 'Only the assigned handler can message this client')
+
+        const serverMessages = (result.messages || []).filter((message) => !pendingDeletedIdsRef.current.has(message.id))
+        const remainingOptimisticMessages = optimisticMessagesRef.current.filter(
+          (optimisticMessage) =>
+            !serverMessages.some((serverMessage) => matchesOptimisticMessage(serverMessage, optimisticMessage))
+        )
+        optimisticMessagesRef.current = remainingOptimisticMessages
+
+        setMessages((prev) => {
+          if (isOlder) {
+            const next = mergeChatMessages(prev, serverMessages)
+            loadedMessagesRef.current = next
+            return next
+          }
+          const persistedMessages = prev.filter(
+            (message) => message.id > 0 && !pendingDeletedIdsRef.current.has(message.id)
+          )
+
+          // Replace the latest server window instead of union-merging it, so deletes
+          // made on another tab/user are reflected locally.
+          let nextBase: ChatMessage[]
+          if (serverMessages.length === 0) {
+            nextBase = []
+          } else {
+            const oldestServerId = Math.min(...serverMessages.map((message) => message.id))
+            const olderPersisted = persistedMessages.filter((message) => message.id < oldestServerId)
+            nextBase = mergeChatMessages(olderPersisted, serverMessages)
+          }
+
+          const next = mergeChatMessages(nextBase, remainingOptimisticMessages)
+          loadedMessagesRef.current = next
+          return next
+        })
+        setHasOlderMessages(Boolean(result.hasMore))
+        if (result.client?.name) {
+          if (accountType === 'client') {
+            setHeaderTitle(result.client.handlerName ? `Chat with ${result.client.handlerName}` : 'Chat')
+            setHeaderSubtitle(result.client.email || '')
+          } else {
+            setHeaderTitle(result.client.name)
+            setHeaderSubtitle(result.client.email || '')
+          }
+        }
+        setLoading(false)
+        loadingOlderMessagesRef.current = false
+        setLoadingOlderMessages(false)
+        if (!result.hasMore) {
+          topAutoLoadArmedRef.current = false
+        }
+        if (!isOlder && !isBackground) {
+          shouldStickToBottomRef.current = true
+          window.requestAnimationFrame(() => {
+            const node = messagesRef.current
+            if (!node) return
+            node.scrollTop = node.scrollHeight
+            topAutoLoadArmedRef.current = false
+          })
+        }
+        if (isOlder && olderLoadAnchorRef.current) {
+          const anchor = olderLoadAnchorRef.current
+          olderLoadAnchorRef.current = null
+          window.requestAnimationFrame(() => {
+            const node = messagesRef.current
+            if (!node) return
+            const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight
+            if (distanceFromBottom < 80 || node.scrollTop > 80) {
+              return
+            }
+            node.scrollTop = node.scrollHeight - anchor.scrollHeight + anchor.scrollTop
+          })
+        }
+      } catch {
+        setLoading(false)
+        loadingOlderMessagesRef.current = false
+        setLoadingOlderMessages(false)
+        setError('Failed to load chat')
+      } finally {
+        loadInFlightRef.current = false
+        if (queuedOlderLoadRef.current && open && clientId) {
+          queuedOlderLoadRef.current = false
+          if (!loadingOlderMessagesRef.current) {
+            void loadMessages({ older: true })
+          }
+        }
       }
     },
     [accountType, clientId, getCurrentAuthToken, mergeChatMessages, open]
@@ -578,11 +608,11 @@ export function ClientChatModal({
       ) {
         olderLoadAnchorRef.current = null
       }
-      if (node.scrollTop > 80) {
+      if (node.scrollTop > OLDER_LOAD_TRIGGER_PX * 2) {
         topAutoLoadArmedRef.current = true
       }
       if (
-        node.scrollTop < 40 &&
+        node.scrollTop < OLDER_LOAD_TRIGGER_PX &&
         hasOlderMessages &&
         !loadingOlderMessagesRef.current &&
         topAutoLoadArmedRef.current
@@ -919,6 +949,9 @@ export function ClientChatModal({
             <div className="py-12 text-center text-sm text-slate-400">No messages yet.</div>
           ) : (
             <div className="space-y-6">
+              {loadingOlderMessages ? (
+                <div className="text-center text-xs font-medium text-slate-400">Loading older messages...</div>
+              ) : null}
               {messages.map((message) => (
                 <div
                   key={message.id}
