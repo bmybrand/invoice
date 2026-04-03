@@ -11,6 +11,15 @@ const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 const CHAT_REFRESH_MS = 3000
 const TYPING_STOP_DELAY_MS = 1800
 
+type ChatCacheEntry = {
+  messages: ChatMessage[]
+  headerTitle: string
+  headerSubtitle: string
+  hasOlderMessages: boolean
+}
+
+const clientChatCache = new Map<string, ChatCacheEntry>()
+
 type ChatMessage = {
   id: number
   clientId: number
@@ -202,7 +211,6 @@ export function ClientChatModal({
   const [invoices, setInvoices] = useState<ChatInvoice[]>([])
   const [invoicesLoading, setInvoicesLoading] = useState(false)
   const [hasOlderMessages, setHasOlderMessages] = useState(false)
-  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const messagesRef = useRef<HTMLDivElement | null>(null)
   const fetchVersionRef = useRef(0)
@@ -219,6 +227,8 @@ export function ClientChatModal({
   const localMessageIdRef = useRef(-1)
   const shouldStickToBottomRef = useRef(true)
   const loadingOlderMessagesRef = useRef(false)
+  const topAutoLoadArmedRef = useRef(true)
+  const olderLoadAnchorRef = useRef<{ scrollTop: number; scrollHeight: number } | null>(null)
 
   const mergeChatMessages = useCallback((existing: ChatMessage[], incoming: ChatMessage[]) => {
     const byId = new Map<number, ChatMessage>()
@@ -230,6 +240,11 @@ export function ClientChatModal({
       return aTime - bTime
     })
   }, [])
+
+  const cacheKey = useMemo(
+    () => (currentUserAuthId && clientId ? `${currentUserAuthId}:${clientId}` : ''),
+    [clientId, currentUserAuthId]
+  )
 
   const getCurrentAuthToken = useCallback(async () => {
     const {
@@ -250,9 +265,14 @@ export function ClientChatModal({
       const mutationVersionAtStart = mutationVersionRef.current
       if (isOlder) {
         loadingOlderMessagesRef.current = true
-        setLoadingOlderMessages(true)
+        const node = messagesRef.current
+        olderLoadAnchorRef.current = node
+          ? { scrollTop: node.scrollTop, scrollHeight: node.scrollHeight }
+          : null
       } else if (!isBackground) {
-        setLoading(true)
+        if (!loadedMessagesRef.current.length) {
+          setLoading(true)
+        }
       }
       setError(null)
 
@@ -268,7 +288,6 @@ export function ClientChatModal({
         const oldestMessage = loadedMessagesRef.current.find((message) => message.id > 0)
         if (!oldestMessage?.id) {
           loadingOlderMessagesRef.current = false
-          setLoadingOlderMessages(false)
           return
         }
         params.set('beforeId', String(oldestMessage.id))
@@ -289,7 +308,6 @@ export function ClientChatModal({
       if (!response.ok) {
         setLoading(false)
         loadingOlderMessagesRef.current = false
-        setLoadingOlderMessages(false)
         setError(result?.error || 'Failed to load chat')
         return
       }
@@ -325,7 +343,30 @@ export function ClientChatModal({
       }
       setLoading(false)
       loadingOlderMessagesRef.current = false
-      setLoadingOlderMessages(false)
+      if (!result.hasMore) {
+        topAutoLoadArmedRef.current = false
+      }
+      if (!isOlder && !isBackground) {
+        shouldStickToBottomRef.current = true
+        window.requestAnimationFrame(() => {
+          const node = messagesRef.current
+          if (!node) return
+          node.scrollTop = node.scrollHeight
+        })
+      }
+      if (isOlder && olderLoadAnchorRef.current) {
+        const anchor = olderLoadAnchorRef.current
+        olderLoadAnchorRef.current = null
+        window.requestAnimationFrame(() => {
+          const node = messagesRef.current
+          if (!node) return
+          const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight
+          if (distanceFromBottom < 80 || node.scrollTop > 80) {
+            return
+          }
+          node.scrollTop = node.scrollHeight - anchor.scrollHeight + anchor.scrollTop
+        })
+      }
     },
     [accountType, clientId, getCurrentAuthToken, mergeChatMessages, open]
   )
@@ -367,6 +408,20 @@ export function ClientChatModal({
   useEffect(() => {
     if (!open || !clientId) return
 
+    const cached = cacheKey ? clientChatCache.get(cacheKey) : null
+    let cacheRestoreTimeoutId: number | null = null
+    if (cached) {
+      cacheRestoreTimeoutId = window.setTimeout(() => {
+        loadedMessagesRef.current = cached.messages
+        shouldStickToBottomRef.current = true
+        setMessages(cached.messages)
+        setHeaderTitle(cached.headerTitle)
+        setHeaderSubtitle(cached.headerSubtitle)
+        setHasOlderMessages(cached.hasOlderMessages)
+        setLoading(false)
+      }, 0)
+    }
+
     const timeoutId = window.setTimeout(() => {
       void loadMessages()
     }, 0)
@@ -382,13 +437,16 @@ export function ClientChatModal({
     }, CHAT_REFRESH_MS)
 
     return () => {
+      if (cacheRestoreTimeoutId !== null) {
+        window.clearTimeout(cacheRestoreTimeoutId)
+      }
       window.clearTimeout(timeoutId)
       window.clearInterval(intervalId)
       if (suppressRefreshTimeoutRef.current !== null) {
         window.clearTimeout(suppressRefreshTimeoutRef.current)
       }
     }
-  }, [clientId, loadMessages, open])
+  }, [cacheKey, clientId, loadMessages, open])
 
   useEffect(() => {
     if (!open || !typingChannelName) return
@@ -469,6 +527,25 @@ export function ClientChatModal({
     const handleScroll = () => {
       const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight
       shouldStickToBottomRef.current = distanceFromBottom < 80
+      if (
+        loadingOlderMessagesRef.current &&
+        olderLoadAnchorRef.current &&
+        node.scrollTop > olderLoadAnchorRef.current.scrollTop + 80
+      ) {
+        olderLoadAnchorRef.current = null
+      }
+      if (node.scrollTop > 80) {
+        topAutoLoadArmedRef.current = true
+      }
+      if (
+        node.scrollTop < 40 &&
+        hasOlderMessages &&
+        !loadingOlderMessagesRef.current &&
+        topAutoLoadArmedRef.current
+      ) {
+        topAutoLoadArmedRef.current = false
+        void loadMessages({ older: true })
+      }
     }
 
     handleScroll()
@@ -476,7 +553,7 @@ export function ClientChatModal({
     return () => {
       node.removeEventListener('scroll', handleScroll)
     }
-  }, [open])
+  }, [hasOlderMessages, loadMessages, open])
 
   useEffect(() => {
     if (!open) return
@@ -484,6 +561,16 @@ export function ClientChatModal({
     if (!node || !shouldStickToBottomRef.current) return
     node.scrollTop = node.scrollHeight
   }, [messages, open])
+
+  useEffect(() => {
+    if (!cacheKey) return
+    clientChatCache.set(cacheKey, {
+      messages,
+      headerTitle,
+      headerSubtitle,
+      hasOlderMessages,
+    })
+  }, [cacheKey, hasOlderMessages, headerSubtitle, headerTitle, messages])
 
   useEffect(() => {
     if (!open || !clientId) return
@@ -777,18 +864,6 @@ export function ClientChatModal({
         </div>
 
         <div ref={messagesRef} className="flex-1 overflow-y-auto px-5 py-5">
-          {hasOlderMessages ? (
-            <div className="mb-4 flex justify-center">
-              <button
-                type="button"
-                onClick={() => void loadMessages({ older: true })}
-                disabled={loadingOlderMessages}
-                className="rounded-full border border-slate-700 bg-slate-800/80 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:bg-slate-700 disabled:opacity-50"
-              >
-                {loadingOlderMessages ? 'Loading older...' : 'Load older messages'}
-              </button>
-            </div>
-          ) : null}
           {loading ? (
             <div className="py-12 text-center text-sm text-slate-400">Loading chat...</div>
           ) : messages.length === 0 ? (
