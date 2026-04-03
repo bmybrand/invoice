@@ -101,7 +101,9 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
   const isUserBell = accountType === 'employee' && normalizedRole === 'user'
   const shouldShowBell = isAdminBell || isUserBell
 
-  const maybeNotifyDesktop = useCallback((nextMessages: MessageNotification[]) => {
+  const maybeNotifyDesktop = useCallback((nextMessages: MessageNotification[], options?: { force?: boolean }) => {
+    const force = options?.force ?? false
+
     if (!shouldShowBell || typeof window === 'undefined' || !('Notification' in window)) {
       previousMessageIdByClientRef.current = new Map(
         nextMessages
@@ -118,7 +120,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
         .map((item) => [item.clientId, Number(item.latestMessageId)])
     )
 
-    if (!desktopNotificationsPrimedRef.current) {
+    if (!desktopNotificationsPrimedRef.current && !force) {
       previousMessageIdByClientRef.current = nextIds
       desktopNotificationsPrimedRef.current = true
       return
@@ -136,6 +138,16 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
       const previousMessageId = previousMessageIdByClientRef.current.get(item.clientId) ?? 0
       if (latestMessageId <= previousMessageId) continue
 
+      console.log('desktop notification fired', {
+        clientId: item.clientId,
+        latestMessageId,
+        previousMessageId,
+        clientName: item.clientName,
+        latestMessage: item.latestMessage,
+        permission: Notification.permission,
+        force,
+      })
+
       const notification = new Notification(`New message from ${item.clientName}`, {
         body: item.latestMessage || item.clientEmail || 'Open chat to reply.',
         tag: `client-chat-${item.clientId}-${latestMessageId}`,
@@ -149,6 +161,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
     }
 
     previousMessageIdByClientRef.current = nextIds
+    desktopNotificationsPrimedRef.current = true
   }, [router, shouldShowBell])
 
   const getAccessToken = useCallback(async () => {
@@ -159,7 +172,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
     return session?.access_token?.trim() || ''
   }, [])
 
-  const fetchNotifications = useCallback(async (options?: { showLoading?: boolean }) => {
+  const fetchNotifications = useCallback(async (options?: { showLoading?: boolean; forceDesktopNotify?: boolean }) => {
     if (!shouldShowBell) return
 
     if (isFetchingRef.current) {
@@ -185,6 +198,12 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
     }
 
     try {
+      console.log('fetchNotifications:start', {
+        isAdminBell,
+        forceDesktopNotify: options?.forceDesktopNotify ?? false,
+        permission: typeof Notification !== 'undefined' ? Notification.permission : 'unsupported',
+      })
+
       if (isAdminBell) {
         const [requestsRes, messagesRes] = await Promise.all([
           fetch('/api/clients/registration-requests', {
@@ -201,8 +220,13 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
         const messagesJson = messagesRes.ok ? await messagesRes.json() : null
         setRequests(requestsJson?.requests ?? [])
         const nextMessages = messagesJson?.items ?? []
+        console.log('fetchNotifications:adminResult', {
+          requests: (requestsJson?.requests ?? []).length,
+          messages: nextMessages.length,
+          latestMessageIds: nextMessages.map((item: MessageNotification) => item.latestMessageId ?? null),
+        })
         setMessages(nextMessages)
-        maybeNotifyDesktop(nextMessages)
+        maybeNotifyDesktop(nextMessages, { force: options?.forceDesktopNotify })
       } else {
         const res = await fetch('/api/client-chat/notifications', {
           headers: { Authorization: `Bearer ${token}` },
@@ -212,8 +236,12 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
 
         const json = await res.json()
         const nextMessages = json.items ?? []
+        console.log('fetchNotifications:userResult', {
+          messages: nextMessages.length,
+          latestMessageIds: nextMessages.map((item: MessageNotification) => item.latestMessageId ?? null),
+        })
         setMessages(nextMessages)
-        maybeNotifyDesktop(nextMessages)
+        maybeNotifyDesktop(nextMessages, { force: options?.forceDesktopNotify })
         setRequests([])
       }
       hasLoadedRef.current = true
@@ -265,28 +293,57 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
       }
     }, 5000)
 
-    const channel = supabase
-      .channel(isAdminBell ? 'admin-registration-requests' : 'handler-chat-notifications')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: isAdminBell ? 'clients' : 'client_chat_messages',
-        },
-        () => {
-          void fetchNotifications()
-        }
+    const channels = [
+      supabase
+        .channel(isAdminBell ? 'admin-registration-requests' : 'handler-chat-notifications')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'client_chat_messages',
+          },
+          (payload) => {
+            console.log('notificationsBell:chatEvent', payload.eventType, payload)
+            void fetchNotifications({
+              forceDesktopNotify: payload.eventType === 'INSERT',
+            })
+          }
+        ),
+    ]
+
+    if (isAdminBell) {
+      channels.push(
+        supabase
+          .channel('admin-registration-requests-clients')
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'clients',
+            },
+            () => {
+              console.log('notificationsBell:clientEvent')
+              void fetchNotifications()
+            }
+          )
       )
-      .subscribe((status) => {
+    }
+
+    channels.forEach((channel) => {
+      channel.subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           void fetchNotifications()
         }
       })
+    })
 
     return () => {
       window.clearInterval(intervalId)
-      void supabase.removeChannel(channel)
+      channels.forEach((channel) => {
+        void supabase.removeChannel(channel)
+      })
     }
   }, [fetchNotifications, isAdminBell, shouldShowBell])
 
