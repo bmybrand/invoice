@@ -1,5 +1,10 @@
+import { Suspense } from 'react'
 import Clients from '@/components/Clients'
 
 export default function ClientsPage() {
-  return <Clients />
+  return (
+    <Suspense fallback={null}>
+      <Clients />
+    </Suspense>
+  )
 }
