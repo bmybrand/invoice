@@ -109,6 +109,13 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
       return
     }
 
+    const shouldSurfaceDesktopNotification =
+      document.visibilityState !== 'visible' || !document.hasFocus()
+
+    if (!shouldSurfaceDesktopNotification) {
+      return
+    }
+
     for (const item of nextMessages) {
       const latestMessageId = Number(item.latestMessageId ?? 0)
       if (!Number.isFinite(latestMessageId) || latestMessageId <= 0) continue
