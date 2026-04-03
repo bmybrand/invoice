@@ -325,9 +325,22 @@ export function ClientChatModal({
           loadedMessagesRef.current = next
           return next
         }
-        const persistedMessages = prev.filter((message) => message.id > 0)
-        const mergedPersisted = mergeChatMessages(persistedMessages, serverMessages)
-        const next = mergeChatMessages(mergedPersisted, remainingOptimisticMessages)
+        const persistedMessages = prev.filter(
+          (message) => message.id > 0 && !pendingDeletedIdsRef.current.has(message.id)
+        )
+
+        // Replace the latest server window instead of union-merging it, so deletes
+        // made on another tab/user are reflected locally.
+        let nextBase: ChatMessage[]
+        if (serverMessages.length === 0) {
+          nextBase = []
+        } else {
+          const oldestServerId = Math.min(...serverMessages.map((message) => message.id))
+          const olderPersisted = persistedMessages.filter((message) => message.id < oldestServerId)
+          nextBase = mergeChatMessages(olderPersisted, serverMessages)
+        }
+
+        const next = mergeChatMessages(nextBase, remainingOptimisticMessages)
         loadedMessagesRef.current = next
         return next
       })
