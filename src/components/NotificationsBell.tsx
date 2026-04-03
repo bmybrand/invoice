@@ -101,7 +101,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
   const shouldShowBell = isAdminBell || isUserBell
 
   const maybeNotifyDesktop = useCallback((nextMessages: MessageNotification[]) => {
-    if (!isUserBell || typeof window === 'undefined' || !('Notification' in window)) {
+    if (!shouldShowBell || typeof window === 'undefined' || !('Notification' in window)) {
       previousMessageCountByClientRef.current = new Map(nextMessages.map((item) => [item.clientId, item.count]))
       desktopNotificationsPrimedRef.current = true
       return
@@ -145,7 +145,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
     }
 
     previousMessageCountByClientRef.current = nextCounts
-  }, [isUserBell, router])
+  }, [router, shouldShowBell])
 
   const getAccessToken = useCallback(async () => {
     const {
@@ -229,7 +229,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
   }, [getAccessToken, isAdminBell, maybeNotifyDesktop, shouldShowBell])
 
   useEffect(() => {
-    if (!isUserBell || typeof window === 'undefined' || !('Notification' in window)) return
+    if (!shouldShowBell || typeof window === 'undefined' || !('Notification' in window)) return
     if (Notification.permission !== 'default') return
 
     const requestPermission = async () => {
@@ -247,7 +247,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
     return () => {
       window.clearTimeout(timeoutId)
     }
-  }, [isUserBell])
+  }, [shouldShowBell])
 
   useEffect(() => {
     if (!shouldShowBell) return
