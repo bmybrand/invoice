@@ -92,11 +92,60 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
   const hasLoadedRef = useRef(false)
   const isFetchingRef = useRef(false)
   const queuedRefreshRef = useRef(false)
+  const desktopNotificationsPrimedRef = useRef(false)
+  const previousMessageCountByClientRef = useRef<Map<number, number>>(new Map())
 
   const normalizedRole = useMemo(() => normalizeRole(displayRole || ''), [displayRole])
   const isAdminBell = accountType === 'employee' && (normalizedRole === 'admin' || normalizedRole === 'superadmin')
   const isUserBell = accountType === 'employee' && normalizedRole === 'user'
   const shouldShowBell = isAdminBell || isUserBell
+
+  const maybeNotifyDesktop = useCallback((nextMessages: MessageNotification[]) => {
+    if (!isUserBell || typeof window === 'undefined' || !('Notification' in window)) {
+      previousMessageCountByClientRef.current = new Map(nextMessages.map((item) => [item.clientId, item.count]))
+      desktopNotificationsPrimedRef.current = true
+      return
+    }
+
+    const nextCounts = new Map(nextMessages.map((item) => [item.clientId, item.count]))
+
+    if (!desktopNotificationsPrimedRef.current) {
+      previousMessageCountByClientRef.current = nextCounts
+      desktopNotificationsPrimedRef.current = true
+      return
+    }
+
+    if (Notification.permission !== 'granted') {
+      previousMessageCountByClientRef.current = nextCounts
+      return
+    }
+
+    const shouldSurfaceSystemNotification =
+      document.visibilityState !== 'visible' || !document.hasFocus()
+
+    if (!shouldSurfaceSystemNotification) {
+      previousMessageCountByClientRef.current = nextCounts
+      return
+    }
+
+    for (const item of nextMessages) {
+      const previousCount = previousMessageCountByClientRef.current.get(item.clientId) ?? 0
+      if (item.count <= previousCount) continue
+
+      const notification = new Notification(`New message from ${item.clientName}`, {
+        body: item.latestMessage || item.clientEmail || 'Open chat to reply.',
+        tag: `client-chat-${item.clientId}`,
+      })
+
+      notification.onclick = () => {
+        window.focus()
+        router.push('/dashboard/clients')
+        notification.close()
+      }
+    }
+
+    previousMessageCountByClientRef.current = nextCounts
+  }, [isUserBell, router])
 
   const getAccessToken = useCallback(async () => {
     const {
@@ -147,7 +196,8 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
         const requestsJson = requestsRes.ok ? await requestsRes.json() : null
         const messagesJson = messagesRes.ok ? await messagesRes.json() : null
         setRequests(requestsJson?.requests ?? [])
-        setMessages(messagesJson?.items ?? [])
+        const nextMessages = messagesJson?.items ?? []
+        setMessages(nextMessages)
       } else {
         const res = await fetch('/api/client-chat/notifications', {
           headers: { Authorization: `Bearer ${token}` },
@@ -156,7 +206,9 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
         if (!res.ok) return
 
         const json = await res.json()
-        setMessages(json.items ?? [])
+        const nextMessages = json.items ?? []
+        setMessages(nextMessages)
+        maybeNotifyDesktop(nextMessages)
         setRequests([])
       }
       hasLoadedRef.current = true
@@ -174,7 +226,28 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
         void fetchNotifications()
       }
     }
-  }, [getAccessToken, isAdminBell, shouldShowBell])
+  }, [getAccessToken, isAdminBell, maybeNotifyDesktop, shouldShowBell])
+
+  useEffect(() => {
+    if (!isUserBell || typeof window === 'undefined' || !('Notification' in window)) return
+    if (Notification.permission !== 'default') return
+
+    const requestPermission = async () => {
+      try {
+        await Notification.requestPermission()
+      } catch {
+        // Ignore permission prompt failures.
+      }
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void requestPermission()
+    }, 1200)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [isUserBell])
 
   useEffect(() => {
     if (!shouldShowBell) return
