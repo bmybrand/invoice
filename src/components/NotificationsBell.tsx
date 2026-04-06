@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import type { RealtimeChannel } from '@supabase/supabase-js'
 
 type NotificationsBellProps = {
   accountType: 'employee' | 'client' | null
@@ -253,7 +254,11 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
       const token = await getAccessToken()
       if (!token || Notification.permission !== 'granted') return
 
-      await navigator.serviceWorker.register('/sw.js')
+      // Ensure the browser fetches the newest service worker script instead of a cached copy.
+      const registration = await navigator.serviceWorker.register('/sw.js', {
+        updateViaCache: 'none',
+      })
+      await registration.update()
       const readyRegistration = await navigator.serviceWorker.ready
       if (cancelled) return
 
@@ -300,7 +305,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
       }
     }, 5000)
 
-    const channels = []
+    const channels: RealtimeChannel[] = []
 
     if (isUserBell) {
       channels.push(

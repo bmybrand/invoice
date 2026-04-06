@@ -920,7 +920,7 @@ export function ClientChatModal({
     setDraft('')
     setPendingAttachment(null)
 
-    const prepareResponse = await fetch(`/api/client-chat/${clientId}/attachments`, {
+    const prepareResponse = await fetch(`/api/client-chat/${clientId}/attachments-v2`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -973,7 +973,7 @@ export function ClientChatModal({
       return
     }
 
-    const completeResponse = await fetch(`/api/client-chat/${clientId}/attachments`, {
+    const completeResponse = await fetch(`/api/client-chat/${clientId}/attachments-v2`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
