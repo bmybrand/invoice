@@ -11,6 +11,7 @@ const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 const CHAT_REFRESH_MS = 3000
 const TYPING_STOP_DELAY_MS = 1800
 const OLDER_LOAD_TRIGGER_PX = 140
+const CHAT_BUCKET = 'client-chat-files'
 
 type ChatCacheEntry = {
   messages: ChatMessage[]
@@ -144,12 +145,38 @@ function initials(name: string) {
   return (tokens[0]?.[0] || '') + (tokens[1]?.[0] || tokens[0]?.[1] || '')
 }
 
+function avatarColorsFromName(name: string) {
+  const normalized = name.trim().toLowerCase() || 'user'
+  let hash = 0
+
+  for (let index = 0; index < normalized.length; index += 1) {
+    hash = normalized.charCodeAt(index) + ((hash << 5) - hash)
+  }
+
+  const hue = Math.abs(hash) % 360
+  const background = `hsl(${hue} 56% 34%)`
+  const border = `hsl(${hue} 62% 46%)`
+
+  return { background, border }
+}
+
 function MessageAvatar({ name, imageUrl }: { name: string; imageUrl?: string | null }) {
   const [imageFailed, setImageFailed] = useState(false)
   const showImage = Boolean(imageUrl && !imageFailed)
+  const colors = useMemo(() => avatarColorsFromName(name), [name])
 
   return (
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-sky-900/70 text-sm font-bold text-white">
+    <div
+      className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border text-sm font-bold text-white"
+      style={
+        showImage
+          ? undefined
+          : {
+              backgroundColor: colors.background,
+              borderColor: colors.border,
+            }
+      }
+    >
       {showImage ? (
         <img
           src={imageUrl || ''}
@@ -893,24 +920,25 @@ export function ClientChatModal({
     setDraft('')
     setPendingAttachment(null)
 
-    const formData = new FormData()
-    formData.append('file', file)
-    if (attachmentMessage) {
-      formData.append('message', attachmentMessage)
-    }
-
-    const response = await fetch(`/api/client-chat/${clientId}/attachments`, {
+    const prepareResponse = await fetch(`/api/client-chat/${clientId}/attachments`, {
       method: 'POST',
       headers: {
+        'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: formData,
+      body: JSON.stringify({
+        operation: 'prepare',
+        fileName: file.name,
+      }),
     })
 
-    const result = (await response.json().catch(() => null)) as { error?: string }
-    setUploading(false)
+    const prepareResult = (await prepareResponse.json().catch(() => null)) as {
+      error?: string
+      filePath?: string
+      token?: string
+    } | null
 
-    if (!response.ok) {
+    if (!prepareResponse.ok || !prepareResult?.filePath || !prepareResult.token) {
       optimisticMessagesRef.current = optimisticMessagesRef.current.filter((message) => message.id !== optimisticMessage.id)
       setMessages((prev) => prev.filter((message) => message.id !== optimisticMessage.id))
       setDraft(attachmentMessage)
@@ -919,7 +947,59 @@ export function ClientChatModal({
         previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
         isImage: file.type.startsWith('image/'),
       })
-      setError(result?.error || 'Failed to share file')
+      setUploading(false)
+      setError(prepareResult?.error || 'Failed to prepare file upload')
+      return
+    }
+
+    const uploadResult = await supabase.storage
+      .from(CHAT_BUCKET)
+      .uploadToSignedUrl(prepareResult.filePath, prepareResult.token, file, {
+        contentType: file.type || 'application/octet-stream',
+        upsert: false,
+      })
+
+    if (uploadResult.error) {
+      optimisticMessagesRef.current = optimisticMessagesRef.current.filter((message) => message.id !== optimisticMessage.id)
+      setMessages((prev) => prev.filter((message) => message.id !== optimisticMessage.id))
+      setDraft(attachmentMessage)
+      setPendingAttachment({
+        file,
+        previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
+        isImage: file.type.startsWith('image/'),
+      })
+      setUploading(false)
+      setError(uploadResult.error.message || 'Failed to upload file')
+      return
+    }
+
+    const completeResponse = await fetch(`/api/client-chat/${clientId}/attachments`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        operation: 'complete',
+        filePath: prepareResult.filePath,
+        attachmentName: file.name,
+        message: attachmentMessage,
+      }),
+    })
+
+    const completeResult = (await completeResponse.json().catch(() => null)) as { error?: string } | null
+    setUploading(false)
+
+    if (!completeResponse.ok) {
+      optimisticMessagesRef.current = optimisticMessagesRef.current.filter((message) => message.id !== optimisticMessage.id)
+      setMessages((prev) => prev.filter((message) => message.id !== optimisticMessage.id))
+      setDraft(attachmentMessage)
+      setPendingAttachment({
+        file,
+        previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
+        isImage: file.type.startsWith('image/'),
+      })
+      setError(completeResult?.error || 'Failed to share file')
       return
     }
 
@@ -1096,7 +1176,7 @@ export function ClientChatModal({
                           </>
                         )}
                       </div>
-                    {message.isOwnMessage ? (
+                    {message.senderAuthId === currentUserAuthId ? (
                       <div className={`mt-2 flex items-center gap-3 text-xs text-sky-300 ${message.isOwnMessage ? 'justify-end' : ''}`}>
                         {editingId === message.id ? (
                           <>

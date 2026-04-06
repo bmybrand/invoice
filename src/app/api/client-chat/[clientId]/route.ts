@@ -175,7 +175,12 @@ export async function GET(
         attachmentUrl,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
-        isOwnMessage: row.sender_auth_id === actor.user.id,
+        isOwnMessage:
+          actor.accountType === 'employee' &&
+          (actor.clientRow.handler_id || '').trim() &&
+          actor.user.id !== (actor.clientRow.handler_id || '').trim()
+            ? row.sender_auth_id === (actor.clientRow.handler_id || '').trim()
+            : row.sender_auth_id === actor.user.id,
         seenByRecipient:
           row.sender_auth_id === actor.clientRow.auth_id
             ? Boolean(row.read_by_employee)
