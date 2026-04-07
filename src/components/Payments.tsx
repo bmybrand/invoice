@@ -260,6 +260,8 @@ export default function Payments() {
   const [downloadToDate, setDownloadToDate] = useState('')
   const [modalPreviewVisibleCount, setModalPreviewVisibleCount] = useState(MODAL_PREVIEW_INITIAL)
   const [bulkRenderPayload, setBulkRenderPayload] = useState<BulkRenderPayload | null>(null)
+  const [downloadProgress, setDownloadProgress] = useState(0)
+  const [downloadStatusMessage, setDownloadStatusMessage] = useState('')
 
   useEffect(() => {
     let active = true
@@ -599,11 +601,27 @@ export default function Payments() {
   useEffect(() => {
     if (showBulkDownloadModal) {
       setModalPreviewVisibleCount(MODAL_PREVIEW_INITIAL)
+      setDownloadProgress(0)
+      setDownloadStatusMessage('')
     }
   }, [downloadMode, downloadFromDate, downloadToDate, quickDay, quickDownloadType, quickMonth, quickWeek, quickYear, selectedPaidPayments.length, showBulkDownloadModal])
 
   function showMoreModalCandidates() {
     setModalPreviewVisibleCount((prev) => Math.min(prev + MODAL_PREVIEW_STEP, modalDownloadCandidates.length))
+  }
+
+  function getProgressMessage(progress: number): string {
+    if (progress >= 100) return 'Done!'
+    if (progress >= 85) return 'Almost there, we are real close.'
+    if (progress >= 50) return 'Half way there, hang on.'
+    return 'We are downloading your files.'
+  }
+
+  function updateDownloadProgress(step: number, total: number) {
+    const safeTotal = Math.max(1, total)
+    const percent = Math.min(100, Math.max(1, Math.round((step / safeTotal) * 100)))
+    setDownloadProgress(percent)
+    setDownloadStatusMessage(getProgressMessage(percent))
   }
 
   function triggerBrowserDownload(blob: Blob, filename: string) {
@@ -798,36 +816,51 @@ export default function Payments() {
   async function handleBulkDownloadSelected() {
     if (modalDownloadCandidates.length === 0 || bulkDownloading) return
     setBulkDownloading(true)
+    setDownloadProgress(1)
+    setDownloadStatusMessage('We are downloading your files.')
 
     try {
       const invoiceIds = Array.from(
         new Set(modalDownloadCandidates.map((payment) => payment.invoiceId).filter((id): id is number => id != null))
       )
+      const totalSteps = Math.max(3, modalDownloadCandidates.length + 2)
+      let completedSteps = 0
+
       const invoiceMap = await mapInvoicesForBulk(invoiceIds)
+      completedSteps += 1
+      updateDownloadProgress(completedSteps, totalSteps)
 
       if (modalDownloadCandidates.length > 1) {
         const zip = new JSZip()
 
         for (const payment of modalDownloadCandidates) {
-          if (payment.invoiceId == null) continue
-          const payload = invoiceMap.get(payment.invoiceId)
-          if (!payload) continue
+          if (payment.invoiceId != null) {
+            const payload = invoiceMap.get(payment.invoiceId)
 
-          setBulkRenderPayload(payload)
-          await new Promise((resolve) => window.setTimeout(resolve, 120))
+            if (payload) {
+              setBulkRenderPayload(payload)
+              await new Promise((resolve) => window.setTimeout(resolve, 120))
 
-          const root = document.getElementById(BULK_PRINT_ROOT_ID)
-          if (!root) continue
+              const root = document.getElementById(BULK_PRINT_ROOT_ID)
+              if (root) {
+                const brand = sanitizeFileName(payload.invoice.brand_name || payment.source || 'invoice') || 'invoice'
+                const pdfName = `${brand}-${formatInvoiceCode(payload.invoice.id)}.pdf`
+                const pdfBlob = await renderRootAsPdfBlob(root, pdfName)
+                zip.file(pdfName, pdfBlob)
+              }
+            }
+          }
 
-          const brand = sanitizeFileName(payload.invoice.brand_name || payment.source || 'invoice') || 'invoice'
-          const pdfName = `${brand}-${formatInvoiceCode(payload.invoice.id)}.pdf`
-          const pdfBlob = await renderRootAsPdfBlob(root, pdfName)
-          zip.file(pdfName, pdfBlob)
+          completedSteps += 1
+          updateDownloadProgress(completedSteps, totalSteps)
         }
 
         const zipBlob = await zip.generateAsync({ type: 'blob' })
         const zipName = `invoice-download-${new Date().toISOString().slice(0, 10)}.zip`
         triggerBrowserDownload(zipBlob, zipName)
+
+        completedSteps += 1
+        updateDownloadProgress(completedSteps, totalSteps)
       } else {
         const payment = modalDownloadCandidates[0]
         if (payment?.invoiceId != null) {
@@ -845,15 +878,23 @@ export default function Payments() {
             }
           }
         }
+
+        completedSteps += 2
+        updateDownloadProgress(completedSteps, totalSteps)
       }
+
+      setDownloadProgress(100)
+      setDownloadStatusMessage('Done!')
+      await new Promise((resolve) => window.setTimeout(resolve, 500))
     } catch (error) {
       console.error('Bulk download failed', error)
     } finally {
       setBulkRenderPayload(null)
+      setBulkDownloading(false)
+      setShowBulkDownloadModal(false)
+      setDownloadProgress(0)
+      setDownloadStatusMessage('')
     }
-
-    setBulkDownloading(false)
-    setShowBulkDownloadModal(false)
   }
 
   return (
@@ -1343,34 +1384,48 @@ export default function Payments() {
                 )}
               </div>
 
-              <div className="flex items-center justify-between border-t border-slate-700 px-5 py-4">
-                <p className="text-sm text-slate-400">
-                  {modalDownloadCandidates.length} paid invoice{modalDownloadCandidates.length === 1 ? '' : 's'} ready
-                </p>
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowBulkDownloadModal(false)}
-                    className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleBulkDownloadSelected()}
-                    disabled={modalDownloadCandidates.length === 0 || bulkDownloading}
-                    className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {bulkDownloading
-                      ? modalDownloadCandidates.length > 1
-                        ? 'Preparing ZIP...'
-                        : 'Preparing PDF...'
-                      : downloadMode === 'selected'
-                        ? 'Download Selected'
-                        : quickDownloadType === 'all'
-                          ? 'Download All'
-                          : 'Download Filtered'}
-                  </button>
+              <div className="border-t border-slate-700 px-5 py-4">
+                {bulkDownloading ? (
+                  <div className="mb-3">
+                    <div className="h-5 w-full overflow-hidden rounded-full bg-slate-700/70">
+                      <div
+                        className="h-full rounded-full bg-orange-500 transition-all duration-300"
+                        style={{ width: `${downloadProgress}%` }}
+                      />
+                    </div>
+                    <p className="mt-2 text-sm text-slate-300">{downloadStatusMessage || 'We are downloading your files.'}</p>
+                  </div>
+                ) : null}
+
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-slate-400">
+                    {modalDownloadCandidates.length} paid invoice{modalDownloadCandidates.length === 1 ? '' : 's'} ready
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowBulkDownloadModal(false)}
+                      className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleBulkDownloadSelected()}
+                      disabled={modalDownloadCandidates.length === 0 || bulkDownloading}
+                      className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {bulkDownloading
+                        ? modalDownloadCandidates.length > 1
+                          ? 'Preparing ZIP...'
+                          : 'Preparing PDF...'
+                        : downloadMode === 'selected'
+                          ? 'Download Selected'
+                          : quickDownloadType === 'all'
+                            ? 'Download All'
+                            : 'Download Filtered'}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
