@@ -153,6 +153,73 @@ function areAvatarMapsEqual(a: Record<string, string>, b: Record<string, string>
   return JSON.stringify(a) === JSON.stringify(b)
 }
 
+function initials(name: string) {
+  const tokens = name.trim().split(/\s+/).filter(Boolean)
+  return (tokens[0]?.[0] || '') + (tokens[1]?.[0] || tokens[0]?.[1] || '')
+}
+
+function avatarColorsFromName(name: string) {
+  const normalized = name.trim().toLowerCase() || 'user'
+  let hash = 0
+
+  for (let index = 0; index < normalized.length; index += 1) {
+    hash = normalized.charCodeAt(index) + ((hash << 5) - hash)
+  }
+
+  const hue = Math.abs(hash) % 360
+  const background = `hsl(${hue} 56% 34%)`
+  const border = `hsl(${hue} 62% 46%)`
+
+  return { background, border }
+}
+
+function EmployeeAvatar({
+  name,
+  imageUrl,
+  isOnline,
+}: {
+  name: string
+  imageUrl?: string
+  isOnline: boolean
+}) {
+  const [imageFailed, setImageFailed] = useState(false)
+  const showImage = Boolean(imageUrl && !imageFailed)
+  const colors = avatarColorsFromName(name)
+
+  return (
+    <div className="relative w-10 h-10 shrink-0">
+      <div
+        className="h-full w-full overflow-hidden rounded-full border border-orange-500/20 bg-orange-500/10 flex items-center justify-center text-sm font-bold text-white"
+        style={
+          showImage
+            ? undefined
+            : {
+                backgroundColor: colors.background,
+                borderColor: colors.border,
+              }
+        }
+      >
+        {showImage ? (
+          <img
+            src={imageUrl || ''}
+            alt={name}
+            className="w-full h-full object-cover"
+            onError={() => setImageFailed(true)}
+          />
+        ) : (
+          <span>{initials(name).toUpperCase()}</span>
+        )}
+      </div>
+      {isOnline && (
+        <span
+          className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-slate-800 bg-emerald-500"
+          title="Online"
+        />
+      )}
+    </div>
+  )
+}
+
 export default function Employees() {
   const { currentUserAuthId: profileCurrentUserAuthId, displayRole, onlineAuthIds } = useDashboardProfile()
   const scopedEmployeesCache =
@@ -890,21 +957,11 @@ export default function Employees() {
             paginatedEmployees.map((emp) => (
             <div key={emp.id} className="w-full min-w-[560px] border-t border-slate-700 grid grid-cols-[1fr_1fr_140px_100px] gap-0 items-center">
               <div className="px-4 sm:px-6 py-4 flex items-center gap-3 min-w-0">
-                <div className="relative w-10 h-10 shrink-0">
-                  <div className="h-full w-full overflow-hidden rounded-full border border-orange-500/20 bg-orange-500/10">
-                    <img
-                      src={employeeAvatarUrls[emp.auth_id] || 'https://placehold.co/40x40'}
-                      alt=""
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  {onlineAuthIdSet.has(emp.auth_id) && (
-                    <span
-                      className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-slate-800 bg-emerald-500"
-                      title="Online"
-                    />
-                  )}
-                </div>
+                <EmployeeAvatar
+                  name={emp.employee_name || emp.email || 'User'}
+                  imageUrl={employeeAvatarUrls[emp.auth_id] || ''}
+                  isOnline={onlineAuthIdSet.has(emp.auth_id)}
+                />
                 <div className="min-w-0">
                   <p className="text-white text-sm font-bold truncate">{emp.employee_name}</p>
                   <p className="text-slate-400 text-xs truncate">{emp.email}</p>

@@ -169,6 +169,69 @@ function NavIcon({ label, active }: { label: string; active: boolean }) {
   }
 }
 
+function initials(name: string) {
+  const tokens = name.trim().split(/\s+/).filter(Boolean)
+  return (tokens[0]?.[0] || '') + (tokens[1]?.[0] || tokens[0]?.[1] || '')
+}
+
+function avatarColorsFromName(name: string) {
+  const normalized = name.trim().toLowerCase() || 'user'
+  let hash = 0
+
+  for (let index = 0; index < normalized.length; index += 1) {
+    hash = normalized.charCodeAt(index) + ((hash << 5) - hash)
+  }
+
+  const hue = Math.abs(hash) % 360
+  const background = `hsl(${hue} 56% 34%)`
+  const border = `hsl(${hue} 62% 46%)`
+
+  return { background, border }
+}
+
+function ProfileAvatar({
+  name,
+  imageUrl,
+  size,
+  rounded,
+  className = '',
+}: {
+  name: string
+  imageUrl?: string
+  size: string
+  rounded: string
+  className?: string
+}) {
+  const [imageFailed, setImageFailed] = useState(false)
+  const showImage = Boolean(imageUrl && !imageFailed)
+  const colors = avatarColorsFromName(name)
+
+  return (
+    <div
+      className={`${size} ${rounded} flex items-center justify-center overflow-hidden border text-sm font-bold text-white ${className}`}
+      style={
+        showImage
+          ? undefined
+          : {
+              backgroundColor: colors.background,
+              borderColor: colors.border,
+            }
+      }
+    >
+      {showImage ? (
+        <img
+          src={imageUrl || ''}
+          alt={name}
+          className="h-full w-full object-cover"
+          onError={() => setImageFailed(true)}
+        />
+      ) : (
+        <span>{initials(name).toUpperCase() || 'U'}</span>
+      )}
+    </div>
+  )
+}
+
 function DashboardOverlay({
   profileLoaded,
   accountType,
@@ -1134,10 +1197,12 @@ if (clientError) {
                 title="Edit your profile"
               >
                 <div className="relative shrink-0">
-                  <img
-                    src={displayAvatarUrl || 'https://placehold.co/40x40'}
-                    alt=""
-                    className="h-8 w-8 rounded-lg object-cover shadow-[0px_0px_0px_2px_rgba(59,130,246,0.35)] sm:h-9 sm:w-9"
+                  <ProfileAvatar
+                    name={displayName || 'User'}
+                    imageUrl={displayAvatarUrl || ''}
+                    size="h-8 w-8 sm:h-9 sm:w-9"
+                    rounded="rounded-lg"
+                    className="shadow-[0px_0px_0px_2px_rgba(59,130,246,0.35)]"
                   />
                   <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-gray-900 bg-green-500 sm:h-3 sm:w-3" />
                 </div>
@@ -1204,10 +1269,11 @@ if (clientError) {
                 className="mt-5 flex flex-col gap-4"
               >
                 <div className="flex items-center gap-4 rounded-xl border border-slate-700 bg-slate-900/50 p-4">
-                  <img
-                    src={profileAvatarPreviewUrl || displayAvatarUrl || 'https://placehold.co/80x80'}
-                    alt=""
-                    className="h-16 w-16 rounded-xl object-cover"
+                  <ProfileAvatar
+                    name={profileName || displayName || 'User'}
+                    imageUrl={profileAvatarPreviewUrl || displayAvatarUrl || ''}
+                    size="h-16 w-16"
+                    rounded="rounded-xl"
                   />
                   <div className="min-w-0 flex-1">
                     <label htmlFor="profile-avatar-upload" className="block text-sm font-medium text-slate-300">
