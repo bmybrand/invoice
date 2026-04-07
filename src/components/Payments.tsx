@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Plus_Jakarta_Sans } from 'next/font/google'
 import { useRouter } from 'next/navigation'
+import JSZip from 'jszip'
 import { supabase } from '@/lib/supabase'
 import { useDashboardProfile } from '@/components/DashboardLayout'
+import { InvoiceDocument } from '@/components/Invoice'
 import { useClientDashboardData } from '@/context/ClientDashboardDataContext'
 import { formatInvoiceCode } from '@/lib/invoice-code'
 import { getInvoiceLink } from '@/lib/invoice-token'
@@ -13,6 +15,9 @@ const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
 const PAGE_SIZE = 4
 const TABLE_REFRESH_INTERVAL_MS = 5000
+const MODAL_PREVIEW_INITIAL = 1
+const MODAL_PREVIEW_STEP = 50
+const BULK_PRINT_ROOT_ID = 'bulk-invoice-print-root'
 const PAYMENT_GRID =
   '52px minmax(88px,0.75fr) minmax(120px,1fr) minmax(140px,1fr) minmax(220px,1.5fr) minmax(110px,0.85fr) minmax(130px,1fr) minmax(130px,0.95fr) minmax(220px,1.7fr) minmax(120px,0.95fr) minmax(160px,1.1fr) minmax(100px,0.9fr) 72px'
 
@@ -62,6 +67,37 @@ type PaymentRow = {
 type PaymentsScopedCache = {
   ownerAuthId: string | null
   rows: PaymentRow[]
+}
+
+type QuickDownloadType = 'all' | 'week' | 'month' | 'day'
+
+type BulkBrandOption = {
+  id: number
+  brand_name: string
+  brand_url: string
+  logo_url: string
+}
+
+type BulkInvoiceRow = {
+  id: number
+  invoice_date: string
+  invoice_creator_id: number
+  invoice_creator: string
+  client_id: number | null
+  client_name: string
+  brand_name: string
+  email: string
+  service: { description: string; qty: number; price: string }[]
+  phone: string
+  amount: string
+  status: string
+  payable_amount: number | null
+  invoice_type: string
+}
+
+type BulkRenderPayload = {
+  invoice: BulkInvoiceRow
+  brandMeta: BulkBrandOption | null
 }
 
 let paymentsTableCache: PaymentsScopedCache | null = null
@@ -150,10 +186,31 @@ function formatDateTime(value: string | null | undefined): string {
   })
 }
 
+function getIsoWeek(date: Date): number {
+  const normalized = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+  const day = normalized.getUTCDay() || 7
+  normalized.setUTCDate(normalized.getUTCDate() + 4 - day)
+  const yearStart = new Date(Date.UTC(normalized.getUTCFullYear(), 0, 1))
+  return Math.ceil((((normalized.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
+}
+
+function getIsoWeekYear(date: Date): number {
+  const normalized = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+  const day = normalized.getUTCDay() || 7
+  normalized.setUTCDate(normalized.getUTCDate() + 4 - day)
+  return normalized.getUTCFullYear()
+}
+
+function sanitizeFileName(name: string): string {
+  return name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '').replace(/\s+/g, ' ').trim()
+}
+
 export default function Payments() {
   const router = useRouter()
-  const { accountType, currentUserAuthId, displayRole, currentEmployeeId, profileLoaded } = useDashboardProfile()
+  const { accountType, currentUserAuthId, displayRole, displayDepartment, currentEmployeeId, profileLoaded } = useDashboardProfile()
   const normalizedRole = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '')
+  const normalizedDepartment = (displayDepartment || '').trim().toLowerCase()
+  const isFinanceDepartment = normalizedDepartment.includes('finance')
   const isUserRole = normalizedRole === 'user'
   const isAdmin = normalizedRole === 'admin'
   const isSuperAdmin = normalizedRole === 'superadmin'
@@ -166,6 +223,17 @@ export default function Payments() {
   const [selectedPaymentIds, setSelectedPaymentIds] = useState<number[]>([])
   const [showBulkDownloadModal, setShowBulkDownloadModal] = useState(false)
   const [bulkDownloading, setBulkDownloading] = useState(false)
+  const [downloadMode, setDownloadMode] = useState<'selected' | 'filtered'>('selected')
+  const now = new Date()
+  const [quickDownloadType, setQuickDownloadType] = useState<QuickDownloadType | null>(null)
+  const [quickYear, setQuickYear] = useState(now.getFullYear())
+  const [quickWeek, setQuickWeek] = useState(getIsoWeek(now))
+  const [quickMonth, setQuickMonth] = useState(now.getMonth() + 1)
+  const [quickDay, setQuickDay] = useState(now.getDate())
+  const [downloadFromDate, setDownloadFromDate] = useState('')
+  const [downloadToDate, setDownloadToDate] = useState('')
+  const [modalPreviewVisibleCount, setModalPreviewVisibleCount] = useState(MODAL_PREVIEW_INITIAL)
+  const [bulkRenderPayload, setBulkRenderPayload] = useState<BulkRenderPayload | null>(null)
 
   useEffect(() => {
     let active = true
@@ -341,6 +409,123 @@ export default function Payments() {
     () => paidPayments.filter((payment) => selectedPaymentIds.includes(payment.id)),
     [paidPayments, selectedPaymentIds]
   )
+  const availableYears = useMemo(() => {
+    const years = new Set<number>()
+    paidPayments.forEach((payment) => {
+      if (!payment.rawCreatedAt) return
+      const parsed = new Date(payment.rawCreatedAt)
+      if (!Number.isNaN(parsed.getTime())) {
+        years.add(parsed.getFullYear())
+      }
+    })
+    return Array.from(years).sort((a, b) => b - a)
+  }, [paidPayments])
+  const availableWeeks = useMemo(() => {
+    const weeks = new Set<number>()
+    paidPayments.forEach((payment) => {
+      if (!payment.rawCreatedAt) return
+      const parsed = new Date(payment.rawCreatedAt)
+      if (Number.isNaN(parsed.getTime())) return
+      if (getIsoWeekYear(parsed) === quickYear) {
+        weeks.add(getIsoWeek(parsed))
+      }
+    })
+    return Array.from(weeks).sort((a, b) => a - b)
+  }, [paidPayments, quickYear])
+  const availableMonths = useMemo(() => {
+    const months = new Set<number>()
+    paidPayments.forEach((payment) => {
+      if (!payment.rawCreatedAt) return
+      const parsed = new Date(payment.rawCreatedAt)
+      if (Number.isNaN(parsed.getTime())) return
+      if (parsed.getFullYear() === quickYear) {
+        months.add(parsed.getMonth() + 1)
+      }
+    })
+    return Array.from(months).sort((a, b) => a - b)
+  }, [paidPayments, quickYear])
+  const availableDays = useMemo(() => {
+    const days = new Set<number>()
+    paidPayments.forEach((payment) => {
+      if (!payment.rawCreatedAt) return
+      const parsed = new Date(payment.rawCreatedAt)
+      if (Number.isNaN(parsed.getTime())) return
+      if (parsed.getFullYear() === quickYear && parsed.getMonth() + 1 === quickMonth) {
+        days.add(parsed.getDate())
+      }
+    })
+    return Array.from(days).sort((a, b) => a - b)
+  }, [paidPayments, quickMonth, quickYear])
+
+  useEffect(() => {
+    if (availableYears.length === 0) return
+    if (!availableYears.includes(quickYear)) {
+      setQuickYear(availableYears[0])
+    }
+  }, [availableYears, quickYear])
+
+  useEffect(() => {
+    if (quickDownloadType !== 'week') return
+    if (availableWeeks.length === 0) return
+    if (!availableWeeks.includes(quickWeek)) {
+      setQuickWeek(availableWeeks[0])
+    }
+  }, [availableWeeks, quickDownloadType, quickWeek])
+
+  useEffect(() => {
+    if (quickDownloadType !== 'month' && quickDownloadType !== 'day') return
+    if (availableMonths.length === 0) return
+    if (!availableMonths.includes(quickMonth)) {
+      setQuickMonth(availableMonths[0])
+    }
+  }, [availableMonths, quickDownloadType, quickMonth])
+
+  useEffect(() => {
+    if (quickDownloadType !== 'day') return
+    if (availableDays.length === 0) return
+    if (!availableDays.includes(quickDay)) {
+      setQuickDay(availableDays[0])
+    }
+  }, [availableDays, quickDay, quickDownloadType])
+  const filteredPaidPaymentsForModal = useMemo(() => {
+    if (quickDownloadType) {
+      return paidPayments.filter((payment) => {
+        if (!payment.rawCreatedAt) return false
+        const parsed = new Date(payment.rawCreatedAt)
+        if (Number.isNaN(parsed.getTime())) return false
+
+        if (quickDownloadType === 'all') return true
+        if (quickDownloadType === 'week') {
+          return getIsoWeekYear(parsed) === quickYear && getIsoWeek(parsed) === quickWeek
+        }
+        if (quickDownloadType === 'month') {
+          return parsed.getFullYear() === quickYear && parsed.getMonth() + 1 === quickMonth
+        }
+        return parsed.getFullYear() === quickYear && parsed.getMonth() + 1 === quickMonth && parsed.getDate() === quickDay
+      })
+    }
+
+    if (!downloadFromDate && !downloadToDate) return paidPayments
+
+    const from = downloadFromDate ? new Date(`${downloadFromDate}T00:00:00`) : null
+    const to = downloadToDate ? new Date(`${downloadToDate}T23:59:59.999`) : null
+
+    return paidPayments.filter((payment) => {
+      if (!payment.rawCreatedAt) return false
+      const parsed = new Date(payment.rawCreatedAt)
+      if (Number.isNaN(parsed.getTime())) return false
+      if (from && parsed < from) return false
+      if (to && parsed > to) return false
+      return true
+    })
+  }, [downloadFromDate, downloadToDate, paidPayments, quickDay, quickDownloadType, quickMonth, quickWeek, quickYear])
+  const modalDownloadCandidates = downloadMode === 'selected' ? selectedPaidPayments : filteredPaidPaymentsForModal
+  const modalPreviewCandidates = useMemo(
+    () => modalDownloadCandidates.slice(0, modalPreviewVisibleCount),
+    [modalDownloadCandidates, modalPreviewVisibleCount]
+  )
+  const hiddenModalCandidatesCount = Math.max(0, modalDownloadCandidates.length - modalPreviewCandidates.length)
+  const isDateRangeDisabled = quickDownloadType !== null
   const selectablePagePaymentIds = paginatedPayments
     .filter((payment) => payment.status === 'Success' && payment.invoiceId != null)
     .map((payment) => payment.id)
@@ -367,16 +552,223 @@ export default function Payments() {
     })
   }
 
+  function toggleQuickType(type: QuickDownloadType) {
+    setQuickDownloadType((prev) => {
+      const next = prev === type ? null : type
+      if (next) {
+        setDownloadFromDate('')
+        setDownloadToDate('')
+        setDownloadMode('filtered')
+      }
+      return next
+    })
+  }
+
+  useEffect(() => {
+    if (showBulkDownloadModal) {
+      setModalPreviewVisibleCount(MODAL_PREVIEW_INITIAL)
+    }
+  }, [downloadMode, downloadFromDate, downloadToDate, quickDay, quickDownloadType, quickMonth, quickWeek, quickYear, selectedPaidPayments.length, showBulkDownloadModal])
+
+  function showMoreModalCandidates() {
+    setModalPreviewVisibleCount((prev) => Math.min(prev + MODAL_PREVIEW_STEP, modalDownloadCandidates.length))
+  }
+
+  function triggerBrowserDownload(blob: Blob, filename: string) {
+    const objectUrl = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = objectUrl
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(objectUrl)
+  }
+
+  async function mapInvoicesForBulk(invoiceIds: number[]): Promise<Map<number, BulkRenderPayload>> {
+    if (invoiceIds.length === 0) return new Map()
+
+    const [{ data: invoiceData, error: invoiceError }, { data: brandData, error: brandError }] = await Promise.all([
+      supabase
+        .from('invoices')
+        .select('*, employees!invoice_creator_id(employee_name), clients!client_id(name)')
+        .in('id', invoiceIds),
+      supabase.from('brands').select('id, brand_name, brand_url, logo_url').neq('isdeleted', true),
+    ])
+
+    if (invoiceError) throw invoiceError
+    if (brandError) throw brandError
+
+    const brands = (brandData ?? []) as BulkBrandOption[]
+    const byId = new Map<number, BulkRenderPayload>()
+
+    for (const row of (invoiceData ?? []) as Array<Record<string, unknown>>) {
+      const invoiceId = Number(row.id ?? 0)
+      if (!Number.isFinite(invoiceId) || invoiceId <= 0) continue
+
+      const emp = row.employees as { employee_name?: string } | { employee_name?: string }[] | null
+      const empObj = Array.isArray(emp) ? emp[0] : emp
+      const clientObj = row.clients as { name?: string } | { name?: string }[] | null
+      const clientName = (Array.isArray(clientObj) ? clientObj[0] : clientObj)?.name ?? ''
+      const serviceRaw = Array.isArray(row.service) ? row.service : []
+
+      const invoice: BulkInvoiceRow = {
+        id: invoiceId,
+        invoice_date: String(row.invoice_date ?? ''),
+        invoice_creator_id: Number(row.invoice_creator_id ?? 0),
+        invoice_creator: empObj?.employee_name ?? '--',
+        client_id: row.client_id == null ? null : Number(row.client_id),
+        client_name: clientName,
+        brand_name: String(row.brand_name ?? ''),
+        email: String(row.email ?? ''),
+        service: serviceRaw as BulkInvoiceRow['service'],
+        phone: String(row.phone ?? ''),
+        amount: String(row.amount ?? ''),
+        status: String(row.status ?? 'Pending'),
+        payable_amount: row.payable_amount == null ? null : Number(row.payable_amount),
+        invoice_type: String(row.invoice_type ?? 'Standard'),
+      }
+
+      byId.set(invoiceId, {
+        invoice,
+        brandMeta: brands.find((brand) => brand.brand_name === invoice.brand_name) ?? null,
+      })
+    }
+
+    return byId
+  }
+
+  async function renderRootAsPdfBlob(root: HTMLElement, fallbackFileName: string): Promise<Blob> {
+    const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+      import('html2canvas-pro'),
+      import('jspdf'),
+    ])
+
+    const imageMap = new Map<string, string>()
+    const imgs = root.querySelectorAll<HTMLImageElement>('img[src^="http"]')
+    await Promise.all(
+      Array.from(imgs).map(async (img) => {
+        const src = img.getAttribute('src') || ''
+        if (!src || src.startsWith(window.location.origin)) return
+        try {
+          const res = await fetch(`/api/proxy-image?url=${encodeURIComponent(src)}`)
+          if (res.ok) {
+            const { dataUrl } = await res.json()
+            if (dataUrl) imageMap.set(src, dataUrl)
+          }
+        } catch {
+          /* ignore */
+        }
+      })
+    )
+
+    const canvas = await html2canvas(root, {
+      scale: 2,
+      backgroundColor: '#ffffff',
+      useCORS: true,
+      windowWidth: root.scrollWidth,
+      onclone: (clonedDocument) => {
+        const clonedRoot = clonedDocument.getElementById(BULK_PRINT_ROOT_ID)
+        if (!clonedRoot) return
+
+        const transparentPixel = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+        clonedRoot.querySelectorAll('img[src^="http"]').forEach((img) => {
+          const src = img.getAttribute('src') || ''
+          if (!src.startsWith('http')) return
+          const dataUrl = imageMap.get(src)
+          if (dataUrl) {
+            img.setAttribute('src', dataUrl)
+          } else if (!src.startsWith(window.location.origin)) {
+            img.setAttribute('src', transparentPixel)
+          }
+        })
+      },
+      ignoreElements: (element) =>
+        element.classList?.contains('no-print') || element.classList?.contains('print-hide-download'),
+    })
+
+    const imageData = canvas.toDataURL('image/png')
+    const pdf = new jsPDF('p', 'mm', 'a4')
+    const pageWidth = pdf.internal.pageSize.getWidth()
+    const pageHeight = pdf.internal.pageSize.getHeight()
+    const imageWidth = pageWidth
+    const imageHeight = (canvas.height * imageWidth) / canvas.width
+
+    let heightLeft = imageHeight
+    let position = 0
+
+    pdf.addImage(imageData, 'PNG', 0, position, imageWidth, imageHeight)
+    heightLeft -= pageHeight
+
+    while (heightLeft > 0) {
+      position -= pageHeight
+      pdf.addPage()
+      pdf.addImage(imageData, 'PNG', 0, position, imageWidth, imageHeight)
+      heightLeft -= pageHeight
+    }
+
+    const out = pdf.output('blob')
+    if (!out) {
+      throw new Error(`Failed to create PDF blob for ${fallbackFileName}`)
+    }
+    return out
+  }
+
   async function handleBulkDownloadSelected() {
-    if (selectedPaidPayments.length === 0 || bulkDownloading) return
+    if (modalDownloadCandidates.length === 0 || bulkDownloading) return
     setBulkDownloading(true)
 
-    for (const payment of selectedPaidPayments) {
-      if (payment.invoiceId == null) continue
-      const url = new URL(getInvoiceLink(payment.invoiceId), window.location.origin)
-      url.searchParams.set('download', 'pdf')
-      window.open(url.toString(), '_blank', 'noopener,noreferrer')
-      await new Promise((resolve) => window.setTimeout(resolve, 180))
+    try {
+      const invoiceIds = Array.from(
+        new Set(modalDownloadCandidates.map((payment) => payment.invoiceId).filter((id): id is number => id != null))
+      )
+      const invoiceMap = await mapInvoicesForBulk(invoiceIds)
+
+      if (modalDownloadCandidates.length > 1) {
+        const zip = new JSZip()
+
+        for (const payment of modalDownloadCandidates) {
+          if (payment.invoiceId == null) continue
+          const payload = invoiceMap.get(payment.invoiceId)
+          if (!payload) continue
+
+          setBulkRenderPayload(payload)
+          await new Promise((resolve) => window.setTimeout(resolve, 120))
+
+          const root = document.getElementById(BULK_PRINT_ROOT_ID)
+          if (!root) continue
+
+          const brand = sanitizeFileName(payload.invoice.brand_name || payment.source || 'invoice') || 'invoice'
+          const pdfName = `${brand}-${formatInvoiceCode(payload.invoice.id)}.pdf`
+          const pdfBlob = await renderRootAsPdfBlob(root, pdfName)
+          zip.file(pdfName, pdfBlob)
+        }
+
+        const zipBlob = await zip.generateAsync({ type: 'blob' })
+        const zipName = `invoice-download-${new Date().toISOString().slice(0, 10)}.zip`
+        triggerBrowserDownload(zipBlob, zipName)
+      } else {
+        const payment = modalDownloadCandidates[0]
+        if (payment?.invoiceId != null) {
+          const payload = invoiceMap.get(payment.invoiceId)
+          if (payload) {
+            setBulkRenderPayload(payload)
+            await new Promise((resolve) => window.setTimeout(resolve, 120))
+
+            const root = document.getElementById(BULK_PRINT_ROOT_ID)
+            if (root) {
+              const brand = sanitizeFileName(payload.invoice.brand_name || payment.source || 'invoice') || 'invoice'
+              const pdfName = `${brand}-${formatInvoiceCode(payload.invoice.id)}.pdf`
+              const pdfBlob = await renderRootAsPdfBlob(root, pdfName)
+              triggerBrowserDownload(pdfBlob, pdfName)
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Bulk download failed', error)
+    } finally {
+      setBulkRenderPayload(null)
     }
 
     setBulkDownloading(false)
@@ -393,17 +785,19 @@ export default function Payments() {
               Review completed payment records across your invoices.
             </p>
           </div>
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={() => setShowBulkDownloadModal(true)}
-              disabled={selectedPaidPayments.length === 0}
-              className="inline-flex h-12 items-center justify-center rounded-2xl bg-orange-500 px-5 text-sm font-semibold text-white shadow-[0_12px_30px_-14px_rgba(249,115,22,0.9)] transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none"
-            >
-              Bulk Download
-              {selectedPaidPayments.length > 0 ? ` (${selectedPaidPayments.length})` : ''}
-            </button>
-          </div>
+          {isFinanceDepartment ? (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowBulkDownloadModal(true)}
+                disabled={paidPayments.length === 0}
+                className="inline-flex h-12 items-center justify-center rounded-2xl bg-orange-500 px-5 text-sm font-semibold text-white shadow-[0_12px_30px_-14px_rgba(249,115,22,0.9)] transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none"
+              >
+                Bulk Download
+                {selectedPaidPayments.length > 0 ? ` (${selectedPaidPayments.length})` : ''}
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -634,7 +1028,7 @@ export default function Payments() {
         </div>
       </div>
 
-      {showBulkDownloadModal ? (
+      {showBulkDownloadModal && isFinanceDepartment ? (
         <>
           <div className="fixed inset-0 z-40 bg-black/60" onClick={() => !bulkDownloading && setShowBulkDownloadModal(false)} />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -657,11 +1051,172 @@ export default function Payments() {
               </div>
 
               <div className="max-h-[55vh] overflow-y-auto px-5 py-4">
-                {selectedPaidPayments.length === 0 ? (
-                  <p className="text-sm text-slate-400">Select paid invoice rows from the table first.</p>
+                <div className="mb-4 rounded-xl border border-slate-700 bg-slate-800/60 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Download mode</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDownloadMode('selected')}
+                      className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+                        downloadMode === 'selected'
+                          ? 'border-orange-400 bg-orange-500/20 text-orange-200'
+                          : 'border-slate-700 text-slate-300 hover:bg-slate-700/60'
+                      }`}
+                    >
+                      Tick Selection ({selectedPaidPayments.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDownloadMode('filtered')}
+                      className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+                        downloadMode === 'filtered'
+                          ? 'border-orange-400 bg-orange-500/20 text-orange-200'
+                          : 'border-slate-700 text-slate-300 hover:bg-slate-700/60'
+                      }`}
+                    >
+                      Quick / Date Filter ({filteredPaidPaymentsForModal.length})
+                    </button>
+                  </div>
+
+                  <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">Quick download</p>
+                  <p className="mt-1 text-xs text-slate-500">Click again to unselect.</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    {([
+                      { key: 'all', label: 'All paid' },
+                      { key: 'week', label: 'Week + Year' },
+                      { key: 'month', label: 'Month + Year' },
+                      { key: 'day', label: 'Day + Month + Year' },
+                    ] as Array<{ key: QuickDownloadType; label: string }>).map((option) => (
+                      <button
+                        key={option.key}
+                        type="button"
+                        onClick={() => toggleQuickType(option.key)}
+                        className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+                          quickDownloadType === option.key
+                            ? 'border-emerald-400 bg-emerald-500/20 text-emerald-200'
+                            : 'border-slate-700 text-slate-300 hover:bg-slate-700/60'
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {quickDownloadType === 'week' ? (
+                    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <select
+                        value={quickYear}
+                        onChange={(e) => setQuickYear(Number(e.target.value))}
+                        className="h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200"
+                      >
+                        {availableYears.length > 0 ? (
+                          availableYears.map((year) => (
+                            <option key={year} value={year}>{year}</option>
+                          ))
+                        ) : (
+                          <option value="">No years</option>
+                        )}
+                      </select>
+                      <select
+                        value={quickWeek}
+                        onChange={(e) => setQuickWeek(Number(e.target.value))}
+                        className="h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200"
+                      >
+                        {availableWeeks.length > 0 ? (
+                          availableWeeks.map((week) => (
+                            <option key={week} value={week}>Week {week}</option>
+                          ))
+                        ) : (
+                          <option value="">No weeks</option>
+                        )}
+                      </select>
+                    </div>
+                  ) : null}
+
+                  {quickDownloadType === 'month' || quickDownloadType === 'day' ? (
+                    <div className={`mt-3 grid grid-cols-1 gap-2 ${quickDownloadType === 'day' ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
+                      <select
+                        value={quickYear}
+                        onChange={(e) => setQuickYear(Number(e.target.value))}
+                        className="h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200"
+                      >
+                        {availableYears.length > 0 ? (
+                          availableYears.map((year) => (
+                            <option key={year} value={year}>{year}</option>
+                          ))
+                        ) : (
+                          <option value="">No years</option>
+                        )}
+                      </select>
+                      <select
+                        value={quickMonth}
+                        onChange={(e) => setQuickMonth(Number(e.target.value))}
+                        className="h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200"
+                      >
+                        {availableMonths.length > 0 ? (
+                          availableMonths.map((month) => (
+                            <option key={month} value={month}>
+                              {new Date(2000, month - 1, 1).toLocaleString('en-US', { month: 'long' })}
+                            </option>
+                          ))
+                        ) : (
+                          <option value="">No months</option>
+                        )}
+                      </select>
+                      {quickDownloadType === 'day' ? (
+                        <select
+                          value={quickDay}
+                          onChange={(e) => setQuickDay(Number(e.target.value))}
+                          className="h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200"
+                        >
+                          {availableDays.length > 0 ? (
+                            availableDays.map((day) => (
+                              <option key={day} value={day}>Day {day}</option>
+                            ))
+                          ) : (
+                            <option value="">No days</option>
+                          )}
+                        </select>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">From / To date</p>
+                  <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <input
+                      type="date"
+                      value={downloadFromDate}
+                      disabled={isDateRangeDisabled}
+                      onChange={(e) => {
+                        setDownloadMode('filtered')
+                        setDownloadFromDate(e.target.value)
+                      }}
+                      className="h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+                    />
+                    <input
+                      type="date"
+                      value={downloadToDate}
+                      disabled={isDateRangeDisabled}
+                      onChange={(e) => {
+                        setDownloadMode('filtered')
+                        setDownloadToDate(e.target.value)
+                      }}
+                      className="h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+                    />
+                  </div>
+                  {isDateRangeDisabled ? (
+                    <p className="mt-2 text-xs text-amber-300">From/To is disabled while a quick option is selected. Click the selected quick option again to clear it.</p>
+                  ) : null}
+                  {downloadMode === 'filtered' && quickDownloadType === 'all' ? (
+                    <p className="mt-2 text-xs text-emerald-300">Download All creates one ZIP in the background without opening invoice pages.</p>
+                  ) : null}
+                </div>
+
+                {modalDownloadCandidates.length === 0 ? (
+                  <p className="text-sm text-slate-400">No paid invoices match your current download mode and filters.</p>
                 ) : (
                   <div className="space-y-3">
-                    {selectedPaidPayments.map((payment) => (
+                    {modalPreviewCandidates.map((payment) => (
                       <div
                         key={payment.id}
                         className="flex items-center justify-between rounded-xl border border-slate-700 bg-slate-800/70 px-4 py-3"
@@ -674,22 +1229,42 @@ export default function Payments() {
                             {payment.email} • {formatAmount(payment.amount)} • {payment.createdAt}
                           </p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => togglePaymentSelection(payment.id, false)}
-                          className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300 transition hover:bg-slate-700"
-                        >
-                          Remove
-                        </button>
+                        {downloadMode === 'selected' ? (
+                          <button
+                            type="button"
+                            onClick={() => togglePaymentSelection(payment.id, false)}
+                            className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300 transition hover:bg-slate-700"
+                          >
+                            Remove
+                          </button>
+                        ) : (
+                          <span className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-400">Matched</span>
+                        )}
                       </div>
                     ))}
+                    {hiddenModalCandidatesCount > 0 ? (
+                      <div className="rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-xs text-slate-400">
+                        Showing {modalPreviewCandidates.length} of {modalDownloadCandidates.length}. {hiddenModalCandidatesCount} more matched and will still be downloaded.
+                      </div>
+                    ) : null}
+                    {hiddenModalCandidatesCount > 0 ? (
+                      <div className="flex justify-center pt-1">
+                        <button
+                          type="button"
+                          onClick={showMoreModalCandidates}
+                          className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-700"
+                        >
+                          Show more
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                 )}
               </div>
 
               <div className="flex items-center justify-between border-t border-slate-700 px-5 py-4">
                 <p className="text-sm text-slate-400">
-                  {selectedPaidPayments.length} paid invoice{selectedPaidPayments.length === 1 ? '' : 's'} selected
+                  {modalDownloadCandidates.length} paid invoice{modalDownloadCandidates.length === 1 ? '' : 's'} ready
                 </p>
                 <div className="flex items-center gap-3">
                   <button
@@ -702,10 +1277,18 @@ export default function Payments() {
                   <button
                     type="button"
                     onClick={() => void handleBulkDownloadSelected()}
-                    disabled={selectedPaidPayments.length === 0 || bulkDownloading}
+                    disabled={modalDownloadCandidates.length === 0 || bulkDownloading}
                     className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {bulkDownloading ? 'Opening...' : 'Download Selected'}
+                    {bulkDownloading
+                      ? modalDownloadCandidates.length > 1
+                        ? 'Preparing ZIP...'
+                        : 'Preparing PDF...'
+                      : downloadMode === 'selected'
+                        ? 'Download Selected'
+                        : quickDownloadType === 'all'
+                          ? 'Download All'
+                          : 'Download Filtered'}
                   </button>
                 </div>
               </div>
@@ -713,6 +1296,22 @@ export default function Payments() {
           </div>
         </>
       ) : null}
+
+      <div className="pointer-events-none fixed -left-2500 top-0 z-[-1]">
+        {bulkRenderPayload ? (
+          <InvoiceDocument
+            invoice={bulkRenderPayload.invoice}
+            brandMeta={bulkRenderPayload.brandMeta}
+            canDownloadPdf
+            showPaidWatermark={String(bulkRenderPayload.invoice.status || '').toLowerCase().includes('paid') || String(bulkRenderPayload.invoice.status || '').toLowerCase().includes('completed')}
+            onDownload={() => {}}
+            onPrint={() => {}}
+            rootId={BULK_PRINT_ROOT_ID}
+            includeDownloadButton={false}
+            showStatusBadge
+          />
+        ) : null}
+      </div>
     </div>
   )
 }
