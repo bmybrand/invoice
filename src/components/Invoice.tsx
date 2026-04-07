@@ -540,10 +540,12 @@ export function InvoiceDocument({
 export default function Invoice() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { displayRole, accountType, currentEmployeeId, currentUserAuthId, profileLoaded } = useDashboardProfile()
+  const { displayRole, displayDepartment, accountType, currentEmployeeId, currentUserAuthId, profileLoaded } = useDashboardProfile()
   const normalizedRole = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '')
+  const normalizedDepartment = (displayDepartment || '').trim().toLowerCase()
   const isUserRole = normalizedRole === 'user'
   const isSuperAdmin = normalizedRole === 'superadmin'
+  const isFinanceDepartment = normalizedDepartment.includes('finance')
   const clientData = useClientDashboardData()
   const scopedInvoiceCache = invoiceTableCache?.ownerAuthId === currentUserAuthId ? invoiceTableCache.rows : null
   const [invoices, setInvoices] = useState<InvoiceRow[]>(() => scopedInvoiceCache ?? [])
@@ -783,7 +785,7 @@ export default function Invoice() {
   }, [])
 
   const fetchClients = useCallback(async () => {
-    if (!isSuperAdmin && !currentUserAuthId) {
+    if (!isSuperAdmin && !isFinanceDepartment && !currentUserAuthId) {
       setClients([])
       return
     }
@@ -795,7 +797,7 @@ export default function Invoice() {
       .neq('isdeleted', true)
       .order('name')
 
-    if (!isSuperAdmin) {
+    if (!isSuperAdmin && !isFinanceDepartment) {
       query = query.eq('handler_id', currentUserAuthId)
     }
 
@@ -806,7 +808,7 @@ export default function Invoice() {
       return
     }
     setClients((data as ClientOption[]) ?? [])
-  }, [currentUserAuthId, isSuperAdmin])
+  }, [currentUserAuthId, isFinanceDepartment, isSuperAdmin])
 
   const fetchBrands = useCallback(async () => {
     const { data, error } = await supabase

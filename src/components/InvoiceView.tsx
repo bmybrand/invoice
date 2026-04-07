@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { InvoiceDocument } from '@/components/Invoice'
@@ -34,6 +34,7 @@ export default function InvoiceView({ invoiceId, invoiceToken, publicView = fals
   const router = useRouter()
   const searchParams = useSearchParams()
   const paymentParam = searchParams.get('payment')
+  const downloadParam = searchParams.get('download')
   const showPaymentCompleteBanner = paymentParam === 'complete' || paymentParam === 'success'
   const showPaymentProcessingBanner = paymentParam === 'processing'
   const [loading, setLoading] = useState(true)
@@ -41,6 +42,7 @@ export default function InvoiceView({ invoiceId, invoiceToken, publicView = fals
   const [brands, setBrands] = useState<BrandOption[]>([])
   const [paymentCompletedLocally, setPaymentCompletedLocally] = useState(false)
   const [downloadingPdf, setDownloadingPdf] = useState(false)
+  const autoDownloadTriggeredRef = useRef(false)
 
   useEffect(() => {
     async function fetchData() {
@@ -98,41 +100,19 @@ export default function InvoiceView({ invoiceId, invoiceToken, publicView = fals
     if (!invoice) return null
     return brands.find((b) => b.brand_name === invoice.brand_name) ?? null
   }, [brands, invoice])
-
-  if (loading) {
-    return <div className="p-6 text-sm text-slate-400">Loading invoice...</div>
-  }
-
-  if (!invoice) {
-    return (
-      <div className="p-6 space-y-4">
-        <p className="text-sm text-slate-400">Invoice not found.</p>
-        {!publicView && (
-          <button
-            type="button"
-            onClick={() => router.push('/dashboard/invoices')}
-            className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800"
-          >
-            Back to Invoices
-          </button>
-        )}
-      </div>
-    )
-  }
-
-  const normalizedStatus = (invoice.status || '').toLowerCase()
+  const normalizedStatus = (invoice?.status || '').toLowerCase()
   const isPaid = normalizedStatus.includes('paid') || normalizedStatus.includes('completed')
   const isProcessing = normalizedStatus.includes('processing')
   const canDownloadPdf = isPaid
   const showPaidWatermark = isPaid
-  const grandTotal = invoice.service.reduce((sum, line) => sum + (Number(line.qty) || 0) * Number((line.price || '').replace(/[^0-9.-]/g, '')), 0)
-  const payableAmount = Math.min(Number(invoice.payable_amount ?? 0), grandTotal)
+  const grandTotal = (invoice?.service ?? []).reduce((sum, line) => sum + (Number(line.qty) || 0) * Number((line.price || '').replace(/[^0-9.-]/g, '')), 0)
+  const payableAmount = Math.min(Number(invoice?.payable_amount ?? 0), grandTotal)
   const remainingAmount = Math.max(grandTotal - payableAmount, 0)
-  const showPayableDetails = invoice.payable_amount != null
+  const showPayableDetails = invoice?.payable_amount != null
   const amountToPay = showPayableDetails && payableAmount > 0 ? payableAmount : grandTotal
   const shouldShowPaymentForm = !isPaid && !isProcessing
 
-  async function handleDownloadPdf() {
+  const handleDownloadPdf = useCallback(async () => {
     if (!canDownloadPdf || downloadingPdf || !invoice) return
 
     const root = document.getElementById('invoice-print-root')
@@ -263,6 +243,36 @@ export default function InvoiceView({ invoiceId, invoiceToken, publicView = fals
     } finally {
       setDownloadingPdf(false)
     }
+  }, [canDownloadPdf, downloadingPdf, invoice])
+
+  useEffect(() => {
+    if (downloadParam !== 'pdf' || autoDownloadTriggeredRef.current || !canDownloadPdf || !invoice || loading) {
+      return
+    }
+
+    autoDownloadTriggeredRef.current = true
+    void handleDownloadPdf()
+  }, [canDownloadPdf, downloadParam, handleDownloadPdf, invoice, loading])
+
+  if (loading) {
+    return <div className="p-6 text-sm text-slate-400">Loading invoice...</div>
+  }
+
+  if (!invoice) {
+    return (
+      <div className="p-6 space-y-4">
+        <p className="text-sm text-slate-400">Invoice not found.</p>
+        {!publicView && (
+          <button
+            type="button"
+            onClick={() => router.push('/dashboard/invoices')}
+            className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800"
+          >
+            Back to Invoices
+          </button>
+        )}
+      </div>
+    )
   }
 
   return (

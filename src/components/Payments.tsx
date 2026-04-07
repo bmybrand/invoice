@@ -14,7 +14,7 @@ const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 const PAGE_SIZE = 4
 const TABLE_REFRESH_INTERVAL_MS = 5000
 const PAYMENT_GRID =
-  'minmax(88px,0.75fr) minmax(120px,1fr) minmax(140px,1fr) minmax(220px,1.5fr) minmax(110px,0.85fr) minmax(130px,1fr) minmax(130px,0.95fr) minmax(220px,1.7fr) minmax(120px,0.95fr) minmax(160px,1.1fr) minmax(100px,0.9fr) 72px'
+  '52px minmax(88px,0.75fr) minmax(120px,1fr) minmax(140px,1fr) minmax(220px,1.5fr) minmax(110px,0.85fr) minmax(130px,1fr) minmax(130px,0.95fr) minmax(220px,1.7fr) minmax(120px,0.95fr) minmax(160px,1.1fr) minmax(100px,0.9fr) 72px'
 
 type PaymentSubmissionRow = {
   id: number
@@ -99,6 +99,14 @@ function ChevronRightIcon({ className = 'h-4 w-4' }: { className?: string }) {
   )
 }
 
+function CloseIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+    </svg>
+  )
+}
+
 function getPaymentStatusLabel(value: string | null | undefined): 'Success' | 'Processing' | 'Recorded' {
   const normalized = (value || '').trim().toLowerCase()
   if (
@@ -155,6 +163,9 @@ export default function Payments() {
   const [paymentsLoading, setPaymentsLoading] = useState(() => !scopedPaymentsCache)
   const [searchQuery, setSearchQuery] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
+  const [selectedPaymentIds, setSelectedPaymentIds] = useState<number[]>([])
+  const [showBulkDownloadModal, setShowBulkDownloadModal] = useState(false)
+  const [bulkDownloading, setBulkDownloading] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -322,20 +333,77 @@ export default function Payments() {
   const start = (effectivePage - 1) * PAGE_SIZE
   const end = start + PAGE_SIZE
   const paginatedPayments = filteredPayments.slice(start, end)
+  const paidPayments = useMemo(
+    () => filteredPayments.filter((payment) => payment.status === 'Success' && payment.invoiceId != null),
+    [filteredPayments]
+  )
+  const selectedPaidPayments = useMemo(
+    () => paidPayments.filter((payment) => selectedPaymentIds.includes(payment.id)),
+    [paidPayments, selectedPaymentIds]
+  )
+  const selectablePagePaymentIds = paginatedPayments
+    .filter((payment) => payment.status === 'Success' && payment.invoiceId != null)
+    .map((payment) => payment.id)
+  const allPagePaidSelected =
+    selectablePagePaymentIds.length > 0 && selectablePagePaymentIds.every((id) => selectedPaymentIds.includes(id))
 
   function openPaymentInvoice(invoiceId: number | null) {
     if (invoiceId == null) return
     router.push(getInvoiceLink(invoiceId))
   }
 
+  function togglePaymentSelection(paymentId: number, checked: boolean) {
+    setSelectedPaymentIds((prev) =>
+      checked ? (prev.includes(paymentId) ? prev : [...prev, paymentId]) : prev.filter((id) => id !== paymentId)
+    )
+  }
+
+  function toggleSelectAllPagePaid(checked: boolean) {
+    setSelectedPaymentIds((prev) => {
+      if (checked) {
+        return Array.from(new Set([...prev, ...selectablePagePaymentIds]))
+      }
+      return prev.filter((id) => !selectablePagePaymentIds.includes(id))
+    })
+  }
+
+  async function handleBulkDownloadSelected() {
+    if (selectedPaidPayments.length === 0 || bulkDownloading) return
+    setBulkDownloading(true)
+
+    for (const payment of selectedPaidPayments) {
+      if (payment.invoiceId == null) continue
+      const url = new URL(getInvoiceLink(payment.invoiceId), window.location.origin)
+      url.searchParams.set('download', 'pdf')
+      window.open(url.toString(), '_blank', 'noopener,noreferrer')
+      await new Promise((resolve) => window.setTimeout(resolve, 180))
+    }
+
+    setBulkDownloading(false)
+    setShowBulkDownloadModal(false)
+  }
+
   return (
     <div className={`${plusJakarta.className} flex w-full flex-col text-white`}>
       <div className="w-full pb-6">
-        <div className="flex w-full flex-col gap-1 p-4">
-          <h1 className="text-2xl font-black leading-tight text-white sm:text-3xl">Payments</h1>
-          <p className="text-sm font-normal leading-5 text-slate-400">
-            Review completed payment records across your invoices.
-          </p>
+        <div className="flex w-full flex-col gap-4 p-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-black leading-tight text-white sm:text-3xl">Payments</h1>
+            <p className="text-sm font-normal leading-5 text-slate-400">
+              Review completed payment records across your invoices.
+            </p>
+          </div>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => setShowBulkDownloadModal(true)}
+              disabled={selectedPaidPayments.length === 0}
+              className="inline-flex h-12 items-center justify-center rounded-2xl bg-orange-500 px-5 text-sm font-semibold text-white shadow-[0_12px_30px_-14px_rgba(249,115,22,0.9)] transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none"
+            >
+              Bulk Download
+              {selectedPaidPayments.length > 0 ? ` (${selectedPaidPayments.length})` : ''}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -363,7 +431,8 @@ export default function Payments() {
         <div className="w-full overflow-x-auto scrollbar-thin">
           <div className="w-full" style={{ minWidth: '1880px' }}>
             <div className="grid w-full border-b border-slate-700 bg-slate-900/50" style={{ gridTemplateColumns: PAYMENT_GRID }}>
-              {[
+              {[ 
+                '',
                 'No.',
                 'Invoice Creator',
                 'Customer',
@@ -377,9 +446,20 @@ export default function Payments() {
                 'Status',
               ].map((label) => (
                 <div key={label} className="flex min-w-0 items-center px-4 py-4 sm:px-6">
-                  <span className="block truncate whitespace-nowrap text-xs font-bold uppercase tracking-wide text-slate-400">
-                    {label}
-                  </span>
+                  {label ? (
+                    <span className="block truncate whitespace-nowrap text-xs font-bold uppercase tracking-wide text-slate-400">
+                      {label}
+                    </span>
+                  ) : (
+                    <input
+                      type="checkbox"
+                      checked={allPagePaidSelected}
+                      onChange={(e) => toggleSelectAllPagePaid(e.target.checked)}
+                      disabled={selectablePagePaymentIds.length === 0}
+                      className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-orange-500 focus:ring-orange-500 disabled:cursor-not-allowed disabled:opacity-40"
+                      aria-label="Select all paid payments on this page"
+                    />
+                  )}
                 </div>
               ))}
               <div className="flex items-center justify-end px-4 py-4 text-right sm:px-6">
@@ -402,6 +482,17 @@ export default function Payments() {
                   className="grid w-full items-center border-t border-slate-700"
                   style={{ gridTemplateColumns: PAYMENT_GRID }}
                 >
+                  <div className="min-w-0 px-4 py-4 sm:px-6">
+                    {payment.status === 'Success' && payment.invoiceId != null ? (
+                      <input
+                        type="checkbox"
+                        checked={selectedPaymentIds.includes(payment.id)}
+                        onChange={(e) => togglePaymentSelection(payment.id, e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-orange-500 focus:ring-orange-500"
+                        aria-label={`Select payment ${payment.id}`}
+                      />
+                    ) : null}
+                  </div>
                   <div className="min-w-0 px-4 py-4 sm:px-6">
                     <span
                       className="block truncate whitespace-nowrap font-mono text-sm font-bold text-white"
@@ -542,6 +633,86 @@ export default function Payments() {
           </div>
         </div>
       </div>
+
+      {showBulkDownloadModal ? (
+        <>
+          <div className="fixed inset-0 z-40 bg-black/60" onClick={() => !bulkDownloading && setShowBulkDownloadModal(false)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="w-full max-w-2xl rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl">
+              <div className="flex items-start justify-between border-b border-slate-700 px-5 py-4">
+                <div>
+                  <h2 className="text-lg font-bold text-white">Bulk Download Paid Invoices</h2>
+                  <p className="mt-1 text-sm text-slate-400">
+                    Download only paid invoices. Each selected invoice will open in PDF-download mode.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => !bulkDownloading && setShowBulkDownloadModal(false)}
+                  className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white"
+                  aria-label="Close bulk download modal"
+                >
+                  <CloseIcon />
+                </button>
+              </div>
+
+              <div className="max-h-[55vh] overflow-y-auto px-5 py-4">
+                {selectedPaidPayments.length === 0 ? (
+                  <p className="text-sm text-slate-400">Select paid invoice rows from the table first.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {selectedPaidPayments.map((payment) => (
+                      <div
+                        key={payment.id}
+                        className="flex items-center justify-between rounded-xl border border-slate-700 bg-slate-800/70 px-4 py-3"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-white">
+                            {payment.invoiceId == null ? '--' : `#${formatInvoiceCode(payment.invoiceId)}`} • {payment.customer}
+                          </p>
+                          <p className="mt-1 truncate text-xs text-slate-400">
+                            {payment.email} • {formatAmount(payment.amount)} • {payment.createdAt}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => togglePaymentSelection(payment.id, false)}
+                          className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300 transition hover:bg-slate-700"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between border-t border-slate-700 px-5 py-4">
+                <p className="text-sm text-slate-400">
+                  {selectedPaidPayments.length} paid invoice{selectedPaidPayments.length === 1 ? '' : 's'} selected
+                </p>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowBulkDownloadModal(false)}
+                    className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleBulkDownloadSelected()}
+                    disabled={selectedPaidPayments.length === 0 || bulkDownloading}
+                    className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {bulkDownloading ? 'Opening...' : 'Download Selected'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : null}
     </div>
   )
 }

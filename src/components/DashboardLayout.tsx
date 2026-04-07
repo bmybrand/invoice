@@ -16,6 +16,7 @@ const SESSION_GUARD_POLL_MS = 5000
 type DashboardProfile = {
   displayName: string
   displayRole: string
+  displayDepartment: string
   currentUserAuthId: string | null
   currentEmployeeId: number | null
   onlineAuthIds: string[]
@@ -26,6 +27,7 @@ type DashboardProfile = {
 const DashboardProfileContext = createContext<DashboardProfile>({
   displayName: '',
   displayRole: '',
+  displayDepartment: '',
   currentUserAuthId: null,
   currentEmployeeId: null,
   onlineAuthIds: [],
@@ -216,6 +218,7 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [displayName, setDisplayName] = useState('')
   const [displayRole, setDisplayRole] = useState('')
+  const [displayDepartment, setDisplayDepartment] = useState('')
   const [currentEmployeeId, setCurrentEmployeeId] = useState<number | null>(null)
   const [displayAvatarUrl, setDisplayAvatarUrl] = useState('')
   const [currentUserAuthId, setCurrentUserAuthId] = useState<string | null>(null)
@@ -242,6 +245,7 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
     setCurrentUserEmail('')
     setDisplayName('')
     setDisplayRole('')
+    setDisplayDepartment('')
     setDisplayAvatarUrl('')
     setOnlineAuthIds([])
     setAccountType(null)
@@ -264,7 +268,10 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
           { label: 'Payment', href: '/dashboard/payments' },
           { label: 'Chat', href: '/dashboard/chat' },
         ]
-      : allNavItems
+      : allNavItems.filter((item) => {
+          const normalizedDepartment = (displayDepartment || '').trim().toLowerCase()
+          return !(normalizedDepartment.includes('finance') && item.href === '/dashboard/clients')
+        })
 
   const headerTitle =
     title ??
@@ -338,13 +345,13 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
 
     const { data: employeeData, error: employeeError } = await supabase
       .from('employees')
-      .select('id, employee_name, role')
+      .select('id, employee_name, role, department')
       .eq('auth_id', user.id)
       .neq('isdeleted', true)
       .maybeSingle()
 
     if (employeeData) {
-      const row = employeeData as { id?: number; employee_name?: string; role?: string } | null
+      const row = employeeData as { id?: number; employee_name?: string; role?: string; department?: string } | null
 
       setDisplayName(row?.employee_name?.trim() || metadataDisplayName || user.email || 'User')
       setCurrentEmployeeId(typeof row?.id === 'number' ? row.id : null)
@@ -353,6 +360,7 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
           ? String(row.role).charAt(0).toUpperCase() + String(row.role).slice(1).toLowerCase()
           : ''
       )
+      setDisplayDepartment(row?.department?.trim() || '')
       setAccountType('employee')
       setProfileLoaded(true)
       return
@@ -494,6 +502,13 @@ if (clientError) {
       router.replace('/dashboard')
     }
   }, [accountType, pathname, router])
+
+  useEffect(() => {
+    const normalizedDepartment = (displayDepartment || '').trim().toLowerCase()
+    if (accountType === 'employee' && normalizedDepartment.includes('finance') && pathname === '/dashboard/clients') {
+      router.replace('/dashboard/payments')
+    }
+  }, [accountType, displayDepartment, pathname, router])
 
   useEffect(() => {
     if (accountType !== 'employee' || !currentUserAuthId) return
@@ -970,6 +985,7 @@ if (clientError) {
       value={{
         displayName,
         displayRole,
+        displayDepartment,
         currentUserAuthId,
         currentEmployeeId,
         onlineAuthIds: accountType === 'employee' ? onlineAuthIds : [],
