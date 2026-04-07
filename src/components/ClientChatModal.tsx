@@ -65,6 +65,12 @@ type PendingAttachmentPreview = {
   isImage: boolean
 }
 
+type ExpandedAttachment = {
+  url: string
+  name: string
+  isImage: boolean
+}
+
 function CloseIcon({ className = 'h-4 w-4' }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -89,6 +95,14 @@ function SendIcon({ className = 'h-4 w-4' }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0121.485 12 59.77 59.77 0 013.27 20.875L6 12zm0 0h7.5" />
+    </svg>
+  )
+}
+
+function ChevronDownIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
     </svg>
   )
 }
@@ -282,6 +296,8 @@ export function ClientChatModal({
   const [invoicesLoading, setInvoicesLoading] = useState(false)
   const [hasOlderMessages, setHasOlderMessages] = useState(false)
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
+  const [activeMenuMessageId, setActiveMenuMessageId] = useState<number | null>(null)
+  const [expandedAttachment, setExpandedAttachment] = useState<ExpandedAttachment | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const messagesRef = useRef<HTMLDivElement | null>(null)
   const fetchVersionRef = useRef(0)
@@ -303,6 +319,28 @@ export function ClientChatModal({
   const loadInFlightRef = useRef(false)
   const queuedOlderLoadRef = useRef(false)
   const hasOlderMessagesRef = useRef(false)
+
+  useEffect(() => {
+    const handleDocumentClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target?.closest('[data-chat-menu-root="true"]')) return
+      setActiveMenuMessageId(null)
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setActiveMenuMessageId(null)
+        setExpandedAttachment(null)
+      }
+    }
+
+    document.addEventListener('click', handleDocumentClick)
+    document.addEventListener('keydown', handleEscape)
+    return () => {
+      document.removeEventListener('click', handleDocumentClick)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [])
 
   const mergeChatMessages = useCallback((existing: ChatMessage[], incoming: ChatMessage[]) => {
     const byId = new Map<number, ChatMessage>()
@@ -888,6 +926,53 @@ export function ClientChatModal({
     suppressPolling()
   }
 
+  async function handleCopyMessage(message: ChatMessage) {
+    const text = (message.message || '').trim() || message.attachmentUrl || message.attachmentName || ''
+    if (!text) return
+
+    try {
+      await navigator.clipboard.writeText(text)
+      setActiveMenuMessageId(null)
+    } catch {
+      setError('Failed to copy message')
+    }
+  }
+
+  async function handleDownloadAttachment(message: ChatMessage) {
+    if (!message.attachmentUrl) return
+
+    try {
+      const response = await fetch(message.attachmentUrl)
+      if (!response.ok) {
+        throw new Error('download failed')
+      }
+
+      const blob = await response.blob()
+      const downloadUrl = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = downloadUrl
+      link.download = message.attachmentName || 'attachment'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(downloadUrl)
+      setActiveMenuMessageId(null)
+    } catch {
+      window.open(message.attachmentUrl, '_blank', 'noopener,noreferrer')
+      setActiveMenuMessageId(null)
+    }
+  }
+
+  function handleViewAttachment(message: ChatMessage) {
+    if (!message.attachmentUrl) return
+
+    setExpandedAttachment({
+      url: message.attachmentUrl,
+      name: message.attachmentName || 'Attachment',
+      isImage: isPreviewableImage(message.attachmentName, message.attachmentUrl),
+    })
+  }
+
   async function handleUploadFile(file: File | null) {
     if (!clientId || !file) return
     mutationVersionRef.current += 1
@@ -1085,23 +1170,100 @@ export function ClientChatModal({
                         <DoubleTickIcon seen={Boolean(message.seenByRecipient)} />
                       ) : null}
                     </div>
-                    <div className="mt-2 inline-block max-w-full rounded-2xl bg-slate-800/80 px-4 py-3.5">
+                    <div className="group relative mt-2 inline-block max-w-full rounded-2xl bg-slate-800/80 px-4 py-3.5">
+                        <div
+                          data-chat-menu-root="true"
+                          className={`absolute top-2 z-10 ${message.isOwnMessage ? 'left-2' : 'right-2'}`}
+                        >
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              setActiveMenuMessageId((prev) => (prev === message.id ? null : message.id))
+                            }}
+                            className={`rounded-full bg-slate-900/70 p-1 text-slate-300 transition hover:bg-slate-800 hover:text-white ${activeMenuMessageId === message.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus:opacity-100 focus-visible:opacity-100'}`}
+                            aria-label="Message options"
+                          >
+                            <ChevronDownIcon className="h-3.5 w-3.5" />
+                          </button>
+
+                          {activeMenuMessageId === message.id ? (
+                            <div className={`absolute top-8 z-10 w-40 overflow-hidden rounded-xl border border-slate-700 bg-slate-900 shadow-2xl ${message.isOwnMessage ? 'right-full mr-2' : 'left-full ml-2'}`}>
+                              {message.senderAuthId === currentUserAuthId && editingId !== message.id ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingId(message.id)
+                                    setEditingDraft(message.message)
+                                    setActiveMenuMessageId(null)
+                                  }}
+                                  className="block w-full px-3 py-2 text-left text-xs text-slate-200 transition hover:bg-slate-800"
+                                >
+                                  Edit
+                                </button>
+                              ) : null}
+                              {message.senderAuthId === currentUserAuthId ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveMenuMessageId(null)
+                                    void handleDelete(message.id)
+                                  }}
+                                  className="block w-full px-3 py-2 text-left text-xs text-rose-300 transition hover:bg-slate-800"
+                                >
+                                  Delete
+                                </button>
+                              ) : null}
+                              <button
+                                type="button"
+                                onClick={() => void handleCopyMessage(message)}
+                                className="block w-full px-3 py-2 text-left text-xs text-slate-200 transition hover:bg-slate-800"
+                              >
+                                Copy
+                              </button>
+                              {message.attachmentUrl ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveMenuMessageId(null)
+                                    handleViewAttachment(message)
+                                  }}
+                                  className="block w-full px-3 py-2 text-left text-xs text-slate-200 transition hover:bg-slate-800"
+                                >
+                                  View
+                                </button>
+                              ) : null}
+                              {message.attachmentUrl ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveMenuMessageId(null)
+                                    void handleDownloadAttachment(message)
+                                  }}
+                                  className="block w-full px-3 py-2 text-left text-xs text-slate-200 transition hover:bg-slate-800"
+                                >
+                                  Download
+                                </button>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+
                         {editingId === message.id ? (
                           <textarea
                             value={editingDraft}
                             onChange={(e) => setEditingDraft(e.target.value)}
                             rows={3}
-                            className="w-full resize-none rounded-xl border border-slate-700 bg-slate-900/70 px-3.5 py-2.5 text-[13px] text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                            className="mt-6 w-full resize-none rounded-xl border border-slate-700 bg-slate-900/70 px-3.5 py-2.5 text-[13px] text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
                           />
                         ) : (
                           <>
                             {message.attachmentName ? (
                               message.attachmentUrl ? (
                               isPreviewableImage(message.attachmentName, message.attachmentUrl) ? (
-                                <a
-                                  href={message.attachmentUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
+                                <button
+                                  type="button"
+                                  onClick={() => handleViewAttachment(message)}
                                   className="inline-flex w-fit max-w-full flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-900/70 transition hover:border-sky-500/40"
                                 >
                                   <img
@@ -1118,12 +1280,11 @@ export function ClientChatModal({
                                       {message.attachmentName || 'Attachment'}
                                     </span>
                                   </div>
-                                </a>
+                                </button>
                               ) : (
-                                <a
-                                  href={message.attachmentUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
+                                <button
+                                  type="button"
+                                  onClick={() => handleViewAttachment(message)}
                                   className="block overflow-hidden rounded-2xl border border-slate-700 bg-slate-900/70 transition hover:border-sky-500/40"
                                 >
                                   <div className="flex h-56 flex-col items-center justify-center px-6 text-center">
@@ -1140,7 +1301,7 @@ export function ClientChatModal({
                                       {message.attachmentMetaLabel || getAttachmentExtension(message.attachmentName || 'Attachment')}
                                     </p>
                                   </div>
-                                </a>
+                                </button>
                               )
                               ) : (
                                 <div className="overflow-hidden rounded-2xl border border-slate-700 bg-slate-900/70">
@@ -1167,60 +1328,35 @@ export function ClientChatModal({
                             ) : null}
 
                             {message.message ? (
-                              <p className={`${message.attachmentUrl ? 'mt-3' : ''} whitespace-pre-wrap break-words text-sm text-white`}>
+                              <p className={`${message.attachmentUrl ? 'mt-3' : 'mt-0'} whitespace-pre-wrap wrap-break-word text-sm text-white`}>
                                 {message.message}
                               </p>
                             ) : !message.attachmentUrl ? (
-                              <p className="text-xs italic text-slate-400">Shared an attachment</p>
+                              <p className="mt-0 text-xs italic text-slate-400">Shared an attachment</p>
                             ) : null}
                           </>
                         )}
                       </div>
-                    {message.senderAuthId === currentUserAuthId ? (
+                    {message.senderAuthId === currentUserAuthId && editingId === message.id ? (
                       <div className={`mt-2 flex items-center gap-3 text-xs text-sky-300 ${message.isOwnMessage ? 'justify-end' : ''}`}>
-                        {editingId === message.id ? (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => void handleSaveEdit(message.id)}
-                              className="transition hover:text-white"
-                            >
-                              Save
-                            </button>
-                            <span className="text-slate-600">.</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingId(null)
-                                setEditingDraft('')
-                              }}
-                              className="transition hover:text-white"
-                            >
-                              Cancel
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingId(message.id)
-                                setEditingDraft(message.message)
-                              }}
-                              className="transition hover:text-white"
-                            >
-                              Edit
-                            </button>
-                            <span className="text-slate-600">.</span>
-                            <button
-                              type="button"
-                              onClick={() => void handleDelete(message.id)}
-                              className="transition hover:text-white"
-                            >
-                              Delete
-                            </button>
-                          </>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => void handleSaveEdit(message.id)}
+                          className="transition hover:text-white"
+                        >
+                          Save
+                        </button>
+                        <span className="text-slate-600">.</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingId(null)
+                            setEditingDraft('')
+                          }}
+                          className="transition hover:text-white"
+                        >
+                          Cancel
+                        </button>
                       </div>
                     ) : null}
                     </div>
@@ -1388,8 +1524,80 @@ export function ClientChatModal({
     </div>
   )
 
+  const attachmentLightbox = expandedAttachment ? (
+    <div
+      className="fixed inset-0 z-70 flex items-center justify-center bg-black/85 p-4"
+      onClick={() => setExpandedAttachment(null)}
+    >
+      <button
+        type="button"
+        onClick={() => setExpandedAttachment(null)}
+        className="absolute right-5 top-5 rounded-full bg-slate-900/80 p-2 text-white transition hover:bg-slate-800"
+        aria-label="Close attachment preview"
+      >
+        <CloseIcon />
+      </button>
+      <div
+        className="max-h-[88vh] w-full max-w-5xl overflow-hidden rounded-2xl border border-slate-700 bg-slate-950 shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-slate-700 px-5 py-4">
+          <div className="min-w-0">
+            <h3 className="truncate text-base font-bold text-white">{expandedAttachment.name}</h3>
+            <p className="text-xs text-slate-400">
+              {expandedAttachment.isImage ? 'Image preview' : 'Attachment preview'}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <a
+              href={expandedAttachment.url}
+              download={expandedAttachment.name}
+              className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-800"
+            >
+              Download
+            </a>
+          </div>
+        </div>
+        <div className="flex max-h-[calc(88vh-4.5rem)] items-center justify-center bg-slate-950 p-5">
+          {expandedAttachment.isImage ? (
+            <img
+              src={expandedAttachment.url}
+              alt={expandedAttachment.name}
+              className="max-h-[calc(88vh-7rem)] max-w-full rounded-2xl border border-slate-700 object-contain"
+            />
+          ) : (
+            <div className="flex w-full max-w-2xl flex-col items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 px-8 py-16 text-center">
+              <div className="flex h-24 w-24 items-center justify-center rounded-3xl border border-slate-700 bg-slate-950 text-slate-400">
+                <FileIcon className="h-11 w-11" />
+              </div>
+              <p className="mt-6 break-all text-2xl font-medium leading-tight text-slate-200">
+                {expandedAttachment.name}
+              </p>
+              <p className="mt-3 text-base text-slate-400">No preview available</p>
+              <div className="mt-6 flex items-center gap-3">
+                <a
+                  href={expandedAttachment.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-800"
+                >
+                  Open
+                </a>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  ) : null
+
   if (isPageVariant) {
-    return <div className={plusJakarta.className}>{shell}</div>
+    return (
+      <div className={plusJakarta.className}>
+        {shell}
+        {attachmentLightbox}
+      </div>
+    )
   }
 
   return (
@@ -1398,6 +1606,7 @@ export function ClientChatModal({
       <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 ${plusJakarta.className}`}>
         {shell}
       </div>
+      {attachmentLightbox}
     </>
   )
 }
