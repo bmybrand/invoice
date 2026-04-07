@@ -112,6 +112,29 @@ export function RegisterForm() {
 
     setLoading(true)
 
+    const { data: selectedAgent, error: selectedAgentError } = await supabase
+      .from('employees')
+      .select('auth_id, department')
+      .eq('auth_id', agentAuthId)
+      .neq('isdeleted', true)
+      .maybeSingle()
+
+    if (selectedAgentError) {
+      setLoading(false)
+      setError(selectedAgentError.message || 'Failed to validate the selected sales agent.')
+      return
+    }
+
+    const selectedDepartment = String((selectedAgent as { department?: string | null } | null)?.department ?? '')
+      .trim()
+      .toLowerCase()
+
+    if (!selectedAgent || !selectedDepartment.includes('sales')) {
+      setLoading(false)
+      setError('Only sales employees can be selected as agents.')
+      return
+    }
+
     const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,

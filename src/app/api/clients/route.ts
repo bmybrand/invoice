@@ -30,6 +30,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Handler is required' }, { status: 400 })
   }
 
+  const { data: handler, error: handlerError } = await auth.supabase
+    .from('employees')
+    .select('auth_id, department')
+    .eq('auth_id', handlerId)
+    .neq('isdeleted', true)
+    .maybeSingle()
+
+  if (handlerError) {
+    return NextResponse.json({ error: handlerError.message || 'Failed to validate handler' }, { status: 500 })
+  }
+
+  const handlerDepartment = String((handler as { department?: string | null } | null)?.department ?? '')
+    .trim()
+    .toLowerCase()
+
+  if (!handler || !handlerDepartment.includes('sales')) {
+    return NextResponse.json({ error: 'Only sales employees can be assigned as client handlers' }, { status: 400 })
+  }
+
   const { data: createdUser, error: createError } = await auth.supabase.auth.admin.createUser({
     email,
     password,
