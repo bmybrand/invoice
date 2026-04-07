@@ -69,6 +69,12 @@ type PaymentsScopedCache = {
   rows: PaymentRow[]
 }
 
+type ErrorWithSupabaseFields = Error & {
+  code?: string
+  details?: string
+  hint?: string
+}
+
 type QuickDownloadType = 'all' | 'week' | 'month' | 'day'
 
 type BulkBrandOption = {
@@ -346,12 +352,13 @@ export default function Payments() {
       if (!active) return
 
       if (submissionError) {
+        const typedError = submissionError as ErrorWithSupabaseFields
         console.error('Failed to fetch payments:', {
           error: submissionError,
-          message: (submissionError as any)?.message,
-          code: (submissionError as any)?.code,
-          details: (submissionError as any)?.details,
-          hint: (submissionError as any)?.hint,
+          message: typedError?.message,
+          code: typedError?.code,
+          details: typedError?.details,
+          hint: typedError?.hint,
         })
         if (!isBackgroundRefresh) {
           setPayments([])

@@ -213,7 +213,9 @@ export default function Brand() {
   }, [])
 
   useEffect(() => {
-    void fetchBrands()
+    const timeoutId = window.setTimeout(() => {
+      void fetchBrands()
+    }, 0)
 
     const intervalId = window.setInterval(() => {
       if (document.visibilityState === 'visible') {
@@ -221,7 +223,10 @@ export default function Brand() {
       }
     }, TABLE_REFRESH_INTERVAL_MS)
 
-    return () => window.clearInterval(intervalId)
+    return () => {
+      window.clearTimeout(timeoutId)
+      window.clearInterval(intervalId)
+    }
   }, [fetchBrands])
 
   useEffect(() => {

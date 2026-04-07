@@ -208,19 +208,30 @@ export default function Employees() {
   const [currentUserEmployeeId, setCurrentUserEmployeeId] = useState<number | null>(null)
   useEffect(() => {
     if (!profileCurrentUserAuthId) {
-      setCurrentUserEmployeeId(null)
-      return
+      const timeoutId = window.setTimeout(() => {
+        setCurrentUserEmployeeId(null)
+      }, 0)
+      return () => window.clearTimeout(timeoutId)
     }
 
-    supabase
-      .from('employees')
-      .select('id')
-      .eq('auth_id', profileCurrentUserAuthId)
-      .neq('isdeleted', true)
-      .maybeSingle()
-      .then(({ data: emp }) => {
-        setCurrentUserEmployeeId(emp ? (emp as { id: number }).id : null)
-      })
+    let cancelled = false
+    const timeoutId = window.setTimeout(() => {
+      supabase
+        .from('employees')
+        .select('id')
+        .eq('auth_id', profileCurrentUserAuthId)
+        .neq('isdeleted', true)
+        .maybeSingle()
+        .then(({ data: emp }) => {
+          if (cancelled) return
+          setCurrentUserEmployeeId(emp ? (emp as { id: number }).id : null)
+        })
+    }, 0)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeoutId)
+    }
   }, [profileCurrentUserAuthId])
 
   function canEdit(emp: EmployeeRow): boolean {
@@ -267,11 +278,18 @@ export default function Employees() {
 
   // Reset to page 1 when search or role filter changes
   useEffect(() => {
-    setCurrentPage(1)
+    const timeoutId = window.setTimeout(() => {
+      setCurrentPage(1)
+    }, 0)
+    return () => window.clearTimeout(timeoutId)
   }, [searchQuery, roleFilter])
 
   useEffect(() => {
-    if (currentPage > totalPages) setCurrentPage(1)
+    if (currentPage <= totalPages) return
+    const timeoutId = window.setTimeout(() => {
+      setCurrentPage(1)
+    }, 0)
+    return () => window.clearTimeout(timeoutId)
   }, [currentPage, totalPages])
 
   const fetchEmployeeAvatarUrls = useCallback(async (rows: EmployeeRow[]) => {
@@ -371,7 +389,9 @@ export default function Employees() {
   }, [fetchEmployeeAvatarUrls, profileCurrentUserAuthId, scopedEmployeesCache])
 
   useEffect(() => {
-    void fetchEmployees()
+    const timeoutId = window.setTimeout(() => {
+      void fetchEmployees()
+    }, 0)
 
     const intervalId = window.setInterval(() => {
       if (document.visibilityState === 'visible') {
@@ -379,7 +399,10 @@ export default function Employees() {
       }
     }, TABLE_REFRESH_INTERVAL_MS)
 
-    return () => window.clearInterval(intervalId)
+    return () => {
+      window.clearTimeout(timeoutId)
+      window.clearInterval(intervalId)
+    }
   }, [fetchEmployees])
 
   const fetchArchivedEmployees = useCallback(async () => {

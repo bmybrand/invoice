@@ -702,7 +702,6 @@ if (clientError) {
 
   useEffect(() => {
     if (accountType !== 'client' || !currentUserAuthId) {
-      setChatMessageCount(0)
       return
     }
 

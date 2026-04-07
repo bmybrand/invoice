@@ -828,25 +828,39 @@ export default function Invoice() {
   const TABLE_REFRESH_INTERVAL_MS = 5000
 
   useEffect(() => {
-    void fetchInvoices()
+    const timeoutId = window.setTimeout(() => {
+      void fetchInvoices()
+    }, 0)
 
     const intervalId = window.setInterval(() => {
       void fetchInvoices({ background: true })
     }, TABLE_REFRESH_INTERVAL_MS)
 
-    return () => window.clearInterval(intervalId)
+    return () => {
+      window.clearTimeout(timeoutId)
+      window.clearInterval(intervalId)
+    }
   }, [fetchInvoices])
 
   useEffect(() => {
-    fetchEmployees()
+    const timeoutId = window.setTimeout(() => {
+      fetchEmployees()
+    }, 0)
+    return () => window.clearTimeout(timeoutId)
   }, [fetchEmployees])
 
   useEffect(() => {
-    fetchClients()
+    const timeoutId = window.setTimeout(() => {
+      fetchClients()
+    }, 0)
+    return () => window.clearTimeout(timeoutId)
   }, [fetchClients])
 
   useEffect(() => {
-    fetchBrands()
+    const timeoutId = window.setTimeout(() => {
+      fetchBrands()
+    }, 0)
+    return () => window.clearTimeout(timeoutId)
   }, [fetchBrands])
 
   const statusOptions: { label: string; value: 'all' | 'paid' | 'unpaid' }[] = [
@@ -857,7 +871,10 @@ export default function Invoice() {
   const statusFilterLabel = statusOptions.find((o) => o.value === statusFilter)?.label ?? 'All Statuses'
 
   useEffect(() => {
-    setCurrentPage(1)
+    const timeoutId = window.setTimeout(() => {
+      setCurrentPage(1)
+    }, 0)
+    return () => window.clearTimeout(timeoutId)
   }, [searchQuery, statusFilter])
 
   const filteredInvoices = (() => {
@@ -887,7 +904,11 @@ export default function Invoice() {
   const paginatedInvoices = filteredInvoices.slice(start, start + PAGE_SIZE)
 
   useEffect(() => {
-    if (currentPage > totalPages) setCurrentPage(1)
+    if (currentPage <= totalPages) return
+    const timeoutId = window.setTimeout(() => {
+      setCurrentPage(1)
+    }, 0)
+    return () => window.clearTimeout(timeoutId)
   }, [currentPage, totalPages])
 
   useEffect(() => {

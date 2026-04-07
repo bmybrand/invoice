@@ -955,14 +955,18 @@ export default function Clients() {
     const chatTitle = (searchParams.get('chatTitle') || '').trim() || 'Chat'
     const chatSubtitle = (searchParams.get('chatSubtitle') || '').trim()
 
-    setChatTarget((prev) => {
-      if (prev?.clientId === chatClientId) return prev
-      return {
-        clientId: chatClientId,
-        title: chatTitle,
-        subtitle: chatSubtitle || undefined,
-      }
-    })
+    const timeoutId = window.setTimeout(() => {
+      setChatTarget((prev) => {
+        if (prev?.clientId === chatClientId) return prev
+        return {
+          clientId: chatClientId,
+          title: chatTitle,
+          subtitle: chatSubtitle || undefined,
+        }
+      })
+    }, 0)
+
+    return () => window.clearTimeout(timeoutId)
   }, [searchParams])
 
   function openChatInNewTab(row: ClientTableRow) {
