@@ -144,6 +144,14 @@ function CloseIcon({ className = 'h-4 w-4' }: { className?: string }) {
   )
 }
 
+function PlusIcon({ className = 'h-4 w-3' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+    </svg>
+  )
+}
+
 function getPaymentStatusLabel(value: string | null | undefined): 'Success' | 'Processing' | 'Recorded' {
   const normalized = (value || '').trim().toLowerCase()
   if (
@@ -913,10 +921,10 @@ export default function Payments() {
                 type="button"
                 onClick={() => setShowBulkDownloadModal(true)}
                 disabled={paidPayments.length === 0}
-                className="inline-flex h-12 items-center justify-center rounded-2xl bg-orange-500 px-5 text-sm font-semibold text-white shadow-[0_12px_30px_-14px_rgba(249,115,22,0.9)] transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none"
+                className="flex h-12 min-w-36 shrink-0 items-center justify-center gap-2 rounded-xl bg-orange-500 px-6 text-sm font-bold text-white shadow-[0px_4px_20px_0px_rgba(249,115,22,0.2)] transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none"
               >
-                Bulk Download
-                {selectedPaidPayments.length > 0 ? ` (${selectedPaidPayments.length})` : ''}
+                <PlusIcon className="h-4 w-3 text-white" />
+                <span>Bulk Download</span>
               </button>
             </div>
           ) : null}
