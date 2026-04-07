@@ -92,6 +92,7 @@ type BulkInvoiceRow = {
   amount: string
   status: string
   payable_amount: number | null
+  paid_amount: number
   invoice_type: string
 }
 
@@ -199,6 +200,31 @@ function getIsoWeekYear(date: Date): number {
   const day = normalized.getUTCDay() || 7
   normalized.setUTCDate(normalized.getUTCDate() + 4 - day)
   return normalized.getUTCFullYear()
+}
+
+function getIsoWeekRange(year: number, week: number): { start: Date; end: Date } {
+  const jan4 = new Date(Date.UTC(year, 0, 4))
+  const jan4Day = jan4.getUTCDay() || 7
+  const week1Monday = new Date(jan4)
+  week1Monday.setUTCDate(jan4.getUTCDate() - (jan4Day - 1))
+
+  const weekStart = new Date(week1Monday)
+  weekStart.setUTCDate(week1Monday.getUTCDate() + (week - 1) * 7)
+
+  const weekEnd = new Date(weekStart)
+  weekEnd.setUTCDate(weekStart.getUTCDate() + 6)
+
+  return {
+    start: new Date(weekStart.getUTCFullYear(), weekStart.getUTCMonth(), weekStart.getUTCDate()),
+    end: new Date(weekEnd.getUTCFullYear(), weekEnd.getUTCMonth(), weekEnd.getUTCDate()),
+  }
+}
+
+function formatWeekOptionLabel(year: number, week: number): string {
+  const { start, end } = getIsoWeekRange(year, week)
+  const startText = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const endText = end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  return `Week ${week} - ${startText} to ${endText}`
 }
 
 function sanitizeFileName(name: string): string {
@@ -310,7 +336,13 @@ export default function Payments() {
       if (!active) return
 
       if (submissionError) {
-        console.error('Failed to fetch payments', submissionError)
+        console.error('Failed to fetch payments:', {
+          error: submissionError,
+          message: (submissionError as any)?.message,
+          code: (submissionError as any)?.code,
+          details: (submissionError as any)?.details,
+          hint: (submissionError as any)?.hint,
+        })
         if (!isBackgroundRefresh) {
           setPayments([])
           paymentsTableCache = null
@@ -626,6 +658,7 @@ export default function Payments() {
         amount: String(row.amount ?? ''),
         status: String(row.status ?? 'Pending'),
         payable_amount: row.payable_amount == null ? null : Number(row.payable_amount),
+        paid_amount: Number(row.paid_amount ?? 0),
         invoice_type: String(row.invoice_type ?? 'Standard'),
       }
 
@@ -671,6 +704,8 @@ export default function Payments() {
         const clonedRoot = clonedDocument.getElementById(BULK_PRINT_ROOT_ID)
         if (!clonedRoot) return
 
+        const a4MinHeight = Math.ceil((root.scrollWidth * 297) / 210)
+
         const transparentPixel = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
         clonedRoot.querySelectorAll('img[src^="http"]').forEach((img) => {
           const src = img.getAttribute('src') || ''
@@ -682,6 +717,52 @@ export default function Payments() {
             img.setAttribute('src', transparentPixel)
           }
         })
+
+        const summaryGrid = clonedRoot.querySelector('.invoice-summary-grid')
+        const totalsBlock = clonedRoot.querySelector('.invoice-totals-block')
+
+        const sourceElements = [root, ...Array.from(root.querySelectorAll('*'))]
+        const clonedElements = [clonedRoot, ...Array.from(clonedRoot.querySelectorAll('*'))]
+
+        clonedElements.forEach((clonedEl, index) => {
+          const sourceEl = sourceElements[index]
+          if (!(clonedEl instanceof clonedDocument.defaultView!.HTMLElement) || !(sourceEl instanceof HTMLElement)) {
+            return
+          }
+
+          const computed = window.getComputedStyle(sourceEl)
+          const styleText =
+            computed.cssText ||
+            Array.from(computed)
+              .map((prop) => `${prop}: ${computed.getPropertyValue(prop)};`)
+              .join(' ')
+
+          clonedEl.setAttribute('style', styleText)
+          clonedEl.removeAttribute('class')
+        })
+
+        if (clonedRoot instanceof clonedDocument.defaultView!.HTMLElement) {
+          clonedRoot.style.boxShadow = 'none'
+          clonedRoot.style.border = 'none'
+          clonedRoot.style.borderWidth = '0'
+          clonedRoot.style.borderRadius = '0'
+          clonedRoot.style.margin = '0'
+          clonedRoot.style.width = `${root.scrollWidth}px`
+          clonedRoot.style.minHeight = `${Math.max(root.scrollHeight, a4MinHeight)}px`
+          clonedRoot.style.display = 'flex'
+          clonedRoot.style.flexDirection = 'column'
+        }
+
+        if (summaryGrid instanceof HTMLElement) {
+          summaryGrid.style.cssText =
+            (summaryGrid.style.cssText || '') +
+            '; display:grid !important; grid-template-columns:minmax(0,1fr) 320px !important; align-items:start !important; gap:32px !important; width:100% !important;'
+        }
+        if (totalsBlock instanceof HTMLElement) {
+          totalsBlock.style.cssText =
+            (totalsBlock.style.cssText || '') +
+            '; width:100% !important; max-width:320px !important; justify-self:end !important; margin-left:0 !important; margin-right:0 !important;'
+        }
       },
       ignoreElements: (element) =>
         element.classList?.contains('no-print') || element.classList?.contains('print-hide-download'),
@@ -1124,7 +1205,7 @@ export default function Payments() {
                       >
                         {availableWeeks.length > 0 ? (
                           availableWeeks.map((week) => (
-                            <option key={week} value={week}>Week {week}</option>
+                            <option key={week} value={week}>{formatWeekOptionLabel(quickYear, week)}</option>
                           ))
                         ) : (
                           <option value="">No weeks</option>
@@ -1297,8 +1378,9 @@ export default function Payments() {
         </>
       ) : null}
 
-      <div className="pointer-events-none fixed -left-2500 top-0 z-[-1]">
-        {bulkRenderPayload ? (
+      {/* Hidden render for bulk PDF generation - only renders when bulk download starts */}
+      {bulkRenderPayload ? (
+        <div className="pointer-events-none fixed -left-2500 top-0 z-[-1] w-231">
           <InvoiceDocument
             invoice={bulkRenderPayload.invoice}
             brandMeta={bulkRenderPayload.brandMeta}
@@ -1309,9 +1391,26 @@ export default function Payments() {
             rootId={BULK_PRINT_ROOT_ID}
             includeDownloadButton={false}
             showStatusBadge
+            showPayableSummary={bulkRenderPayload.invoice.payable_amount != null}
+            payableAmount={(() => {
+              const subtotal = (bulkRenderPayload.invoice.service || []).reduce(
+                (sum, line) => sum + (Number(line.qty) || 0) * Number(String(line.price || '').replace(/[^0-9.-]/g, '')),
+                0
+              )
+              return Math.min(Number(bulkRenderPayload.invoice.payable_amount ?? 0), subtotal)
+            })()}
+            remainingAmount={(() => {
+              const subtotal = (bulkRenderPayload.invoice.service || []).reduce(
+                (sum, line) => sum + (Number(line.qty) || 0) * Number(String(line.price || '').replace(/[^0-9.-]/g, '')),
+                0
+              )
+              const payable = Math.min(Number(bulkRenderPayload.invoice.payable_amount ?? 0), subtotal)
+              return Math.max(subtotal - payable, 0)
+            })()}
+            summaryActions={null}
           />
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </div>
   )
 }
