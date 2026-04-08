@@ -51,7 +51,7 @@ export async function GET(
     actor.accountType === 'client' ||
     (actor.clientRow.handler_id || '').trim() === actor.user.id
 
-  const markReadPromises: Promise<unknown>[] = []
+  const markReadPromises: PromiseLike<unknown>[] = []
   if (actor.accountType === 'client') {
     markReadPromises.push(
       actor.supabase
