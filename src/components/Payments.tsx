@@ -10,6 +10,7 @@ import { InvoiceDocument } from '@/components/Invoice'
 import { useClientDashboardData } from '@/context/ClientDashboardDataContext'
 import { formatInvoiceCode } from '@/lib/invoice-code'
 import { getInvoiceLink } from '@/lib/invoice-token'
+import { logFetchError } from '@/lib/fetch-error'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
@@ -350,13 +351,7 @@ export default function Payments() {
       if (!active) return
 
       if (submissionError) {
-        console.error('Failed to fetch payments:', {
-          error: submissionError,
-          message: (submissionError as any)?.message,
-          code: (submissionError as any)?.code,
-          details: (submissionError as any)?.details,
-          hint: (submissionError as any)?.hint,
-        })
+        logFetchError('Failed to fetch payments', submissionError)
         if (!isBackgroundRefresh) {
           setPayments([])
           paymentsTableCache = null

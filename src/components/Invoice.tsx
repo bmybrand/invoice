@@ -9,6 +9,7 @@ import { useClientDashboardData } from '@/context/ClientDashboardDataContext'
 import { getInvoiceLink } from '@/lib/invoice-token'
 import { formatInvoiceCode } from '@/lib/invoice-code'
 import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
+import { logFetchError } from '@/lib/fetch-error'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
@@ -717,7 +718,7 @@ export default function Invoice() {
       setInvoicesLoading(false)
     }
     if (error) {
-      console.error('Failed to fetch invoices', error)
+      logFetchError('Failed to fetch invoices', error)
       if (!isBackgroundRefresh) {
         setInvoices([])
         invoiceTableCache = null
@@ -737,7 +738,7 @@ export default function Invoice() {
         .in('invoice_id', invoiceIds)
 
       if (paymentError) {
-        console.error('Failed to fetch invoice payment summaries', paymentError)
+        logFetchError('Failed to fetch invoice payment summaries', paymentError)
       } else {
         paidAmountByInvoiceId = ((paymentData as PaymentSubmissionRow[] | null) ?? []).reduce((map, row) => {
           const invoiceId = Number(row.invoice_id ?? 0)
@@ -794,7 +795,7 @@ export default function Invoice() {
       .select('id, employee_name')
       .order('employee_name')
     if (error) {
-      console.error('Failed to fetch employees', error)
+      logFetchError('Failed to fetch employees', error)
       setEmployees([])
       return
     }
@@ -820,7 +821,7 @@ export default function Invoice() {
 
     const { data, error } = await query
     if (error) {
-      console.error('Failed to fetch clients', error)
+      logFetchError('Failed to fetch clients', error)
       setClients([])
       return
     }
@@ -834,7 +835,7 @@ export default function Invoice() {
       .neq('isdeleted', true)
       .order('brand_name')
     if (error) {
-      console.error('Failed to fetch brands', error)
+      logFetchError('Failed to fetch brands', error)
       setBrands([])
       return
     }

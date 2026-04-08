@@ -5,6 +5,7 @@ import { Plus_Jakarta_Sans } from 'next/font/google'
 import { supabase } from '@/lib/supabase'
 import { useDashboardProfile } from '@/components/DashboardLayout'
 import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
+import { logFetchError } from '@/lib/fetch-error'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
@@ -434,7 +435,7 @@ export default function Employees() {
       setEmployeesLoading(false)
     }
     if (error) {
-      console.error('Failed to fetch employees', error)
+      logFetchError('Failed to fetch employees', error)
       setEmployees([])
       setEmployeeAvatarUrls({})
       if (!isBackgroundRefresh) {

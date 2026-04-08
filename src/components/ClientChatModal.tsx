@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus_Jakarta_Sans } from 'next/font/google'
 import { supabase } from '@/lib/supabase'
+import { logFetchError } from '@/lib/fetch-error'
 import { useDashboardProfile } from '@/components/DashboardLayout'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
@@ -801,7 +802,7 @@ export function ClientChatModal({
       if (cancelled || fetchVersion !== invoiceFetchVersionRef.current) return
 
       if (error) {
-        console.error('Failed to load client invoices', error)
+        logFetchError('Failed to load client invoices', error)
         setInvoices([])
         setInvoicesLoading(false)
         return

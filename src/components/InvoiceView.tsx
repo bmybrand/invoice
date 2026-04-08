@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { logFetchError } from '@/lib/fetch-error'
 import { InvoiceDocument } from '@/components/Invoice'
 import InvoicePayForm from '@/components/InvoicePayForm'
 
@@ -57,11 +58,11 @@ export default function InvoiceView({ invoiceId, invoiceToken, publicView = fals
         supabase.from('brands').select('id, brand_name, brand_url, logo_url').neq('isdeleted', true).order('brand_name'),
       ])
 
-      if (brandError) console.error('Failed to fetch brands', brandError)
+      if (brandError) logFetchError('Failed to fetch brands', brandError)
       setBrands((brandData as BrandOption[]) ?? [])
 
       if (invoiceError || !invoiceData) {
-        if (invoiceError) console.error('Failed to fetch invoice', invoiceError)
+        if (invoiceError) logFetchError('Failed to fetch invoice', invoiceError)
         setInvoice(null)
         setLoading(false)
         return

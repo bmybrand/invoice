@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase'
 import { useDashboardProfile } from '@/components/DashboardLayout'
 import { ClientChatModal } from '@/components/ClientChatModal'
 import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
+import { logFetchError } from '@/lib/fetch-error'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
@@ -315,7 +316,7 @@ export default function Clients() {
         isFetchingRef.current = false
         return
       }
-      console.error('Failed to fetch clients', clientsError)
+      logFetchError('Failed to fetch clients', clientsError)
       if (!isBackgroundRefresh) {
         setClientsLoading(false)
       }

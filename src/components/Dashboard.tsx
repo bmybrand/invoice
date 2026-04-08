@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useDashboardProfile } from '@/components/DashboardLayout'
+import { logFetchError } from '@/lib/fetch-error'
 import CountUp from 'react-countup'
 import {
   BarChart,
@@ -274,7 +275,7 @@ export function Dashboard() {
           .eq('invoice_creator_id', currentEmployeeId)
 
         if (ownedInvoicesError) {
-          console.error('Failed to fetch user invoices for dashboard', ownedInvoicesError)
+          logFetchError('Failed to fetch user invoices for dashboard', ownedInvoicesError)
           setEmptyState()
           return
         }
@@ -302,7 +303,7 @@ export function Dashboard() {
       const { data: paymentData, error: paymentError } = await paymentsQuery
 
       if (paymentError) {
-        console.error('Failed to fetch dashboard payments', paymentError)
+        logFetchError('Failed to fetch dashboard payments', paymentError)
         setEmptyState()
         return
       }
@@ -348,7 +349,7 @@ export function Dashboard() {
           .in('id', invoiceIds)
 
         if (invoiceError) {
-          console.error('Failed to fetch dashboard invoice metadata', invoiceError)
+          logFetchError('Failed to fetch dashboard invoice metadata', invoiceError)
         } else {
           invoiceMap = new Map(((invoiceData ?? []) as InvoiceMetricRow[]).map((row) => [row.id, row]))
         }
@@ -371,7 +372,7 @@ export function Dashboard() {
           .in('id', creatorIds)
 
         if (employeeError) {
-          console.error('Failed to fetch dashboard employee metadata', employeeError)
+          logFetchError('Failed to fetch dashboard employee metadata', employeeError)
         } else {
           employeeMap = new Map(((employeeData ?? []) as EmployeeMetricRow[]).map((row) => [row.id, row]))
         }

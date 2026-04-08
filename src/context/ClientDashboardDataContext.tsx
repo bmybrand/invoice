@@ -3,6 +3,7 @@
 import { createContext, useContext, useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useDashboardProfile } from '@/components/DashboardLayout'
+import { logFetchError } from '@/lib/fetch-error'
 
 export type ClientRow = {
   id: number
@@ -118,7 +119,7 @@ export function ClientDashboardDataProvider({ children }: { children: React.Reac
       .maybeSingle()
 
     if (clientError) {
-      console.error('Failed to load client profile', clientError)
+      logFetchError('Failed to load client profile', clientError)
       if (!isBackgroundRefresh) {
         setError(clientError.message)
         setLoading(false)
@@ -150,7 +151,7 @@ export function ClientDashboardDataProvider({ children }: { children: React.Reac
         invoiceRows = invoiceByClient as InvoiceRow[]
       }
       if (clientInvoiceError) {
-        console.error('Failed to load invoices', clientInvoiceError.message)
+        logFetchError('Failed to load invoices', clientInvoiceError)
       }
     }
     setClientBrandName(null)
@@ -175,7 +176,7 @@ export function ClientDashboardDataProvider({ children }: { children: React.Reac
         .order('created_at', { ascending: false })
 
       if (paymentError) {
-        console.error('Failed to load payments', paymentError.message)
+        logFetchError('Failed to load payments', paymentError)
       }
       paymentData = (data ?? []) as typeof paymentData
     } else {
@@ -186,7 +187,7 @@ export function ClientDashboardDataProvider({ children }: { children: React.Reac
         .order('created_at', { ascending: false })
 
       if (paymentError) {
-        console.error('Failed to load payments', paymentError.message)
+        logFetchError('Failed to load payments', paymentError)
       }
       paymentData = (data ?? []) as typeof paymentData
     }

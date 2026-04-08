@@ -5,6 +5,7 @@ import { Plus_Jakarta_Sans } from 'next/font/google'
 import { supabase } from '@/lib/supabase'
 import { useDashboardProfile } from '@/components/DashboardLayout'
 import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
+import { logFetchError } from '@/lib/fetch-error'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
@@ -174,7 +175,7 @@ export default function Brand() {
       setBrandsLoading(false)
     }
     if (error) {
-      console.error('Failed to fetch brands', error)
+      logFetchError('Failed to fetch brands', error)
       if (!isBackgroundRefresh) {
         setBrands([])
         brandTableCache = null
