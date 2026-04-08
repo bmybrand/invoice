@@ -18,8 +18,10 @@ const TABLE_REFRESH_INTERVAL_MS = 5000
 const MODAL_PREVIEW_INITIAL = 1
 const MODAL_PREVIEW_STEP = 50
 const BULK_PRINT_ROOT_ID = 'bulk-invoice-print-root'
-const PAYMENT_GRID =
+const PAYMENT_GRID_FINANCE =
   '52px minmax(88px,0.75fr) minmax(120px,1fr) minmax(140px,1fr) minmax(220px,1.5fr) minmax(110px,0.85fr) minmax(130px,1fr) minmax(130px,0.95fr) minmax(220px,1.7fr) minmax(120px,0.95fr) minmax(160px,1.1fr) minmax(100px,0.9fr) 72px'
+const PAYMENT_GRID_STANDARD =
+  'minmax(88px,0.75fr) minmax(120px,1fr) minmax(140px,1fr) minmax(220px,1.5fr) minmax(110px,0.85fr) minmax(130px,1fr) minmax(130px,0.95fr) minmax(220px,1.7fr) minmax(120px,0.95fr) minmax(160px,1.1fr) minmax(100px,0.9fr) 72px'
 
 type PaymentSubmissionRow = {
   id: number
@@ -258,6 +260,8 @@ export default function Payments() {
   const [showBulkDownloadModal, setShowBulkDownloadModal] = useState(false)
   const [bulkDownloading, setBulkDownloading] = useState(false)
   const [downloadMode, setDownloadMode] = useState<'selected' | 'filtered'>('selected')
+  const paymentGridTemplate = isFinanceDepartment ? PAYMENT_GRID_FINANCE : PAYMENT_GRID_STANDARD
+  const paymentTableMinWidth = isFinanceDepartment ? '1880px' : '1828px'
   const now = new Date()
   const [quickDownloadType, setQuickDownloadType] = useState<QuickDownloadType | null>(null)
   const [quickYear, setQuickYear] = useState(now.getFullYear())
@@ -955,10 +959,10 @@ export default function Payments() {
 
       <div className="w-full overflow-hidden rounded-xl border border-slate-700 bg-slate-800/80">
         <div className="w-full overflow-x-auto scrollbar-thin">
-          <div className="w-full" style={{ minWidth: '1880px' }}>
-            <div className="grid w-full border-b border-slate-700 bg-slate-900/50" style={{ gridTemplateColumns: PAYMENT_GRID }}>
-              {[ 
-                '',
+          <div className="w-full" style={{ minWidth: paymentTableMinWidth }}>
+            <div className="grid w-full border-b border-slate-700 bg-slate-900/50" style={{ gridTemplateColumns: paymentGridTemplate }}>
+              {[
+                ...(isFinanceDepartment ? [''] : []),
                 'No.',
                 'Invoice Creator',
                 'Customer',
@@ -976,7 +980,7 @@ export default function Payments() {
                     <span className="block truncate whitespace-nowrap text-xs font-bold uppercase tracking-wide text-slate-400">
                       {label}
                     </span>
-                  ) : (
+                  ) : isFinanceDepartment ? (
                     <input
                       type="checkbox"
                       checked={allPagePaidSelected}
@@ -985,7 +989,7 @@ export default function Payments() {
                       className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-orange-500 focus:ring-orange-500 disabled:cursor-not-allowed disabled:opacity-40"
                       aria-label="Select all paid payments on this page"
                     />
-                  )}
+                  ) : null}
                 </div>
               ))}
               <div className="flex items-center justify-end px-4 py-4 text-right sm:px-6">
@@ -1006,19 +1010,21 @@ export default function Payments() {
                 <div
                   key={payment.id}
                   className="grid w-full items-center border-t border-slate-700"
-                  style={{ gridTemplateColumns: PAYMENT_GRID }}
+                  style={{ gridTemplateColumns: paymentGridTemplate }}
                 >
-                  <div className="min-w-0 px-4 py-4 sm:px-6">
-                    {payment.status === 'Success' && payment.invoiceId != null ? (
-                      <input
-                        type="checkbox"
-                        checked={selectedPaymentIds.includes(payment.id)}
-                        onChange={(e) => togglePaymentSelection(payment.id, e.target.checked)}
-                        className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-orange-500 focus:ring-orange-500"
-                        aria-label={`Select payment ${payment.id}`}
-                      />
-                    ) : null}
-                  </div>
+                  {isFinanceDepartment ? (
+                    <div className="min-w-0 px-4 py-4 sm:px-6">
+                      {payment.status === 'Success' && payment.invoiceId != null ? (
+                        <input
+                          type="checkbox"
+                          checked={selectedPaymentIds.includes(payment.id)}
+                          onChange={(e) => togglePaymentSelection(payment.id, e.target.checked)}
+                          className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-orange-500 focus:ring-orange-500"
+                          aria-label={`Select payment ${payment.id}`}
+                        />
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div className="min-w-0 px-4 py-4 sm:px-6">
                     <span
                       className="block truncate whitespace-nowrap font-mono text-sm font-bold text-white"

@@ -26,7 +26,7 @@ type ServiceLine = {
   price: string
 }
 
-type ClientOption = { id: number; name: string; email: string }
+type ClientOption = { id: number; name: string; email: string; phone: string }
 
 type InvoiceRow = {
   id: number
@@ -650,6 +650,16 @@ export default function Invoice() {
     return currentEmployeeId !== null && currentEmployeeId === inv.invoice_creator_id
   }
 
+  function getDefaultInvoiceBrand() {
+    return (
+      brands.find((brand) => Number(brand.id) === 1)?.brand_name ||
+      brands.find((brand) => (brand.brand_name || '').trim().toLowerCase() === 'bmy brand')?.brand_name ||
+      brands.find((brand) => (brand.brand_name || '').trim().toLowerCase() === 'bmybrand')?.brand_name ||
+      brands[0]?.brand_name ||
+      ''
+    )
+  }
+
 
   const fetchInvoices = useCallback(async (options?: { background?: boolean }) => {
     const isBackgroundRefresh = options?.background ?? false
@@ -799,7 +809,7 @@ export default function Invoice() {
 
     let query = supabase
       .from('clients')
-      .select('id, name, email')
+      .select('id, name, email, phone')
       .eq('status', 'approved')
       .neq('isdeleted', true)
       .order('name')
@@ -869,6 +879,14 @@ export default function Invoice() {
     }, 0)
     return () => window.clearTimeout(timeoutId)
   }, [fetchBrands])
+
+  useEffect(() => {
+    if (!showAddModal) return
+    const defaultBrand = getDefaultInvoiceBrand()
+    if (defaultBrand && !addBrand.trim()) {
+      setAddBrand(defaultBrand)
+    }
+  }, [addBrand, brands, showAddModal])
 
   const statusOptions: { label: string; value: 'all' | 'paid' | 'unpaid' }[] = [
     { label: 'All Statuses', value: 'all' },
@@ -959,8 +977,9 @@ export default function Invoice() {
   }
 
   const addValidation = (() => {
-    if (!addBrand.trim() || !addEmail.trim() || !addPhone.trim()) {
-      return { valid: false, message: 'Fill all required fields: brand, email, phone.' }
+    const resolvedBrand = addBrand.trim() || getDefaultInvoiceBrand()
+    if (!resolvedBrand || !addClientName.trim() || !addEmail.trim() || !addPhone.trim()) {
+      return { valid: false, message: 'Fill all required fields: client name, email, phone.' }
     }
     if (!isValidEmail(addEmail.trim())) {
       return { valid: false, message: 'Enter a valid email address.' }
@@ -1082,13 +1101,16 @@ export default function Invoice() {
     setAddError(null)
     setAddLoading(true)
 
+    const resolvedBrand = addBrand.trim() || getDefaultInvoiceBrand()
+
     const { data: insertedInvoice, error: insertError } = await supabase
       .from('invoices')
       .insert({
         invoice_date: new Date().toISOString().slice(0, 10),
         invoice_creator_id: currentEmployeeId,
         client_id: addClientId,
-        brand_name: addBrand.trim(),
+        brand_name: resolvedBrand,
+        client_name: addClientName.trim(),
         email: addEmail.trim(),
         service: cleanServices,
         phone: addPhone.trim(),
@@ -1125,7 +1147,7 @@ export default function Invoice() {
   function resetAddModalState() {
     setAddClientId(null)
     setAddClientName('')
-    setAddBrand('')
+    setAddBrand(getDefaultInvoiceBrand())
     setAddEmail('')
     setAddServices([{ description: '', qty: 1, price: '' }])
     setAddPhone('')
@@ -1830,9 +1852,12 @@ export default function Invoice() {
                                       if (c) {
                                         setAddClientName(c.name || '')
                                         setAddEmail(c.email || '')
+                                        setAddPhone(c.phone || '')
                                       }
                                     } else {
                                       setAddClientName('')
+                                      setAddEmail('')
+                                      setAddPhone('')
                                     }
                                   }}
                                   className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
@@ -1844,7 +1869,19 @@ export default function Invoice() {
                                 </select>
                               </div>
                               <div>
-                                <label htmlFor="add-brand" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Select brand</label>
+                                <label htmlFor="add-client-name" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Client name</label>
+                                <input
+                                  id="add-client-name"
+                                  type="text"
+                                  value={addClientName}
+                                  onChange={(e) => setAddClientName(e.target.value)}
+                                  placeholder="Enter client name"
+                                  required
+                                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                                />
+                              </div>
+                              <div>
+                                <label htmlFor="add-brand" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Brand</label>
                                 <select
                                   id="add-brand"
                                   value={addBrand}
