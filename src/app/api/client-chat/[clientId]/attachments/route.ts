@@ -117,7 +117,7 @@ export async function POST(
         senderAuthId: auth.actor.user.id,
         title: `New file from ${auth.actor.clientRow.name || auth.actor.clientRow.email || 'Client'}`,
         body: message || `Attachment: ${attachmentName}`,
-        url: '/dashboard/clients',
+        url: `/dashboard/clients?chatClientId=${clientId}`,
       })
 
       return NextResponse.json({ ok: true, id: messageData?.id ?? null })

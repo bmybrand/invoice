@@ -70,7 +70,9 @@ export default function InvoiceView({ invoiceId, invoiceToken, publicView = fals
       const emp = invoiceData.employees as { employee_name?: string } | { employee_name?: string }[] | null
       const empObj = Array.isArray(emp) ? emp[0] : emp
       const clientObj = invoiceData.clients as { name?: string } | { name?: string }[] | null
-      const clientName = (Array.isArray(clientObj) ? clientObj[0] : clientObj)?.name ?? ''
+      const relatedClientName = (Array.isArray(clientObj) ? clientObj[0] : clientObj)?.name ?? ''
+      const storedClientName = typeof invoiceData.client_name === 'string' ? invoiceData.client_name : ''
+      const clientName = storedClientName || relatedClientName
       const serviceRaw = invoiceData.service
       const normalizedServices = Array.isArray(serviceRaw) ? serviceRaw : []
 

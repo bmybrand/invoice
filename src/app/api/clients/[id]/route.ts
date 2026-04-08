@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import { requireAdminOrSuperAdmin } from '@/lib/server-admin-auth'
 
 type RouteParams = { id: string }
@@ -22,14 +23,20 @@ export async function PATCH(
   const name = body?.name != null ? String(body.name).trim() : null
   const email = body?.email != null ? String(body.email).trim().toLowerCase() : null
   const password = typeof body?.password === 'string' ? body.password.trim() : ''
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
 
   if (password.length > 0 && password.length < 8) {
     return NextResponse.json({ error: 'Password must be at least 8 characters long' }, { status: 400 })
   }
 
+  if (!supabaseUrl || !publishableKey) {
+    return NextResponse.json({ error: 'Server not configured for auth verification' }, { status: 503 })
+  }
+
   const { data: client, error: fetchError } = await auth.supabase
     .from('clients')
-    .select('id, name, email, handler_id, isdeleted')
+    .select('id, name, email, auth_id, handler_id, isdeleted')
     .eq('id', clientId)
     .single()
 
@@ -37,7 +44,7 @@ export async function PATCH(
     return NextResponse.json({ error: fetchError?.message || 'Client not found' }, { status: 404 })
   }
 
-  const row = client as { name: string; email: string; handler_id: string }
+  const row = client as { name: string; email: string; auth_id?: string | null; handler_id?: string | null }
   const updates: Record<string, unknown> = {}
 
   if (name !== null) updates.name = name
@@ -58,15 +65,41 @@ export async function PATCH(
     }
   }
 
-  if (row.handler_id) {
+  const clientAuthId = (row.auth_id || '').trim()
+
+  if (clientAuthId) {
     const authUpdates: { email?: string; password?: string } = {}
     if (email !== null && email !== row.email) authUpdates.email = email
     if (password) authUpdates.password = password
 
     if (Object.keys(authUpdates).length > 0) {
-      const { error: authError } = await auth.supabase.auth.admin.updateUserById(row.handler_id, authUpdates)
+      const { error: authError } = await auth.supabase.auth.admin.updateUserById(clientAuthId, authUpdates)
       if (authError) {
         return NextResponse.json({ error: `Client updated but auth sync failed: ${authError.message}` }, { status: 500 })
+      }
+
+      if (password) {
+        const verificationClient = createClient(supabaseUrl, publishableKey, {
+          auth: {
+            persistSession: false,
+            autoRefreshToken: false,
+          },
+        })
+
+        const verifyEmail = (email ?? row.email ?? '').trim().toLowerCase()
+        const { error: verificationError } = await verificationClient.auth.signInWithPassword({
+          email: verifyEmail,
+          password,
+        })
+
+        if (verificationError) {
+          return NextResponse.json(
+            { error: `Client updated but password verification failed: ${verificationError.message}` },
+            { status: 500 }
+          )
+        }
+
+        await verificationClient.auth.signOut({ scope: 'local' }).catch(() => {})
       }
     }
   }

@@ -69,12 +69,6 @@ type PaymentsScopedCache = {
   rows: PaymentRow[]
 }
 
-type ErrorWithSupabaseFields = Error & {
-  code?: string
-  details?: string
-  hint?: string
-}
-
 type QuickDownloadType = 'all' | 'week' | 'month' | 'day'
 
 type BulkBrandOption = {
@@ -352,13 +346,12 @@ export default function Payments() {
       if (!active) return
 
       if (submissionError) {
-        const typedError = submissionError as ErrorWithSupabaseFields
         console.error('Failed to fetch payments:', {
           error: submissionError,
-          message: typedError?.message,
-          code: typedError?.code,
-          details: typedError?.details,
-          hint: typedError?.hint,
+          message: (submissionError as any)?.message,
+          code: (submissionError as any)?.code,
+          details: (submissionError as any)?.details,
+          hint: (submissionError as any)?.hint,
         })
         if (!isBackgroundRefresh) {
           setPayments([])
@@ -674,7 +667,9 @@ export default function Payments() {
       const emp = row.employees as { employee_name?: string } | { employee_name?: string }[] | null
       const empObj = Array.isArray(emp) ? emp[0] : emp
       const clientObj = row.clients as { name?: string } | { name?: string }[] | null
-      const clientName = (Array.isArray(clientObj) ? clientObj[0] : clientObj)?.name ?? ''
+      const relatedClientName = (Array.isArray(clientObj) ? clientObj[0] : clientObj)?.name ?? ''
+      const storedClientName = typeof row.client_name === 'string' ? row.client_name : ''
+      const clientName = storedClientName || relatedClientName
       const serviceRaw = Array.isArray(row.service) ? row.service : []
 
       const invoice: BulkInvoiceRow = {

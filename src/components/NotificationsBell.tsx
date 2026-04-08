@@ -41,6 +41,15 @@ function normalizeRole(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, '')
 }
 
+function getClientChatUrl(notification: Pick<MessageNotification, 'clientId' | 'clientName' | 'clientEmail'>): string {
+  const params = new URLSearchParams({
+    chatClientId: String(notification.clientId),
+    chatTitle: (notification.clientName || notification.clientEmail || 'Chat').trim(),
+    chatSubtitle: (notification.clientEmail || '').trim(),
+  })
+  return `/dashboard/clients?${params.toString()}`
+}
+
 function formatRelativeTime(value: string) {
   const timestamp = Date.parse(value)
   if (!Number.isFinite(timestamp)) return ''
@@ -99,6 +108,10 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
   const [messages, setMessages] = useState<MessageNotification[]>([])
   const [loading, setLoading] = useState(false)
   const [processingId, setProcessingId] = useState<number | null>(null)
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return 'default'
+    return Notification.permission
+  })
   const dropdownRef = useRef<HTMLDivElement>(null)
   const hasLoadedRef = useRef(false)
   const isFetchingRef = useRef(false)
@@ -108,15 +121,15 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
 
   const normalizedRole = useMemo(() => normalizeRole(displayRole || ''), [displayRole])
   const isAdminBell = accountType === 'employee' && (normalizedRole === 'admin' || normalizedRole === 'superadmin')
-  const isUserBell = accountType === 'employee' && normalizedRole === 'user'
-  const shouldShowBell = isAdminBell || isUserBell
+  const isEmployeeBell = accountType === 'employee'
+  const shouldShowBell = isEmployeeBell
 
   const maybeNotifyDesktop = useCallback((nextMessages: MessageNotification[]) => {
-    if (!isUserBell || typeof window === 'undefined' || !('Notification' in window)) {
+    if (!isEmployeeBell || typeof window === 'undefined' || !('Notification' in window)) {
       return
     }
 
-    if (Notification.permission !== 'granted') {
+    if (notificationPermission !== 'granted') {
       return
     }
 
@@ -139,13 +152,13 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
 
       notification.onclick = () => {
         window.focus()
-        router.push('/dashboard/clients')
+        router.push(getClientChatUrl(item))
         notification.close()
       }
 
       notifiedMessageIdsRef.current.add(latestMessageId)
     }
-  }, [isUserBell, router])
+  }, [isEmployeeBell, notificationPermission, router])
 
   const getAccessToken = useCallback(async () => {
     const {
@@ -186,24 +199,24 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
           headers: { Authorization: `Bearer ${token}` },
         })
 
-        if (!requestsRes.ok) return
-
-        const requestsJson = await requestsRes.json()
-        setRequests(requestsJson?.requests ?? [])
-        setMessages([])
+        if (requestsRes.ok) {
+          const requestsJson = await requestsRes.json()
+          setRequests(requestsJson?.requests ?? [])
+        }
       } else {
-        const res = await fetch('/api/client-chat/notifications', {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-
-        if (!res.ok) return
-
-        const json = await res.json()
-        const nextMessages = json.items ?? []
-        setMessages(nextMessages)
-        maybeNotifyDesktop(nextMessages)
         setRequests([])
       }
+
+      const res = await fetch('/api/client-chat/notifications', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+
+      if (!res.ok) return
+
+      const json = await res.json()
+      const nextMessages = json.items ?? []
+      setMessages(nextMessages)
+      maybeNotifyDesktop(nextMessages)
       hasLoadedRef.current = true
     } catch {
       // Keep last good notifications visible during refresh failures.
@@ -222,12 +235,14 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
   }, [getAccessToken, isAdminBell, maybeNotifyDesktop, shouldShowBell])
 
   useEffect(() => {
-    if (!isUserBell || typeof window === 'undefined' || !('Notification' in window)) return
+    if (!isEmployeeBell || typeof window === 'undefined' || !('Notification' in window)) return
+    setNotificationPermission(Notification.permission)
     if (Notification.permission !== 'default') return
 
     const requestPermission = async () => {
       try {
-        await Notification.requestPermission()
+        const result = await Notification.requestPermission()
+        setNotificationPermission(result)
       } catch {
         // Ignore permission prompt failures.
       }
@@ -240,10 +255,10 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
     return () => {
       window.clearTimeout(timeoutId)
     }
-  }, [isUserBell])
+  }, [isEmployeeBell])
 
   useEffect(() => {
-    if (!isUserBell || typeof window === 'undefined') return
+    if (!isEmployeeBell || typeof window === 'undefined') return
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
     if (!VAPID_PUBLIC_KEY || pushSetupStartedRef.current) return
 
@@ -251,36 +266,42 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
     let cancelled = false
 
     const setupPush = async () => {
-      const token = await getAccessToken()
-      if (!token || Notification.permission !== 'granted') return
+      try {
+        const token = await getAccessToken()
+        if (!token || notificationPermission !== 'granted') return
 
-      // Ensure the browser fetches the newest service worker script instead of a cached copy.
-      const registration = await navigator.serviceWorker.register('/sw.js', {
-        updateViaCache: 'none',
-      })
-      await registration.update()
-      const readyRegistration = await navigator.serviceWorker.ready
-      if (cancelled) return
-
-      let subscription = await readyRegistration.pushManager.getSubscription()
-      if (!subscription) {
-        subscription = await readyRegistration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        // Ensure the browser fetches the newest service worker script instead of a cached copy.
+        const registration = await navigator.serviceWorker.register('/sw.js', {
+          updateViaCache: 'none',
         })
+        await registration.update()
+        const readyRegistration = await navigator.serviceWorker.ready
+        if (cancelled) return
+
+        let subscription = await readyRegistration.pushManager.getSubscription()
+        if (!subscription) {
+          subscription = await readyRegistration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+          })
+        }
+
+        await fetch('/api/push/subscriptions', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            subscription: subscription.toJSON(),
+          }),
+        })
+      } catch (error) {
+        if ((error as { name?: string }).name === 'AbortError') {
+          return
+        }
+        console.error('Failed to setup push notifications', error)
       }
-
-      await fetch('/api/push/subscriptions', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          subscription: subscription.toJSON(),
-        }),
-      })
-
     }
 
     void setupPush().finally(() => {
@@ -292,7 +313,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
     return () => {
       cancelled = true
     }
-  }, [getAccessToken, isUserBell])
+  }, [getAccessToken, isEmployeeBell, notificationPermission])
 
   useEffect(() => {
     if (!shouldShowBell) return
@@ -307,7 +328,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
 
     const channels: RealtimeChannel[] = []
 
-    if (isUserBell) {
+    if (isEmployeeBell) {
       channels.push(
         supabase
           .channel('handler-chat-notifications')
@@ -359,12 +380,30 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
         void supabase.removeChannel(channel)
       })
     }
-  }, [fetchNotifications, isAdminBell, isUserBell, shouldShowBell])
+  }, [fetchNotifications, isAdminBell, isEmployeeBell, shouldShowBell])
 
   useEffect(() => {
     if (!open || !shouldShowBell) return
     void fetchNotifications({ showLoading: !hasLoadedRef.current })
   }, [fetchNotifications, open, shouldShowBell])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !shouldShowBell) return
+
+    const handleChatRead = (event: Event) => {
+      const customEvent = event as CustomEvent<{ clientId?: number }>
+      const readClientId = Number(customEvent.detail?.clientId ?? 0)
+      if (!Number.isFinite(readClientId) || readClientId <= 0) return
+
+      setMessages((prev) => prev.filter((item) => item.clientId !== readClientId))
+      void fetchNotifications()
+    }
+
+    window.addEventListener('client-chat:read', handleChatRead as EventListener)
+    return () => {
+      window.removeEventListener('client-chat:read', handleChatRead as EventListener)
+    }
+  }, [fetchNotifications, shouldShowBell])
 
   useEffect(() => {
     if (!open) return
@@ -416,7 +455,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
   }
 
   const messageCount = messages.reduce((total, item) => total + item.count, 0)
-  const count = isAdminBell ? requests.length : messageCount
+  const count = isAdminBell ? requests.length + messageCount : messageCount
 
   if (!shouldShowBell) {
     return null
@@ -429,13 +468,9 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
         onClick={() => setOpen((o) => !o)}
         className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-800 bg-slate-900/60 text-slate-400 transition hover:border-slate-700 hover:bg-slate-800/80 hover:text-white"
         aria-label={
-          isAdminBell
-            ? count > 0
-              ? `${count} pending client request${count > 1 ? 's' : ''}`
-              : 'Notifications'
-            : count > 0
-              ? `${count} unread client message${count > 1 ? 's' : ''}`
-              : 'Notifications'
+          count > 0
+            ? `${count} unread notification${count > 1 ? 's' : ''}`
+            : 'Notifications'
         }
       >
         <BellIcon />
@@ -449,19 +484,24 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
       {open && (
         <div className="absolute right-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-xl border border-slate-700 bg-slate-800 shadow-xl">
           <div className="border-b border-slate-700 px-4 py-3">
-            <h3 className="text-sm font-bold text-white">{isAdminBell ? 'Client Registration Requests' : 'Client Messages'}</h3>
+            <h3 className="text-sm font-bold text-white">Notifications</h3>
             <p className="mt-0.5 text-xs text-slate-400">
-              {count === 0 ? (isAdminBell ? 'No pending requests' : 'All caught up') : isAdminBell ? `${count} pending` : `${count} unread`}
+              {count === 0 ? 'All caught up' : `${count} unread`}
             </p>
           </div>
 
           <div className="max-h-72 overflow-y-auto">
             {loading ? (
               <div className="px-4 py-6 text-center text-sm text-slate-400">Loading...</div>
-            ) : isAdminBell ? (
-              requests.length === 0 ? (
-                <div className="px-4 py-6 text-center text-sm text-slate-400">All caught up</div>
-              ) : (
+            ) : count === 0 ? (
+              <div className="px-4 py-6 text-center text-sm text-slate-400">All caught up</div>
+            ) : (
+              <>
+                {isAdminBell && requests.length > 0 ? (
+                  <>
+                    <div className="border-b border-slate-700/80 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+                      Client Requests
+                    </div>
                 <>
                   {requests.map((r) => (
                     <div
@@ -492,37 +532,46 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
                       </div>
                     </div>
                   ))}
-                </>
-              )
-            ) : messages.length === 0 ? (
-              <div className="px-4 py-6 text-center text-sm text-slate-400">All caught up</div>
-            ) : (
-              messages.map((item) => (
-                <button
-                  key={item.clientId}
-                  type="button"
-                  onClick={() => {
-                    setOpen(false)
-                    router.push('/dashboard/clients')
-                  }}
-                  className="flex w-full items-start gap-3 border-b border-slate-700/80 px-4 py-3 text-left transition hover:bg-slate-700/30 last:border-b-0"
-                >
-                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-orange-500/15 text-orange-400">
-                    <ChatBubbleIcon className="h-4.5 w-4.5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="truncate text-sm font-medium text-white">{item.clientName}</p>
-                      <span className="shrink-0 text-[11px] text-slate-500">{formatRelativeTime(item.createdAt)}</span>
-                    </div>
-                    <p className="truncate text-xs text-slate-400">{item.clientEmail}</p>
-                    <p className="mt-1 truncate text-xs text-slate-300">{item.latestMessage}</p>
-                  </div>
-                  <span className="mt-0.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-orange-500 px-1.5 text-[10px] font-bold text-white">
-                    {item.count > 99 ? '99+' : item.count}
-                  </span>
-                </button>
-              ))
+                  </>
+                  </>
+                ) : null}
+
+                {messages.length > 0 ? (
+                  <>
+                    {isAdminBell ? (
+                      <div className="border-b border-slate-700/80 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+                        Client Messages
+                      </div>
+                    ) : null}
+                    {messages.map((item) => (
+                      <button
+                        key={item.clientId}
+                        type="button"
+                        onClick={() => {
+                          setOpen(false)
+                          router.push(getClientChatUrl(item))
+                        }}
+                        className="flex w-full items-start gap-3 border-b border-slate-700/80 px-4 py-3 text-left transition hover:bg-slate-700/30 last:border-b-0"
+                      >
+                        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-orange-500/15 text-orange-400">
+                          <ChatBubbleIcon className="h-4.5 w-4.5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-3">
+                            <p className="truncate text-sm font-medium text-white">{item.clientName}</p>
+                            <span className="shrink-0 text-[11px] text-slate-500">{formatRelativeTime(item.createdAt)}</span>
+                          </div>
+                          <p className="truncate text-xs text-slate-400">{item.clientEmail}</p>
+                          <p className="mt-1 truncate text-xs text-slate-300">{item.latestMessage}</p>
+                        </div>
+                        <span className="mt-0.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-orange-500 px-1.5 text-[10px] font-bold text-white">
+                          {item.count > 99 ? '99+' : item.count}
+                        </span>
+                      </button>
+                    ))}
+                  </>
+                ) : null}
+              </>
             )}
           </div>
         </div>

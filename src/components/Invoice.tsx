@@ -324,6 +324,12 @@ function isSettledInvoiceStatus(status: string): boolean {
   return normalized.includes('paid') || normalized.includes('completed')
 }
 
+function isInvoicePaid(inv: Pick<InvoiceRow, 'status' | 'amount' | 'paid_amount'>): boolean {
+  if (isSettledInvoiceStatus(inv.status)) return true
+  const totalAmount = parseAmountValue(inv.amount)
+  return totalAmount > 0 && inv.paid_amount >= totalAmount
+}
+
 function sanitizeCurrencyInput(value: string): string {
   return sanitizePriceInput(value)
 }
@@ -639,6 +645,7 @@ export default function Invoice() {
   }
 
   function canDeleteInvoice(inv: InvoiceRow): boolean {
+    if (isInvoicePaid(inv)) return false
     if (isSuperAdmin) return true
     return currentEmployeeId !== null && currentEmployeeId === inv.invoice_creator_id
   }
@@ -1270,7 +1277,41 @@ export default function Invoice() {
 
   async function handleDeleteConfirm() {
     if (!deletingInvoice || !canDeleteInvoice(deletingInvoice)) return
+
+    if (isInvoicePaid(deletingInvoice)) {
+      setActionMessage({ type: 'error', text: 'Paid invoices cannot be deleted.' })
+      setDeletingInvoice(null)
+      return
+    }
+
     setDeleteLoading(true)
+
+    const { data: paymentRows, error: paymentFetchError } = await supabase
+      .from('payment_submissions')
+      .select('payment_status, amount_paid')
+      .eq('invoice_id', deletingInvoice.id)
+
+    if (paymentFetchError) {
+      console.error('Failed to verify invoice payment status before deleting', paymentFetchError)
+      setDeleteLoading(false)
+      setActionMessage({
+        type: 'error',
+        text: 'Unable to verify payment status. Try again to avoid deleting a paid invoice.',
+      })
+      return
+    }
+
+    const hasSuccessfulPayment = ((paymentRows as PaymentSubmissionRow[] | null) ?? []).some(
+      (row) => isSuccessfulPaymentStatus(row.payment_status) && parseAmountValue(String(row.amount_paid ?? '0')) > 0
+    )
+
+    if (hasSuccessfulPayment) {
+      setDeleteLoading(false)
+      setActionMessage({ type: 'error', text: 'Paid invoices cannot be deleted.' })
+      setDeletingInvoice(null)
+      return
+    }
+
     const { error } = await supabase.from('invoices').delete().eq('id', deletingInvoice.id)
     setDeleteLoading(false)
     if (error) {

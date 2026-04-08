@@ -290,6 +290,8 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
   const [profileModalOpen, setProfileModalOpen] = useState(false)
   const [profileName, setProfileName] = useState('')
   const [profileEmail, setProfileEmail] = useState('')
+  const [profilePassword, setProfilePassword] = useState('')
+  const [profileConfirmPassword, setProfileConfirmPassword] = useState('')
   const [profileImageFile, setProfileImageFile] = useState<File | null>(null)
   const [profileAvatarPreviewUrl, setProfileAvatarPreviewUrl] = useState('')
   const [profileSaving, setProfileSaving] = useState(false)
@@ -301,6 +303,12 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
   const [chatMessageCount, setChatMessageCount] = useState(0)
 
   const profileObjectUrlRef = useRef<string | null>(null)
+  const profileLoadInFlightRef = useRef(false)
+  const profileLoadQueuedRef = useRef(false)
+
+  const isLockAbortError = useCallback((message: string | undefined) => {
+    return /lock broken by another request with the 'steal' option/i.test(message || '')
+  }, [])
 
   const resetDashboardProfile = useCallback((nextProfileLoaded: boolean) => {
     setCurrentUserAuthId(null)
@@ -382,12 +390,23 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
   }, [])
 
   const loadProfile = useCallback(async () => {
+    if (profileLoadInFlightRef.current) {
+      profileLoadQueuedRef.current = true
+      return
+    }
+
+    profileLoadInFlightRef.current = true
+
+    try {
     const {
       data: { user: serverUser },
       error: userError,
     } = await supabase.auth.getUser()
 
     if (userError || !serverUser?.id) {
+      if (isLockAbortError(userError?.message)) {
+        return
+      }
       resetDashboardProfile(false)
       await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
       router.replace('/login')
@@ -406,12 +425,24 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
     setCurrentUserEmail(user.email ?? '')
     setDisplayAvatarUrl(metadataAvatarUrl)
 
-    const { data: employeeData, error: employeeError } = await supabase
+    let { data: employeeData, error: employeeError } = await supabase
       .from('employees')
       .select('id, employee_name, role, department')
       .eq('auth_id', user.id)
       .neq('isdeleted', true)
       .maybeSingle()
+
+    if (employeeError && isLockAbortError(employeeError.message)) {
+      await new Promise((resolve) => window.setTimeout(resolve, 180))
+      const retryResult = await supabase
+        .from('employees')
+        .select('id, employee_name, role, department')
+        .eq('auth_id', user.id)
+        .neq('isdeleted', true)
+        .maybeSingle()
+      employeeData = retryResult.data
+      employeeError = retryResult.error
+    }
 
     if (employeeData) {
       const row = employeeData as { id?: number; employee_name?: string; role?: string; department?: string } | null
@@ -429,7 +460,7 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
       return
     }
 
-    if (employeeError) {
+    if (employeeError && !isLockAbortError(employeeError.message)) {
       console.error('Employee lookup error:', employeeError.message)
     }
 
@@ -525,7 +556,14 @@ if (clientError) {
     setDisplayRole('')
     setAccountType(null)
     setProfileLoaded(true)
-  }, [resetDashboardProfile, router])
+    } finally {
+      profileLoadInFlightRef.current = false
+      if (profileLoadQueuedRef.current) {
+        profileLoadQueuedRef.current = false
+        void loadProfile()
+      }
+    }
+  }, [isLockAbortError, resetDashboardProfile, router])
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -910,6 +948,8 @@ if (clientError) {
   function openProfileModal() {
     setProfileName(displayName || '')
     setProfileEmail(currentUserEmail || '')
+    setProfilePassword('')
+    setProfileConfirmPassword('')
     resetProfileImageState(displayAvatarUrl || '')
     setProfileError(null)
     setProfileSuccess(null)
@@ -918,6 +958,8 @@ if (clientError) {
 
   function closeProfileModal() {
     if (profileSaving) return
+    setProfilePassword('')
+    setProfileConfirmPassword('')
     resetProfileImageState(displayAvatarUrl || '')
     setProfileModalOpen(false)
     setProfileError(null)
@@ -931,6 +973,8 @@ if (clientError) {
 
     const nextName = profileName.trim()
     const nextEmail = profileEmail.trim()
+    const nextPassword = profilePassword.trim()
+    const nextConfirmPassword = profileConfirmPassword.trim()
     let nextAvatarUrl = displayAvatarUrl.trim()
 
     if (!nextName) {
@@ -940,6 +984,16 @@ if (clientError) {
 
     if (!nextEmail) {
       setProfileError('Email is required.')
+      return
+    }
+
+    if (nextPassword && nextPassword.length < 8) {
+      setProfileError('Password must be at least 8 characters long.')
+      return
+    }
+
+    if (nextPassword && nextPassword !== nextConfirmPassword) {
+      setProfileError('Password and confirm password must match.')
       return
     }
 
@@ -976,6 +1030,7 @@ if (clientError) {
 
     const { error: authError } = await supabase.auth.updateUser({
       email: emailChanged ? nextEmail : undefined,
+      password: nextPassword || undefined,
       data: {
         display_name: nextName,
         avatar_url: nextAvatarUrl || null,
@@ -1006,9 +1061,9 @@ if (clientError) {
 
     if (accountType === 'client') {
       const { error: clientError } = await supabase
-        .from('clients') // change if your table name is different
+        .from('clients')
         .update({
-          client_name: nextName,
+          name: nextName,
           email: nextEmail,
         })
         .eq('auth_id', currentUserAuthId)
@@ -1023,12 +1078,18 @@ if (clientError) {
     setDisplayName(nextName)
     setDisplayAvatarUrl(nextAvatarUrl)
     setCurrentUserEmail(nextEmail)
+    setProfilePassword('')
+    setProfileConfirmPassword('')
     resetProfileImageState(nextAvatarUrl)
     setProfileSaving(false)
     setProfileSuccess(
       emailChanged
-        ? 'Profile updated. Check your email inbox to confirm the new email address.'
-        : 'Profile updated successfully.'
+        ? nextPassword
+          ? 'Profile updated. Check your email inbox to confirm the new email address. Password changed successfully.'
+          : 'Profile updated. Check your email inbox to confirm the new email address.'
+        : nextPassword
+          ? 'Profile and password updated successfully.'
+          : 'Profile updated successfully.'
     )
 
     await loadProfile()
@@ -1258,7 +1319,7 @@ if (clientError) {
 
               <h2 className="text-lg font-bold text-white">My Profile</h2>
               <p className="mt-1 text-sm text-slate-400">
-                Update your own name, email, and profile image.
+                Update your own name, email, password, and profile image.
               </p>
 
               <form
@@ -1334,6 +1395,37 @@ if (clientError) {
                   <p className="mt-1 text-xs text-slate-500">
                     Role is managed separately and cannot be changed here.
                   </p>
+                </div>
+
+                <div>
+                  <label htmlFor="profile-password" className="block text-sm font-medium text-slate-300">
+                    New Password
+                  </label>
+                  <input
+                    id="profile-password"
+                    type="password"
+                    value={profilePassword}
+                    onChange={(e) => setProfilePassword(e.target.value)}
+                    placeholder="Leave blank to keep current password"
+                    className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                  />
+                  <p className="mt-1 text-xs text-slate-500">
+                    Leave blank if you do not want to change the password.
+                  </p>
+                </div>
+
+                <div>
+                  <label htmlFor="profile-confirm-password" className="block text-sm font-medium text-slate-300">
+                    Confirm Password
+                  </label>
+                  <input
+                    id="profile-confirm-password"
+                    type="password"
+                    value={profileConfirmPassword}
+                    onChange={(e) => setProfileConfirmPassword(e.target.value)}
+                    placeholder="Repeat the new password"
+                    className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                  />
                 </div>
 
                 {profileError && (

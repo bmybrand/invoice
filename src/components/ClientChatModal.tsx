@@ -13,6 +13,8 @@ const TYPING_STOP_DELAY_MS = 1800
 const OLDER_LOAD_TRIGGER_PX = 140
 const CHAT_BUCKET = 'client-chat-files'
 
+type ChatCachconst MAX_CHAT_ATTACHMENT_BYTES = 20 * 1024 * 1024
+
 type ChatCacheEntry = {
   messages: ChatMessage[]
   headerTitle: string
@@ -152,6 +154,10 @@ function formatAttachmentMeta(name: string, sizeBytes?: number | null) {
   const ext = getAttachmentExtension(name)
   const size = formatAttachmentSize(sizeBytes)
   return size === '--' ? ext : `${size} - ${ext}`
+}
+
+function getAttachmentTooLargeMessage(sizeBytes: number) {
+  return `Max file size is ${formatAttachmentSize(MAX_CHAT_ATTACHMENT_BYTES)}. ${formatAttachmentSize(sizeBytes)} selected.`
 }
 
 function initials(name: string) {
@@ -454,7 +460,15 @@ export function ClientChatModal({
           stopOlderLoading()
           return
         }
-        const remainingOptimisticMessages = optimisticMessagesRef.current.filter(
+        const remainingOptimisticMessages = optimisticMessagesRef.current.filt        if (!isOlder && typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('client-chat:read', {
+              detail: { clientId },
+            })
+          )
+        }
+
+er(
           (optimisticMessage) =>
             !serverMessages.some((serverMessage) => matchesOptimisticMessage(serverMessage, optimisticMessage))
         )
@@ -1003,9 +1017,43 @@ export function ClientChatModal({
     optimisticMessagesRef.current = [...optimisticMessagesRef.current, optimisticMessage]
     setMessages((prev) => [...prev, optimisticMessage])
     setDraft('')
-    setPendingAttachment(null)
+    setPendingAtta    if (file.size > MAX_CHAT_ATTACHMENT_BYTES) {
+      setError(getAttachmentTooLargeMessage(file.size))
+      setPendingAttachment(null)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+      return
+    }
+chment(null)
 
     const prepareResponse = await fetch(`/api/client-chat/${clientId}/attachments-v2`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        operation: 'prepare',
+        fileName: file.name,
+      }),
+    })
+
+    const prepareResult = (await prepareResponse.json().catch(() => null)) as {
+      error?: string
+      filePath?: string
+      token?: string
+    } | null
+
+    if (!prepareResponse.ok || !prepareResult?.filePath || !prepareResult.token) {
+      optimisticMessagesRef.current = optimisticMessagesRef.current.filter((message) => message.id !== optimisticMessage.id)
+      setMessages((prev) => prev.filter((message) => message.id !== optimisticMessage.id))
+      setDraft(attachmentMessage)
+      setPendingAttachment({
+        file,
+        previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
+        isImage: file.type.startsWith('image/'),
+         const prepareResponse = await fetch(`/api/client-chat/${clientId}/attachments`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1058,38 +1106,8 @@ export function ClientChatModal({
       return
     }
 
-    const completeResponse = await fetch(`/api/client-chat/${clientId}/attachments-v2`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        operation: 'complete',
-        filePath: prepareResult.filePath,
-        attachmentName: file.name,
-        message: attachmentMessage,
-      }),
-    })
-
-    const completeResult = (await completeResponse.json().catch(() => null)) as { error?: string } | null
-    setUploading(false)
-
-    if (!completeResponse.ok) {
-      optimisticMessagesRef.current = optimisticMessagesRef.current.filter((message) => message.id !== optimisticMessage.id)
-      setMessages((prev) => prev.filter((message) => message.id !== optimisticMessage.id))
-      setDraft(attachmentMessage)
-      setPendingAttachment({
-        file,
-        previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
-        isImage: file.type.startsWith('image/'),
-      })
-      setError(completeResult?.error || 'Failed to share file')
-      return
-    }
-
-    void broadcastTyping(false)
-    if (fileInputRef.current) {
+    const completeResponse = await fetch(`/api/client-chat/${clientId}/attachments`, {
+ef.current) {
       fileInputRef.current.value = ''
     }
     suppressPolling()
@@ -1097,40 +1115,14 @@ export function ClientChatModal({
 
   function handleSelectAttachment(file: File | null) {
     if (!file) return
-    setError(null)
-    setPendingAttachment((prev) => {
-      if (prev?.previewUrl) {
-        URL.revokeObjectURL(prev.previewUrl)
+    if (file.size > MAX_CHAT_ATTACHMENT_BYTES) {
+      setError(getAttachmentTooLargeMessage(file.size))
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
       }
-      const isImage = file.type.startsWith('image/')
-      return {
-        file,
-        previewUrl: isImage ? URL.createObjectURL(file) : null,
-        isImage,
-      }
-    })
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
+      return
     }
-  }
-
-  useEffect(() => {
-    return () => {
-      if (pendingAttachment?.previewUrl) {
-        URL.revokeObjectURL(pendingAttachment.previewUrl)
-      }
-    }
-  }, [pendingAttachment])
-
-  if (!open || !clientId) return null
-
-  const isPageVariant = variant === 'page'
-  const shell = (
-    <div className={`flex ${isPageVariant ? pageHeightClass : 'h-[min(82vh,720px)]'} w-full ${isPageVariant ? '' : 'max-w-5xl'} overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl`}>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-start justify-between border-b border-slate-700 px-5 py-4">
-          <div>
-            <h2 className="text-lg font-bold text-white">{headerTitle || title}</h2>
+-white">{headerTitle || title}</h2>
             <p className="text-sm text-slate-400">{headerSubtitle || subtitle || ''}</p>
           </div>
           {!isPageVariant ? (

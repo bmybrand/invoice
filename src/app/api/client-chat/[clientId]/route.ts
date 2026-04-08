@@ -45,25 +45,36 @@ export async function GET(
     actor.accountType === 'client' ||
     (actor.clientRow.handler_id || '').trim() === actor.user.id
 
+  let markReadError: string | null = null
   if (actor.accountType === 'client') {
-    void actor.supabase
+    const { error } = await actor.supabase
       .from('client_chat_messages')
       .update({ read_by_client: true })
       .eq('client_id', clientId)
       .eq('isdeleted', false)
       .neq('sender_auth_id', actor.user.id)
-      .eq('read_by_client', false)
+      .or('read_by_client.is.null,read_by_client.eq.false')
+    if (error) {
+      markReadError = error.message || 'Failed to mark messages as read'
+    }
   } else {
     const isAssignedHandler = (actor.clientRow.handler_id || '').trim() === actor.user.id
     if (isAssignedHandler) {
-      void actor.supabase
+      const { error } = await actor.supabase
         .from('client_chat_messages')
         .update({ read_by_employee: true })
         .eq('client_id', clientId)
         .eq('isdeleted', false)
         .neq('sender_auth_id', actor.user.id)
-        .eq('read_by_employee', false)
+        .or('read_by_employee.is.null,read_by_employee.eq.false')
+      if (error) {
+        markReadError = error.message || 'Failed to mark messages as read'
+      }
     }
+  }
+
+  if (markReadError) {
+    return NextResponse.json({ error: markReadError }, { status: 500 })
   }
 
   const { searchParams } = new URL(request.url)
@@ -269,7 +280,7 @@ export async function POST(
     senderAuthId: auth.actor.user.id,
     title: `New message from ${auth.actor.clientRow.name || auth.actor.clientRow.email || 'Client'}`,
     body: message,
-    url: '/dashboard/clients',
+    url: `/dashboard/clients?chatClientId=${clientId}`,
   })
 
   return NextResponse.json({ ok: true, id: data?.id ?? null })
