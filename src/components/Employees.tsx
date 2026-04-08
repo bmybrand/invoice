@@ -681,7 +681,7 @@ export default function Employees() {
     const isEditingSelf = editingEmployee.auth_id === profileCurrentUserAuthId
     const updatePayload: { employee_name: string; role?: string; department: string } = {
       employee_name: editName.trim(),
-      department: editDepartment.trim(),
+      department: isEditingSelf ? (editingEmployee.department || '').trim() : editDepartment.trim(),
     }
     if (!isEditingSuperAdmin && !isAdmin && !isEditingSelf) updatePayload.role = editRole
 
@@ -1286,10 +1286,19 @@ export default function Employees() {
                   type="text"
                   value={editDepartment}
                   onChange={(e) => setEditDepartment(e.target.value)}
+                  readOnly={editingEmployee.auth_id === profileCurrentUserAuthId}
+                  disabled={editingEmployee.auth_id === profileCurrentUserAuthId}
                   required
                   placeholder="e.g. Design, Engineering"
-                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                  className={`mt-1 w-full rounded-lg border px-4 py-3 placeholder:text-slate-500 ${
+                    editingEmployee.auth_id === profileCurrentUserAuthId
+                      ? 'cursor-not-allowed border-slate-600 bg-slate-900/50 text-slate-500'
+                      : 'border-slate-600 bg-slate-900 text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20'
+                  }`}
                 />
+                {editingEmployee.auth_id === profileCurrentUserAuthId ? (
+                  <p className="mt-0.5 text-xs text-slate-500">You cannot change your own department.</p>
+                ) : null}
               </div>
               {isSuperAdmin && (
                 <div>
