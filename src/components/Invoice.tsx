@@ -315,6 +315,19 @@ function isValidPrice(value: string): boolean {
   return /^\d+(\.\d{1,2})?$/.test(value.trim())
 }
 
+function normalizeBrandName(value: string): string {
+  return (value || '').trim().toLowerCase().replace(/\s+/g, '')
+}
+
+function isFigmaBrand(value: string): boolean {
+  return normalizeBrandName(value) === 'figma'
+}
+
+function isBmyBrand(value: string): boolean {
+  const normalized = normalizeBrandName(value)
+  return normalized === 'bmybrand' || normalized === 'bmy'
+}
+
 function isAdvanceUnpaidStatus(status: string): boolean {
   const normalized = (status || '').toLowerCase()
   return normalized.includes('payable') || normalized.includes('pending')
@@ -641,6 +654,7 @@ export default function Invoice() {
   }, [searchParams])
 
   function canEditInvoice(inv: InvoiceRow): boolean {
+    if (isInvoicePaid(inv)) return false
     if (isSuperAdmin) return true
     return currentEmployeeId !== null && currentEmployeeId === inv.invoice_creator_id
   }
@@ -701,7 +715,7 @@ export default function Invoice() {
     let query = supabase
       .from('invoices')
       .select(
-        'id, invoice_date, invoice_creator_id, client_id, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, created_at, employees!invoice_creator_id(employee_name), clients!client_id(name)'
+        'id, invoice_date, invoice_creator_id, client_id, client_name, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, created_at, employees!invoice_creator_id(employee_name), clients!client_id(name)'
       )
       .order('created_at', { ascending: false })
 
@@ -757,7 +771,9 @@ export default function Invoice() {
       const emp = row.employees as { employee_name?: string } | { employee_name?: string }[] | null
       const empObj = Array.isArray(emp) ? emp[0] : emp
       const clientObj = row.clients as { name?: string } | { name?: string }[] | null
-      const clientName = (Array.isArray(clientObj) ? clientObj[0] : clientObj)?.name ?? ''
+      const relatedClientName = (Array.isArray(clientObj) ? clientObj[0] : clientObj)?.name ?? ''
+      const storedClientName = typeof row.client_name === 'string' ? row.client_name : ''
+      const clientName = storedClientName || relatedClientName
       const services = toServiceLines(row.service)
       const subtotal = servicesSubtotal(services)
       const invoiceId = Number(row.id as number)
@@ -979,7 +995,8 @@ export default function Invoice() {
 
   const addValidation = (() => {
     const resolvedBrand = addBrand.trim() || getDefaultInvoiceBrand()
-    if (!resolvedBrand || !addClientName.trim() || !addEmail.trim() || !addPhone.trim()) {
+    const requiresClientName = !isBmyBrand(resolvedBrand)
+    if (!resolvedBrand || (requiresClientName && !addClientName.trim()) || !addEmail.trim() || !addPhone.trim()) {
       return { valid: false, message: 'Fill all required fields: client name, email, phone.' }
     }
     if (!isValidEmail(addEmail.trim())) {
@@ -1034,7 +1051,8 @@ export default function Invoice() {
   }, [showAddModal, addError, addValidation.valid, addServices, addStatus, addPayableAmount])
 
   const editValidation = (() => {
-    if (!editBrand.trim() || !editEmail.trim() || !editPhone.trim()) {
+    const requiresClientName = !isBmyBrand(editBrand)
+    if (!editBrand.trim() || !editEmail.trim() || !editPhone.trim() || (requiresClientName && !editClientName.trim())) {
       return { valid: false, message: 'Fill all required fields: brand, email, phone.' }
     }
     if (!isValidEmail(editEmail.trim())) {
@@ -1186,7 +1204,7 @@ export default function Invoice() {
     setEditingInvoice(inv)
     setEditClientId(inv.client_id ?? null)
     setEditClientName(inv.client_name || '')
-    setEditBrand(inv.brand_name || '')
+    setEditBrand(inv.brand_name || getDefaultInvoiceBrand())
     setEditEmail(inv.email || '')
     setEditServices(inv.service.length > 0 ? inv.service : [{ description: '', qty: 1, price: '' }])
     setEditPhone(inv.phone || '')
@@ -1273,6 +1291,7 @@ export default function Invoice() {
       .from('invoices')
       .update({
         client_id: editClientId,
+        client_name: editClientName.trim(),
         brand_name: editBrand.trim(),
         email: editEmail.trim(),
         service: cleanServices,
@@ -1834,12 +1853,42 @@ export default function Invoice() {
                     const grandTotal = subTotal
                     const payableAmount = Math.min(parseAmountValue(addPayableAmount), grandTotal)
                     const remainingAmount = Math.max(grandTotal - payableAmount, 0)
+                    const hideAddClientDropdown = !isBmyBrand(addBrand)
+                    const hideAddClientNameField = isBmyBrand(addBrand)
                     return (
                       <>
                         <div className="grid grid-cols-1 gap-10 px-10 py-8 md:grid-cols-2">
                           <div>
                             <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Invoice To</p>
                             <div className="mt-3 space-y-3">
+                              <div>
+                                <label htmlFor="add-brand" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Brand</label>
+                                <select
+                                  id="add-brand"
+                                  value={addBrand}
+                                  onChange={(e) => {
+                                    const nextBrand = e.target.value
+                                    const switchingFromBmyToManual = isBmyBrand(addBrand) && !isBmyBrand(nextBrand)
+                                    setAddBrand(nextBrand)
+                                    if (switchingFromBmyToManual || !isBmyBrand(nextBrand)) {
+                                      setAddClientId(null)
+                                      setAddClientName('')
+                                      setAddEmail('')
+                                      setAddPhone('')
+                                    } else if (addClientId === null && !addClientName.trim()) {
+                                      setAddClientName(nextBrand)
+                                    }
+                                  }}
+                                  required
+                                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                                >
+                                  <option value="" disabled>Select brand</option>
+                                  {brands.map((brand) => (
+                                    <option key={brand.id} value={brand.brand_name}>{brand.brand_name}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              {!hideAddClientDropdown ? (
                               <div>
                                 <label htmlFor="add-client" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Client</label>
                                 <select
@@ -1869,6 +1918,8 @@ export default function Invoice() {
                                   ))}
                                 </select>
                               </div>
+                              ) : null}
+                              {!hideAddClientNameField ? (
                               <div>
                                 <label htmlFor="add-client-name" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Client name</label>
                                 <input
@@ -1877,25 +1928,11 @@ export default function Invoice() {
                                   value={addClientName}
                                   onChange={(e) => setAddClientName(e.target.value)}
                                   placeholder="Enter client name"
-                                  required
+                                  required={!hideAddClientNameField}
                                   className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                                 />
                               </div>
-                              <div>
-                                <label htmlFor="add-brand" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Brand</label>
-                                <select
-                                  id="add-brand"
-                                  value={addBrand}
-                                  onChange={(e) => setAddBrand(e.target.value)}
-                                  required
-                                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
-                                >
-                                  <option value="" disabled>Select brand</option>
-                                  {brands.map((brand) => (
-                                    <option key={brand.id} value={brand.brand_name}>{brand.brand_name}</option>
-                                  ))}
-                                </select>
-                              </div>
+                              ) : null}
                               <div>
                                 <label htmlFor="add-email" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Email</label>
                                 <input id="add-email" type="email" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} placeholder="ketut.susilo@example.com" required className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20" />
@@ -2151,12 +2188,45 @@ export default function Invoice() {
                     const remainingBalance = Math.max(grandTotal - paidAmount, 0)
                     const payableAmount = Math.min(parseAmountValue(editPayableAmount), grandTotal)
                     const remainingAmount = Math.max(remainingBalance - payableAmount, 0)
+                    const hideEditClientDropdown = !isBmyBrand(editBrand)
+                    const hideEditClientNameField = isBmyBrand(editBrand)
                     return (
                       <>
                         <div className="grid grid-cols-1 gap-10 px-10 py-8 md:grid-cols-2">
                           <div>
                             <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Invoice To</p>
                             <div className="mt-3 space-y-3">
+                              <div>
+                                <label htmlFor="edit-brand" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Brand</label>
+                                <select
+                                  id="edit-brand"
+                                  value={editBrand}
+                                  onChange={(e) => {
+                                    const nextBrand = e.target.value
+                                    const switchingFromBmyToManual = isBmyBrand(editBrand) && !isBmyBrand(nextBrand)
+                                    setEditBrand(nextBrand)
+                                    if (switchingFromBmyToManual || !isBmyBrand(nextBrand)) {
+                                      setEditClientId(null)
+                                      setEditClientName('')
+                                      setEditEmail('')
+                                      setEditPhone('')
+                                    } else if (editClientId === null && !editClientName.trim()) {
+                                      setEditClientName(nextBrand)
+                                    }
+                                  }}
+                                  required
+                                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                                >
+                                  {!brands.some((brand) => brand.brand_name === editBrand) && editBrand && (
+                                    <option value={editBrand}>{editBrand}</option>
+                                  )}
+                                  <option value="" disabled>Select brand</option>
+                                  {brands.map((brand) => (
+                                    <option key={brand.id} value={brand.brand_name}>{brand.brand_name}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              {!hideEditClientDropdown ? (
                               <div>
                                 <label htmlFor="edit-client" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Client</label>
                                 <select
@@ -2170,9 +2240,12 @@ export default function Invoice() {
                                       if (c) {
                                         setEditClientName(c.name || '')
                                         setEditEmail(c.email || '')
+                                        setEditPhone(c.phone || '')
                                       }
                                     } else {
                                       setEditClientName('')
+                                      setEditEmail('')
+                                      setEditPhone('')
                                     }
                                   }}
                                   className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
@@ -2183,24 +2256,21 @@ export default function Invoice() {
                                   ))}
                                 </select>
                               </div>
+                              ) : null}
+                              {!hideEditClientNameField ? (
                               <div>
-                                <label htmlFor="edit-brand" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Select brand</label>
-                                <select
-                                  id="edit-brand"
-                                  value={editBrand}
-                                  onChange={(e) => setEditBrand(e.target.value)}
-                                  required
-                                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
-                                >
-                                  {!brands.some((brand) => brand.brand_name === editBrand) && editBrand && (
-                                    <option value={editBrand}>{editBrand}</option>
-                                  )}
-                                  <option value="" disabled>Select brand</option>
-                                  {brands.map((brand) => (
-                                    <option key={brand.id} value={brand.brand_name}>{brand.brand_name}</option>
-                                  ))}
-                                </select>
+                                <label htmlFor="edit-client-name" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Client name</label>
+                                <input
+                                  id="edit-client-name"
+                                  type="text"
+                                  value={editClientName}
+                                  onChange={(e) => setEditClientName(e.target.value)}
+                                  placeholder="Enter client name"
+                                  required={!hideEditClientNameField}
+                                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                                />
                               </div>
+                              ) : null}
                               <div>
                                 <label htmlFor="edit-email" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Email</label>
                                 <input id="edit-email" type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} placeholder="ketut.susilo@example.com" required className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20" />
