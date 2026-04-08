@@ -303,6 +303,7 @@ export function ClientChatModal({
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
   const [activeMenuMessageId, setActiveMenuMessageId] = useState<number | null>(null)
   const [expandedAttachment, setExpandedAttachment] = useState<ExpandedAttachment | null>(null)
+  const [composerVisible, setComposerVisible] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const messagesRef = useRef<HTMLDivElement | null>(null)
   const fetchVersionRef = useRef(0)
@@ -760,6 +761,27 @@ export function ClientChatModal({
       hasOlderMessages,
     })
   }, [cacheKey, hasOlderMessages, headerSubtitle, headerTitle, messages])
+
+  useEffect(() => {
+    if (!open || !clientId) {
+      setComposerVisible(false)
+      return
+    }
+
+    if (loading || permissionError || accountType !== 'employee') {
+      setComposerVisible(false)
+      return
+    }
+
+    setComposerVisible(false)
+    const frameId = window.requestAnimationFrame(() => {
+      setComposerVisible(true)
+    })
+
+    return () => {
+      window.cancelAnimationFrame(frameId)
+    }
+  }, [accountType, clientId, loading, open, permissionError])
 
   useEffect(() => {
     if (!open || !clientId) return
@@ -1408,7 +1430,15 @@ export function ClientChatModal({
         </div>
 
         {!permissionError ? (
-          <div className="border-t border-slate-800 px-5 py-4">
+          <div
+            className={`border-t border-slate-800 px-5 py-4 transition-all duration-500 ease-out motion-reduce:transition-none ${
+              accountType === 'employee'
+                ? composerVisible
+                  ? 'translate-y-0 opacity-100'
+                  : 'translate-y-4 opacity-0'
+                : 'translate-y-0 opacity-100'
+            }`}
+          >
             {typingLabel ? (
               <div className="mb-2 flex items-center justify-end">
                 <span className="text-[11px] text-sky-300">{typingLabel}</span>
