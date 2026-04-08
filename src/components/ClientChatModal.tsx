@@ -305,7 +305,9 @@ export function ClientChatModal({
   const [activeMenuMessageId, setActiveMenuMessageId] = useState<number | null>(null)
   const [expandedAttachment, setExpandedAttachment] = useState<ExpandedAttachment | null>(null)
   const [composerVisible, setComposerVisible] = useState(false)
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const messageInputRef = useRef<HTMLTextAreaElement | null>(null)
   const messagesRef = useRef<HTMLDivElement | null>(null)
   const fetchVersionRef = useRef(0)
   const mutationVersionRef = useRef(0)
@@ -717,8 +719,10 @@ export function ClientChatModal({
     if (!node) return
 
     const handleScroll = () => {
+      setActiveMenuMessageId(null)
       const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight
       shouldStickToBottomRef.current = distanceFromBottom < 80
+      setShowScrollToBottom(distanceFromBottom > 180)
       if (
         loadingOlderMessagesRef.current &&
         olderLoadAnchorRef.current &&
@@ -751,7 +755,14 @@ export function ClientChatModal({
     const node = messagesRef.current
     if (!node || !shouldStickToBottomRef.current) return
     node.scrollTop = node.scrollHeight
+    setShowScrollToBottom(false)
   }, [messages, open])
+
+  useEffect(() => {
+    if (!open) {
+      setShowScrollToBottom(false)
+    }
+  }, [open])
 
   useEffect(() => {
     if (!cacheKey) return
@@ -838,6 +849,40 @@ export function ClientChatModal({
       !permissionError,
     [draft, pendingAttachment, sending, uploading, permissionError]
   )
+
+  const scrollToBottom = useCallback((smooth = true) => {
+    const node = messagesRef.current
+    if (!node) return
+    node.scrollTo({
+      top: node.scrollHeight,
+      behavior: smooth ? 'smooth' : 'auto',
+    })
+    shouldStickToBottomRef.current = true
+    setShowScrollToBottom(false)
+  }, [])
+
+  const syncComposerHeight = useCallback((target?: HTMLTextAreaElement | null) => {
+    const input = target ?? messageInputRef.current
+    if (!input) return
+    input.style.height = '40px'
+    input.style.height = `${Math.max(40, Math.min(input.scrollHeight, 200))}px`
+  }, [])
+
+  const handleMessageInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setDraft(e.target.value)
+    syncComposerHeight(e.currentTarget)
+  }
+
+  const handleMessageInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      void handleSendMessage()
+    }
+  }
+
+  useEffect(() => {
+    syncComposerHeight()
+  }, [draft, syncComposerHeight])
 
   async function handleSendMessage() {
     if (!clientId || !canSend) return
@@ -1190,7 +1235,7 @@ export function ClientChatModal({
   const isPageVariant = variant === 'page'
   const shell = (
     <div className={`flex ${isPageVariant ? pageHeightClass : 'h-[min(82vh,720px)]'} w-full ${isPageVariant ? '' : 'max-w-5xl'} overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl`}>
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col relative">
         <div className="flex items-start justify-between border-b border-slate-700 px-5 py-4">
           <div>
             <h2 className="text-lg font-bold text-white">{headerTitle || title}</h2>
@@ -1208,7 +1253,11 @@ export function ClientChatModal({
           ) : null}
         </div>
 
-        <div ref={messagesRef} className="flex-1 overflow-y-auto px-5 py-5">
+        <div
+          ref={messagesRef}
+          className="flex-1 overflow-y-auto px-5 py-5 pb-32 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-track]:shadow-none [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-600/70 hover:[&::-webkit-scrollbar-thumb]:bg-slate-500/80"
+          style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(71,85,105,0.7) transparent' }}
+        >
           {loading ? (
             <div className="py-12 text-center text-sm text-slate-400">Loading chat...</div>
           ) : messages.length === 0 ? (
@@ -1236,7 +1285,7 @@ export function ClientChatModal({
                     <div className="group relative mt-2 inline-block max-w-full rounded-2xl bg-slate-800/80 px-4 py-3.5">
                         <div
                           data-chat-menu-root="true"
-                          className={`absolute top-2 z-10 ${message.isOwnMessage ? 'left-2' : 'right-2'}`}
+                          className={`absolute top-2 ${message.isOwnMessage ? 'left-2' : 'right-2'}`}
                         >
                           <button
                             type="button"
@@ -1244,14 +1293,14 @@ export function ClientChatModal({
                               event.stopPropagation()
                               setActiveMenuMessageId((prev) => (prev === message.id ? null : message.id))
                             }}
-                            className={`rounded-full bg-slate-900/70 p-1 text-slate-300 transition hover:bg-slate-800 hover:text-white ${activeMenuMessageId === message.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus:opacity-100 focus-visible:opacity-100'}`}
+                            className={`relative z-10 rounded-full bg-slate-900/70 p-1 text-slate-300 transition hover:bg-slate-800 hover:text-white ${activeMenuMessageId === message.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus:opacity-100 focus-visible:opacity-100'}`}
                             aria-label="Message options"
                           >
                             <ChevronDownIcon className="h-3.5 w-3.5" />
                           </button>
 
                           {activeMenuMessageId === message.id ? (
-                            <div className={`absolute top-8 z-10 w-40 overflow-hidden rounded-xl border border-slate-700 bg-slate-900 shadow-2xl ${message.isOwnMessage ? 'right-full mr-2' : 'left-full ml-2'}`}>
+                            <div className={`absolute top-8 z-[90] w-40 overflow-hidden rounded-xl border border-slate-700 bg-slate-900 shadow-2xl ${message.isOwnMessage ? 'right-full mr-2' : 'left-full ml-2'}`}>
                               {message.senderAuthId === currentUserAuthId && editingId !== message.id ? (
                                 <button
                                   type="button"
@@ -1430,9 +1479,21 @@ export function ClientChatModal({
           )}
         </div>
 
+        {showScrollToBottom ? (
+          <button
+            type="button"
+            onClick={() => scrollToBottom(true)}
+            className="absolute bottom-28 left-1/2 z-20 -translate-x-1/2 rounded-full border border-slate-700 bg-slate-900/90 p-2 text-slate-200 shadow-lg transition hover:border-orange-500/40 hover:text-orange-300"
+            aria-label="Jump to latest message"
+            title="Jump to latest"
+          >
+            <ChevronDownIcon className="h-4 w-4" />
+          </button>
+        ) : null}
+
         {!permissionError ? (
           <div
-            className={`border-t border-slate-800 px-5 py-4 transition-all duration-500 ease-out motion-reduce:transition-none ${
+            className={`absolute bottom-0 left-0 right-0 z-10 border-t border-slate-800 bg-slate-950/95 backdrop-blur-sm px-5 py-4 transition-all duration-500 ease-out motion-reduce:transition-none ${
               accountType === 'employee'
                 ? composerVisible
                   ? 'translate-y-0 opacity-100'
@@ -1497,40 +1558,41 @@ export function ClientChatModal({
                   ) : null}
                 </div>
               ) : null}
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading || sending || Boolean(permissionError)}
-                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-700 bg-slate-800 text-slate-200 transition hover:border-slate-600 hover:bg-slate-700 disabled:opacity-50"
-                  aria-label="Share file"
-                >
-                  <AttachmentIcon className="h-4 w-4" />
-                </button>
+              <div className="rounded-2xl border border-slate-700 bg-slate-800/50 p-3 flex items-center gap-2">
                 <input
                   ref={fileInputRef}
                   type="file"
                   className="hidden"
                   onChange={(e) => handleSelectAttachment(e.target.files?.[0] ?? null)}
                 />
-                <div className="min-w-0 w-full flex">
-                  <textarea
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    placeholder={permissionError ? 'Only assigned handler can message' : 'Write a message...'}
-                    rows={2}
-                    disabled={Boolean(permissionError)}
-                    className="w-full resize-none rounded-2xl border border-slate-700 bg-slate-800/80 px-3.5 py-2.5 text-[13px] text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  />
-                </div>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading || sending || Boolean(permissionError)}
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-orange-500/30 bg-orange-500/10 text-orange-400 transition hover:border-orange-500/50 hover:bg-orange-500/20 disabled:opacity-50"
+                  aria-label="Share file"
+                  title="Attach file"
+                >
+                  <AttachmentIcon className="h-4 w-4" />
+                </button>
+                <textarea
+                  ref={messageInputRef}
+                  value={draft}
+                  onChange={handleMessageInputChange}
+                  onKeyDown={handleMessageInputKeyDown}
+                  placeholder={permissionError ? 'Only assigned handler can message' : 'Write a message...'}
+                  disabled={Boolean(permissionError)}
+                  className="flex-1 resize-none overflow-y-auto rounded-lg border border-slate-700 bg-slate-900/40 px-3 py-2 text-[13px] leading-5 text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent focus:ring-offset-0 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-track]:shadow-none [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-600/70 hover:[&::-webkit-scrollbar-thumb]:bg-slate-500/80"
+                  style={{ height: '40px', minHeight: '40px', maxHeight: '200px', scrollbarWidth: 'thin', scrollbarColor: 'rgba(71,85,105,0.7) transparent' }}
+                />
                 <button
                   type="button"
                   onClick={() => void handleSendMessage()}
                   disabled={!canSend}
-                  className="inline-flex h-10 shrink-0 items-center gap-2 rounded-full bg-orange-500 px-4 text-xs font-semibold text-white transition hover:bg-orange-600 disabled:opacity-50"
+                  className="inline-flex h-10 px-3 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-orange-500 text-xs font-semibold text-white transition hover:bg-orange-600 disabled:opacity-50"
                 >
                   <SendIcon className="h-4 w-4" />
-                  {sending || uploading ? 'Sending...' : 'Send'}
+                  {sending || uploading ? 'Sending' : 'Send'}
                 </button>
               </div>
               {error ? (
@@ -1539,7 +1601,7 @@ export function ClientChatModal({
           </div>
         ) : null}
       </div>
-      <aside className="hidden w-64 border-l border-slate-800 bg-slate-950/50 p-5 lg:flex lg:flex-col">
+      <aside className="relative z-40 hidden w-64 border-l border-slate-800 bg-slate-950/50 p-5 lg:flex lg:flex-col">
         <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
           <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-500">
             {accountType === 'client' ? 'Agent' : 'Client'}
