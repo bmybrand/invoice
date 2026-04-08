@@ -304,10 +304,13 @@ export function ClientChatModal({
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
   const [activeMenuMessageId, setActiveMenuMessageId] = useState<number | null>(null)
   const [expandedAttachment, setExpandedAttachment] = useState<ExpandedAttachment | null>(null)
+  const [messageLineLimits, setMessageLineLimits] = useState<Record<number, number>>({})
+  const [messageOverflowMap, setMessageOverflowMap] = useState<Record<number, boolean>>({})
   const [composerVisible, setComposerVisible] = useState(false)
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const messageInputRef = useRef<HTMLTextAreaElement | null>(null)
+  const messageContentRefs = useRef(new Map<number, HTMLParagraphElement | null>())
   const messagesRef = useRef<HTMLDivElement | null>(null)
   const fetchVersionRef = useRef(0)
   const mutationVersionRef = useRef(0)
@@ -850,6 +853,27 @@ export function ClientChatModal({
     [draft, pendingAttachment, sending, uploading, permissionError]
   )
 
+  const setMessageContentRef = useCallback(
+    (messageId: number) => (node: HTMLParagraphElement | null) => {
+      if (node) {
+        messageContentRefs.current.set(messageId, node)
+      } else {
+        messageContentRefs.current.delete(messageId)
+      }
+    },
+    []
+  )
+
+  const increaseMessageLineLimit = useCallback((messageId: number) => {
+    setMessageLineLimits((prev) => {
+      const currentLimit = prev[messageId] ?? 4
+      return {
+        ...prev,
+        [messageId]: currentLimit + 4,
+      }
+    })
+  }, [])
+
   const scrollToBottom = useCallback((smooth = true) => {
     const node = messagesRef.current
     if (!node) return
@@ -884,6 +908,21 @@ export function ClientChatModal({
     syncComposerHeight()
   }, [draft, syncComposerHeight])
 
+  useEffect(() => {
+    let frameId = window.requestAnimationFrame(() => {
+      const nextOverflowMap: Record<number, boolean> = {}
+      messageContentRefs.current.forEach((node, messageId) => {
+        if (!node) return
+        nextOverflowMap[messageId] = node.scrollHeight > node.clientHeight + 2
+      })
+      setMessageOverflowMap(nextOverflowMap)
+    })
+
+    return () => {
+      window.cancelAnimationFrame(frameId)
+    }
+  }, [messages, messageLineLimits])
+
   async function handleSendMessage() {
     if (!clientId || !canSend) return
     if (pendingAttachment) {
@@ -892,6 +931,10 @@ export function ClientChatModal({
     }
     mutationVersionRef.current += 1
     const draftMessage = draft.trim()
+    if (draftMessage.length > 5000) {
+      setError('Message cannot exceed 5,000 characters.')
+      return
+    }
     const token = await getCurrentAuthToken()
     if (!token) {
       setError('Authentication expired. Sign in again and try again.')
@@ -1440,9 +1483,33 @@ export function ClientChatModal({
                             ) : null}
 
                             {message.message ? (
-                              <p className={`${message.attachmentUrl ? 'mt-3' : 'mt-0'} whitespace-pre-wrap wrap-break-word text-sm text-white`}>
-                                {message.message}
-                              </p>
+                              <div className={`${message.attachmentUrl ? 'mt-3' : 'mt-0'} space-y-2`}>
+                                <p
+                                  ref={setMessageContentRef(message.id)}
+                                  className="whitespace-pre-wrap wrap-break-word text-sm text-white"
+                                  style={
+                                    messageLineLimits[message.id] || messageOverflowMap[message.id] || message.message.length > 180 || message.message.includes('\n')
+                                      ? {
+                                          display: '-webkit-box',
+                                          WebkitBoxOrient: 'vertical',
+                                          WebkitLineClamp: messageLineLimits[message.id] ?? 4,
+                                          overflow: 'hidden',
+                                        }
+                                      : undefined
+                                  }
+                                >
+                                  {message.message}
+                                </p>
+                                {messageOverflowMap[message.id] || message.message.length > 180 || message.message.includes('\n') ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => increaseMessageLineLimit(message.id)}
+                                    className="text-xs font-semibold text-orange-300 transition hover:text-orange-200"
+                                  >
+                                    Show more
+                                  </button>
+                                ) : null}
+                              </div>
                             ) : !message.attachmentUrl ? (
                               <p className="mt-0 text-xs italic text-slate-400">Shared an attachment</p>
                             ) : null}
@@ -1580,6 +1647,7 @@ export function ClientChatModal({
                   value={draft}
                   onChange={handleMessageInputChange}
                   onKeyDown={handleMessageInputKeyDown}
+                  maxLength={5000}
                   placeholder={permissionError ? 'Only assigned handler can message' : 'Write a message...'}
                   disabled={Boolean(permissionError)}
                   className="flex-1 resize-none overflow-y-auto rounded-lg border border-slate-700 bg-slate-900/40 px-3 py-2 text-[13px] leading-5 text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent focus:ring-offset-0 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-track]:shadow-none [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-600/70 hover:[&::-webkit-scrollbar-thumb]:bg-slate-500/80"
