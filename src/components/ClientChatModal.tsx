@@ -1558,7 +1558,7 @@ export function ClientChatModal({
                   ) : null}
                 </div>
               ) : null}
-              <div className="rounded-2xl border border-slate-700 bg-slate-800/50 p-3 flex items-center gap-2">
+              <div className="rounded-2xl border border-slate-700 bg-slate-800/50 p-3 flex items-end gap-2">
                 <input
                   ref={fileInputRef}
                   type="file"
