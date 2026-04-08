@@ -20,6 +20,12 @@ type ClientChatRow = {
 
 const CHAT_BUCKET = 'client-chat-files'
 const PROFILE_AVATAR_BUCKET = 'profile-images'
+const AVATAR_CACHE_TTL_MS = 5 * 60 * 1000
+const senderAvatarCache = new Map<string, { url: string | null; expiresAt: number }>()
+const ATTACHMENT_URL_TTL_MS = 55 * 60 * 1000
+const attachmentSignedUrlCache = new Map<string, { url: string; expiresAt: number }>()
+const HANDLER_NAME_TTL_MS = 10 * 60 * 1000
+const handlerNameCache = new Map<string, { name: string; expiresAt: number }>()
 
 function getParams(params: RouteParams | Promise<RouteParams>) {
   return params instanceof Promise ? params : Promise.resolve(params)
@@ -45,40 +51,45 @@ export async function GET(
     actor.accountType === 'client' ||
     (actor.clientRow.handler_id || '').trim() === actor.user.id
 
-  let markReadError: string | null = null
+  const markReadPromises: Promise<unknown>[] = []
   if (actor.accountType === 'client') {
-    const { error } = await actor.supabase
-      .from('client_chat_messages')
-      .update({ read_by_client: true })
-      .eq('client_id', clientId)
-      .eq('isdeleted', false)
-      .neq('sender_auth_id', actor.user.id)
-      .or('read_by_client.is.null,read_by_client.eq.false')
-    if (error) {
-      markReadError = error.message || 'Failed to mark messages as read'
-    }
-  } else {
-    const isAssignedHandler = (actor.clientRow.handler_id || '').trim() === actor.user.id
-    if (isAssignedHandler) {
-      const { error } = await actor.supabase
+    markReadPromises.push(
+      actor.supabase
         .from('client_chat_messages')
-        .update({ read_by_employee: true })
+        .update({ read_by_client: true })
         .eq('client_id', clientId)
         .eq('isdeleted', false)
         .neq('sender_auth_id', actor.user.id)
-        .or('read_by_employee.is.null,read_by_employee.eq.false')
-      if (error) {
-        markReadError = error.message || 'Failed to mark messages as read'
-      }
+        .or('read_by_client.is.null,read_by_client.eq.false')
+        .then(({ error }) => {
+          if (error) {
+            console.warn('Failed to mark client chat messages as read for client', error.message)
+          }
+        })
+    )
+  } else {
+    const isAssignedHandler = (actor.clientRow.handler_id || '').trim() === actor.user.id
+    if (isAssignedHandler) {
+      markReadPromises.push(
+        actor.supabase
+          .from('client_chat_messages')
+          .update({ read_by_employee: true })
+          .eq('client_id', clientId)
+          .eq('isdeleted', false)
+          .neq('sender_auth_id', actor.user.id)
+          .or('read_by_employee.is.null,read_by_employee.eq.false')
+          .then(({ error }) => {
+            if (error) {
+              console.warn('Failed to mark client chat messages as read for employee', error.message)
+            }
+          })
+      )
     }
   }
-
-  if (markReadError) {
-    return NextResponse.json({ error: markReadError }, { status: 500 })
-  }
+  void Promise.all(markReadPromises)
 
   const { searchParams } = new URL(request.url)
-  const requestedLimit = Number.parseInt(searchParams.get('limit') || '4', 10)
+  const requestedLimit = Number.parseInt(searchParams.get('limit') || '12', 10)
   const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 20) : 4
   const requestedBeforeId = Number.parseInt(searchParams.get('beforeId') || '', 10)
   const beforeId = Number.isFinite(requestedBeforeId) && requestedBeforeId > 0 ? requestedBeforeId : null
@@ -142,76 +153,135 @@ export async function GET(
   })
 
   const senderAvatarByAuthId = new Map<string, string>()
+  const now = Date.now()
+  const senderAuthIdsNeedingLookup = senderAuthIds.filter((authId) => {
+    const key = authId.trim()
+    if (!key) return false
+    const cached = senderAvatarCache.get(key)
+    if (!cached) return true
+    if (cached.expiresAt <= now) {
+      senderAvatarCache.delete(key)
+      return true
+    }
+    if (cached.url) {
+      senderAvatarByAuthId.set(key, cached.url)
+    }
+    return false
+  })
+
   await Promise.all(
-    senderAuthIds.map(async (authId) => {
+    senderAuthIdsNeedingLookup.map(async (authId) => {
       const senderFolder = authId.trim()
       if (!senderFolder) return
 
       const { data: files, error } = await actor.supabase.storage
         .from(PROFILE_AVATAR_BUCKET)
         .list(senderFolder, {
-          limit: 20,
+          limit: 1,
           sortBy: { column: 'created_at', order: 'desc' },
         })
 
-      if (error || !files?.length) return
+      if (error || !files?.length) {
+        senderAvatarCache.set(senderFolder, { url: null, expiresAt: now + AVATAR_CACHE_TTL_MS })
+        return
+      }
       const avatarFile = files.find((file) => Boolean(file.name))
-      if (!avatarFile?.name) return
+      if (!avatarFile?.name) {
+        senderAvatarCache.set(senderFolder, { url: null, expiresAt: now + AVATAR_CACHE_TTL_MS })
+        return
+      }
 
       const avatarPath = `${senderFolder}/${avatarFile.name}`
       const { data } = actor.supabase.storage.from(PROFILE_AVATAR_BUCKET).getPublicUrl(avatarPath)
       if (data?.publicUrl) {
         senderAvatarByAuthId.set(senderFolder, data.publicUrl)
+        senderAvatarCache.set(senderFolder, { url: data.publicUrl, expiresAt: now + AVATAR_CACHE_TTL_MS })
+      } else {
+        senderAvatarCache.set(senderFolder, { url: null, expiresAt: now + AVATAR_CACHE_TTL_MS })
       }
     })
   )
 
-  const messages = await Promise.all(
-    rows.map(async (row) => {
-      let attachmentUrl: string | null = null
+  const attachmentUrlByPath = new Map<string, string>()
+  const nowForAttachments = Date.now()
+  const attachmentPaths = Array.from(
+    new Set(rows.map((row) => (row.attachment_path || '').trim()).filter(Boolean))
+  )
+  const attachmentPathsToSign = attachmentPaths.filter((path) => {
+    const cached = attachmentSignedUrlCache.get(path)
+    if (!cached) return true
+    if (cached.expiresAt <= nowForAttachments) {
+      attachmentSignedUrlCache.delete(path)
+      return true
+    }
+    attachmentUrlByPath.set(path, cached.url)
+    return false
+  })
 
-      if ((row.attachment_path || '').trim()) {
-        const { data } = await actor.supabase.storage.from(CHAT_BUCKET).createSignedUrl(row.attachment_path!, 60 * 60)
-        attachmentUrl = data?.signedUrl ?? null
-      }
-
-      return {
-        id: row.id,
-        clientId: row.client_id,
-        senderAuthId: row.sender_auth_id,
-        senderName: senderNameByAuthId.get(row.sender_auth_id) || 'User',
-        senderAvatarUrl: senderAvatarByAuthId.get(row.sender_auth_id) || null,
-        message: row.message || '',
-        attachmentName: row.attachment_name || '',
-        attachmentUrl,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-        isOwnMessage:
-          actor.accountType === 'employee' &&
-          (actor.clientRow.handler_id || '').trim() &&
-          actor.user.id !== (actor.clientRow.handler_id || '').trim()
-            ? row.sender_auth_id === (actor.clientRow.handler_id || '').trim()
-            : row.sender_auth_id === actor.user.id,
-        seenByRecipient:
-          row.sender_auth_id === actor.clientRow.auth_id
-            ? Boolean(row.read_by_employee)
-            : row.sender_auth_id === actor.clientRow.handler_id
-              ? Boolean(row.read_by_client)
-              : false,
-      }
+  await Promise.all(
+    attachmentPathsToSign.map(async (path) => {
+      const { data } = await actor.supabase.storage.from(CHAT_BUCKET).createSignedUrl(path, 60 * 60)
+      const signedUrl = data?.signedUrl ?? ''
+      if (!signedUrl) return
+      attachmentUrlByPath.set(path, signedUrl)
+      attachmentSignedUrlCache.set(path, {
+        url: signedUrl,
+        expiresAt: nowForAttachments + ATTACHMENT_URL_TTL_MS,
+      })
     })
   )
+
+  const messages = rows.map((row) => {
+    const attachmentPath = (row.attachment_path || '').trim()
+    const attachmentUrl = attachmentPath ? attachmentUrlByPath.get(attachmentPath) || null : null
+
+    return {
+      id: row.id,
+      clientId: row.client_id,
+      senderAuthId: row.sender_auth_id,
+      senderName: senderNameByAuthId.get(row.sender_auth_id) || 'User',
+      senderAvatarUrl: senderAvatarByAuthId.get(row.sender_auth_id) || null,
+      message: row.message || '',
+      attachmentName: row.attachment_name || '',
+      attachmentUrl,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      isOwnMessage:
+        actor.accountType === 'employee' &&
+        (actor.clientRow.handler_id || '').trim() &&
+        actor.user.id !== (actor.clientRow.handler_id || '').trim()
+          ? row.sender_auth_id === (actor.clientRow.handler_id || '').trim()
+          : row.sender_auth_id === actor.user.id,
+      seenByRecipient:
+        row.sender_auth_id === actor.clientRow.auth_id
+          ? Boolean(row.read_by_employee)
+          : row.sender_auth_id === actor.clientRow.handler_id
+            ? Boolean(row.read_by_client)
+            : false,
+    }
+  })
 
   let handlerName = 'Handler'
   if ((actor.clientRow.handler_id || '').trim()) {
-    const { data: handlerData } = await actor.supabase
-      .from('employees')
-      .select('employee_name')
-      .eq('auth_id', actor.clientRow.handler_id)
-      .neq('isdeleted', true)
-      .maybeSingle()
+    const handlerId = (actor.clientRow.handler_id || '').trim()
+    const cachedHandler = handlerNameCache.get(handlerId)
+    const nowForHandler = Date.now()
+    if (cachedHandler && cachedHandler.expiresAt > nowForHandler) {
+      handlerName = cachedHandler.name || 'Handler'
+    } else {
+      const { data: handlerData } = await actor.supabase
+        .from('employees')
+        .select('employee_name')
+        .eq('auth_id', handlerId)
+        .neq('isdeleted', true)
+        .maybeSingle()
 
-    handlerName = ((handlerData as { employee_name?: string | null } | null)?.employee_name || '').trim() || 'Handler'
+      handlerName = ((handlerData as { employee_name?: string | null } | null)?.employee_name || '').trim() || 'Handler'
+      handlerNameCache.set(handlerId, {
+        name: handlerName,
+        expiresAt: nowForHandler + HANDLER_NAME_TTL_MS,
+      })
+    }
   }
 
   return NextResponse.json({

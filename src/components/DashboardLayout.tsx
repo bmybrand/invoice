@@ -766,15 +766,16 @@ if (clientError) {
         return
       }
 
-      if (trackStatus === 'timed out' && attempt < 2) {
+      const shouldRetry = (trackStatus === 'timed out' || trackStatus === 'error') && attempt < 2
+      if (shouldRetry) {
         retryTimeoutId = window.setTimeout(() => {
           void trackPresence(attempt + 1)
         }, 400)
         return
       }
 
-      if (trackStatus === 'timed out') {
-        console.warn('Employee presence tracking timed out')
+      if (trackStatus === 'timed out' || trackStatus === 'error') {
+        console.warn(`Employee presence tracking ${trackStatus}`)
         return
       }
 
