@@ -4,6 +4,11 @@ import { useState, useEffect, useRef, useCallback, createContext, useContext } f
 import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
 import { Plus_Jakarta_Sans } from 'next/font/google'
+import { LiaFileInvoiceSolid } from 'react-icons/lia'
+import { TbBrandBlogger } from 'react-icons/tb'
+import { IoPersonSharp } from 'react-icons/io5'
+import { MdGroups2 } from 'react-icons/md'
+import { RiSecurePaymentFill } from 'react-icons/ri'
 import { supabase } from '@/lib/supabase'
 import { ClientDashboardDataProvider, useClientDashboardData } from '@/context/ClientDashboardDataContext'
 import { NotificationsBell } from '@/components/NotificationsBell'
@@ -52,66 +57,24 @@ function GridIcon({ className = 'h-4 w-4' }: { className?: string }) {
   )
 }
 
-function UsersIcon({ className = 'h-5 w-4 text-slate-400' }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0z"
-      />
-    </svg>
-  )
+function UsersIcon({ className = 'h-5 w-5 text-slate-400' }: { className?: string }) {
+  return <MdGroups2 className={className} />
 }
 
 function ClientIcon({ className = 'h-5 w-5 text-slate-400' }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M15.75 6.75a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.5 20.118a7.5 7.5 0 0115 0A17.933 17.933 0 0112 21.75a17.933 17.933 0 01-7.5-1.632z"
-      />
-    </svg>
-  )
+  return <IoPersonSharp className={className} />
 }
 
 function BrandIcon({ className = 'h-5 w-5 text-slate-400' }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M3.75 7.5 12 3.75l8.25 3.75M4.5 7.5v6.75c0 .398.158.779.44 1.06L12 22.5l7.06-7.19c.282-.281.44-.662.44-1.06V7.5M9 10.5h6"
-      />
-    </svg>
-  )
+  return <TbBrandBlogger className={className} />
 }
 
 function InvoiceIcon({ className = 'h-5 w-5 text-slate-400' }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M7.5 3.75h6l3 3V18a2.25 2.25 0 01-2.25 2.25h-6.75A2.25 2.25 0 015.25 18V6A2.25 2.25 0 017.5 3.75z"
-      />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 3.75V7.5h3.75M8.25 11.25h7.5M8.25 15h7.5" />
-    </svg>
-  )
+  return <LiaFileInvoiceSolid className={className} />
 }
 
 function PaymentIcon({ className = 'h-5 w-5 text-slate-400' }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M2.25 8.25h19.5m-18 0h16.5A1.5 1.5 0 0121.75 9.75v7.5a1.5 1.5 0 01-1.5 1.5H3.75a1.5 1.5 0 01-1.5-1.5v-7.5a1.5 1.5 0 011.5-1.5z"
-      />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 13.5h2.25" />
-    </svg>
-  )
+  return <RiSecurePaymentFill className={className} />
 }
 
 function GearIcon({ className = 'h-5 w-5 text-slate-400' }: { className?: string }) {
@@ -165,7 +128,12 @@ function CloseIcon({ className = 'h-4 w-4' }: { className?: string }) {
 
 function NavIcon({ label, active }: { label: string; active: boolean }) {
   const iconClass = active ? 'text-orange-500' : 'text-slate-400'
-  const sizeClass = 'h-3 w-3 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4 lg:h-5 lg:w-5'
+  const sizeClass =
+    label === 'Brand Identity'
+      ? 'h-4 w-4 sm:h-4 sm:w-4 md:h-5 md:w-5 lg:h-5 lg:w-5'
+      : label === 'Invoice'
+        ? 'h-4 w-4 sm:h-4 sm:w-4 md:h-5 md:w-5 lg:h-5 lg:w-5'
+      : 'h-3 w-3 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4 lg:h-5 lg:w-5'
   const className = `${sizeClass} ${iconClass}`
 
   switch (label) {
@@ -298,7 +266,7 @@ const allNavItems: Array<{ label: string; href: string }> = [
   { label: 'Settings', href: '/dashboard/settings' },
 ]
 
-export function DashboardLayout({ children }: { children: React.ReactNode }) {
+export function DashboardLayout({ children, title }: { children: React.ReactNode; title?: string }) {
   const router = useRouter()
   const pathname = usePathname()
 
