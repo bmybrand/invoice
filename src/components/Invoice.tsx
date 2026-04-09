@@ -573,7 +573,7 @@ export default function Invoice() {
   const [employees, setEmployees] = useState<EmployeeOption[]>([])
   const [clients, setClients] = useState<ClientOption[]>([])
   const [brands, setBrands] = useState<BrandOption[]>([])
-  const [searchQuery, setSearchQuery] = useState('')
+  const [searchQuery, setSearchQuery] = useState(() => (searchParams.get('globalSearch') || '').trim())
   const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'unpaid'>('all')
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
@@ -651,6 +651,11 @@ export default function Invoice() {
     if (!raw) return null
     const parsed = Number(raw)
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+  }, [searchParams])
+
+  useEffect(() => {
+    const nextQuery = (searchParams.get('globalSearch') || '').trim()
+    setSearchQuery((prev) => (prev === nextQuery ? prev : nextQuery))
   }, [searchParams])
 
   function canEditInvoice(inv: InvoiceRow): boolean {

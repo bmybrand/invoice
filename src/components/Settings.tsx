@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Plus_Jakarta_Sans } from 'next/font/google'
+import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useDashboardProfile } from '@/components/DashboardLayout'
 import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
@@ -227,6 +228,7 @@ async function fetchWithSession(url: string, init?: RequestInit) {
 }
 
 export default function Settings() {
+  const searchParams = useSearchParams()
   const { currentUserAuthId, displayRole } = useDashboardProfile()
   const normalizedRole = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '')
   const canViewGateways = normalizedRole === 'superadmin' || normalizedRole === 'admin'
@@ -238,7 +240,7 @@ export default function Settings() {
   const [gateways, setGateways] = useState<PaymentGatewayRow[]>(() => scopedGatewaysCache ?? [])
   const [gatewaysLoading, setGatewaysLoading] = useState(() => !hasScopedGatewaysCache)
   const [pageError, setPageError] = useState<string | null>(null)
-  const [searchQuery, setSearchQuery] = useState('')
+  const [searchQuery, setSearchQuery] = useState(() => (searchParams.get('globalSearch') || '').trim())
   const [modalOpen, setModalOpen] = useState(false)
   const [editingGateway, setEditingGateway] = useState<PaymentGatewayRow | null>(null)
   const [formState, setFormState] = useState<GatewayFormState>(EMPTY_FORM)
@@ -322,6 +324,11 @@ export default function Settings() {
       }
     }
   }, [hasScopedGatewaysCache, loadGateways])
+
+  useEffect(() => {
+    const nextQuery = (searchParams.get('globalSearch') || '').trim()
+    setSearchQuery((prev) => (prev === nextQuery ? prev : nextQuery))
+  }, [searchParams])
 
   function openCreateModal() {
     if (!canManageGateways) return

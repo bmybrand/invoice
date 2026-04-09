@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus_Jakarta_Sans } from 'next/font/google'
 import { supabase } from '@/lib/supabase'
@@ -163,8 +163,9 @@ function formatAttachmentMeta(name: string, sizeBytes?: number | null) {
   return size === '--' ? ext : `${size} - ${ext}`
 }
 
-function getAttachmentTooLargeMessage(sizeBytes: number) {
-  return `Max file size is ${formatAttachmentSize(MAX_CHAT_ATTACHMENT_BYTES)}. ${formatAttachmentSize(sizeBytes)} selected.`
+function getAttachmentTooLargeMessage(sizeBytes: number, fileName?: string) {
+  const label = fileName?.trim() ? `"${fileName.trim()}"` : 'That file'
+  return `${label} exceeds the per-file limit of ${formatAttachmentSize(MAX_CHAT_ATTACHMENT_BYTES)}. Selected size: ${formatAttachmentSize(sizeBytes)}.`
 }
 
 function initials(name: string) {
@@ -351,6 +352,7 @@ export function ClientChatModal({
   const typingTimeoutRef = useRef<number | null>(null)
   const remoteTypingTimeoutRef = useRef<number | null>(null)
   const typingChannelRef = useRef<RealtimeChannel | null>(null)
+  const messageChannelRef = useRef<RealtimeChannel | null>(null)
   const invoiceFetchVersionRef = useRef(0)
   const localMessageIdRef = useRef(-1)
   const shouldStickToBottomRef = useRef(true)
@@ -627,29 +629,48 @@ export function ClientChatModal({
   useEffect(() => {
     if (!open || !clientId) return
 
+    fetchVersionRef.current += 1
+    invoiceFetchVersionRef.current += 1
+    loadInFlightRef.current = false
+    queuedOlderLoadRef.current = false
     shouldStickToBottomRef.current = true
     topAutoLoadArmedRef.current = false
     olderLoadAnchorRef.current = null
     loadingOlderMessagesRef.current = false
+    hasOlderMessagesRef.current = false
+    optimisticMessagesRef.current = []
+    loadedMessagesRef.current = []
+    pendingDeletedIdsRef.current = new Set()
+    setMessages([])
+    setLoading(true)
+    setError(null)
+    setPermissionError(null)
+    setHasOlderMessages(false)
+    setLoadingOlderMessages(false)
+    setHeaderTitle(title)
+    setHeaderSubtitle(subtitle || '')
+    setTypingLabel('')
+    setActiveMenuMessageId(null)
+    setExpandedAttachment(null)
+    setMessageLineLimits({})
+    setMessageOverflowMap({})
+    setShowScrollToBottom(false)
+    setInvoices([])
+    setInvoicesLoading(true)
 
     const cached = cacheKey ? clientChatCache.get(cacheKey) : null
-    let cacheRestoreTimeoutId: number | null = null
     if (cached) {
-      cacheRestoreTimeoutId = window.setTimeout(() => {
-        loadedMessagesRef.current = cached.messages
-        shouldStickToBottomRef.current = true
-        topAutoLoadArmedRef.current = false
-        setMessages(cached.messages)
-        setHeaderTitle(cached.headerTitle)
-        setHeaderSubtitle(cached.headerSubtitle)
-        setHasOlderMessages(cached.hasOlderMessages)
-        hasOlderMessagesRef.current = cached.hasOlderMessages
-        setLoading(false)
-      }, 0)
+      loadedMessagesRef.current = cached.messages
+      setMessages(cached.messages)
+      setHeaderTitle(cached.headerTitle)
+      setHeaderSubtitle(cached.headerSubtitle)
+      setHasOlderMessages(cached.hasOlderMessages)
+      hasOlderMessagesRef.current = cached.hasOlderMessages
+      setLoading(false)
     }
 
     const timeoutId = window.setTimeout(() => {
-      void loadMessages()
+      void loadMessages(cached ? { background: true } : undefined)
     }, 0)
 
     const intervalId = window.setInterval(() => {
@@ -663,16 +684,41 @@ export function ClientChatModal({
     }, CHAT_REFRESH_MS)
 
     return () => {
-      if (cacheRestoreTimeoutId !== null) {
-        window.clearTimeout(cacheRestoreTimeoutId)
-      }
       window.clearTimeout(timeoutId)
       window.clearInterval(intervalId)
       if (suppressRefreshTimeoutRef.current !== null) {
         window.clearTimeout(suppressRefreshTimeoutRef.current)
       }
     }
-  }, [cacheKey, clientId, loadMessages, open])
+  }, [cacheKey, clientId, loadMessages, open, subtitle, title])
+
+  useEffect(() => {
+    if (!open || !clientId) return
+
+    const channel = supabase
+      .channel(`client-chat-messages-${clientId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'client_chat_messages',
+          filter: `client_id=eq.${clientId}`,
+        },
+        () => {
+          if (document.visibilityState !== 'visible' || loadingOlderMessagesRef.current) return
+          void loadMessages({ background: true })
+        }
+      )
+      .subscribe()
+
+    messageChannelRef.current = channel
+
+    return () => {
+      messageChannelRef.current = null
+      void supabase.removeChannel(channel)
+    }
+  }, [clientId, loadMessages, open])
 
   useEffect(() => {
     if (!open || !typingChannelName) return
@@ -782,7 +828,7 @@ export function ClientChatModal({
     }
   }, [hasOlderMessages, loadMessages, open])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) return
     const node = messagesRef.current
     if (!node || !shouldStickToBottomRef.current) return
@@ -1191,7 +1237,7 @@ export function ClientChatModal({
 
     const invalidFile = attachmentsToUpload.find((attachment) => attachment.file.size > MAX_CHAT_ATTACHMENT_BYTES)
     if (invalidFile) {
-      setError(getAttachmentTooLargeMessage(invalidFile.file.size))
+      setError(getAttachmentTooLargeMessage(invalidFile.file.size, invalidFile.file.name))
       setPendingAttachments((prev) => prev.filter((item) => item.id !== invalidFile.id))
       if (invalidFile.previewUrl) {
         URL.revokeObjectURL(invalidFile.previewUrl)
@@ -1347,7 +1393,7 @@ export function ClientChatModal({
 
     Array.from(files).forEach((file) => {
       if (file.size > MAX_CHAT_ATTACHMENT_BYTES) {
-        setError(getAttachmentTooLargeMessage(file.size))
+        setError(getAttachmentTooLargeMessage(file.size, file.name))
         return
       }
 
@@ -1397,7 +1443,7 @@ export function ClientChatModal({
 
   const isPageVariant = variant === 'page'
   const shell = (
-    <div className={`flex ${isPageVariant ? pageHeightClass : 'h-[min(82vh,720px)]'} w-full ${isPageVariant ? '' : 'max-w-5xl'} overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl`}>
+    <div className={`flex min-w-0 ${isPageVariant ? `flex-1 ${pageHeightClass}` : 'h-[min(82vh,720px)] max-w-5xl'} w-full overflow-hidden rounded-r-2xl rounded-l-none border border-slate-700 bg-slate-900 shadow-2xl`}>
       <div className="flex min-w-0 flex-1 flex-col relative">
         <div className="flex items-start justify-between border-b border-slate-700 px-5 py-4">
           <div>
@@ -1420,13 +1466,35 @@ export function ClientChatModal({
           ref={messagesRef}
           className="flex-1 overflow-y-auto px-5 py-5 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-track]:shadow-none [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-600/70 hover:[&::-webkit-scrollbar-thumb]:bg-slate-500/80"
           style={{
-            paddingBottom: `${composerHeight + 20}px`,
+            paddingBottom: `${loading ? 20 : composerHeight + 20}px`,
             scrollbarWidth: 'thin',
             scrollbarColor: 'rgba(71,85,105,0.7) transparent',
           }}
         >
           {loading ? (
-            <div className="py-12 text-center text-sm text-slate-400">Loading chat...</div>
+            <div className="mx-auto flex w-full max-w-3xl animate-pulse flex-col gap-6 py-4">
+              <div className="w-40 rounded-full bg-slate-800/80 px-4 py-2 text-sm text-slate-400">
+                Loading chat...
+              </div>
+              <div className="max-w-[78%] rounded-[26px] border border-slate-800 bg-slate-800/55 px-4 py-4">
+                <div className="h-4 w-28 rounded-full bg-slate-700/80" />
+                <div className="mt-4 space-y-2">
+                  <div className="h-3 w-full rounded-full bg-slate-700/70" />
+                  <div className="h-3 w-4/5 rounded-full bg-slate-700/60" />
+                </div>
+              </div>
+              <div className="ml-auto max-w-[72%] rounded-[26px] border border-slate-800 bg-slate-800/40 px-4 py-4">
+                <div className="ml-auto h-4 w-24 rounded-full bg-slate-700/70" />
+                <div className="mt-4 space-y-2">
+                  <div className="ml-auto h-3 w-48 rounded-full bg-slate-700/60" />
+                  <div className="ml-auto h-3 w-32 rounded-full bg-slate-700/50" />
+                </div>
+              </div>
+              <div className="max-w-[82%] rounded-[26px] border border-slate-800 bg-slate-800/45 px-4 py-4">
+                <div className="h-4 w-20 rounded-full bg-slate-700/70" />
+                <div className="mt-4 h-40 rounded-2xl border border-slate-800 bg-slate-900/60" />
+              </div>
+            </div>
           ) : messages.length === 0 ? (
             <div className="py-12 text-center text-sm text-slate-400">No messages yet.</div>
           ) : (
@@ -1564,25 +1632,19 @@ export function ClientChatModal({
                                           </div>
                                         </button>
                                       ) : (
-                                      <div className="block max-w-full overflow-hidden rounded-2xl border border-slate-700 bg-slate-900/70">
-                                        <button
-                                          type="button"
-                                          onClick={() => handleViewMessageAttachment(attachment)}
-                                          className="flex h-32 w-full items-center gap-4 px-4 text-left transition hover:bg-slate-900/70"
-                                        >
-                                          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-slate-700 bg-slate-950 text-slate-400">
-                                            <FileIcon className="h-7 w-7" />
-                                          </div>
-                                          <div className="min-w-0 flex-1">
-                                            <p className="truncate text-sm font-semibold text-slate-200">
-                                              {attachment.name || 'Attachment'}
-                                            </p>
-                                            <p className="mt-1 text-xs text-slate-400">
-                                              {attachment.metaLabel || getAttachmentExtension(attachment.name || 'Attachment')}
-                                            </p>
-                                          </div>
-                                        </button>
-                                        <div className="flex items-center justify-end gap-2 border-t border-slate-700 px-3 py-2">
+                                      <div className="flex max-w-full items-center gap-3 rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2">
+                                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-700 bg-slate-950 text-slate-400">
+                                          <FileIcon className="h-5 w-5" />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                          <p className="truncate text-xs font-semibold text-white">
+                                            {attachment.name || 'Attachment'}
+                                          </p>
+                                          <p className="mt-0.5 text-[11px] text-slate-400">
+                                            {attachment.metaLabel || getAttachmentExtension(attachment.name || 'Attachment')}
+                                          </p>
+                                        </div>
+                                        <div className="flex shrink-0 items-center gap-3">
                                           <button
                                             type="button"
                                             onClick={() => handleViewMessageAttachment(attachment)}
@@ -1702,7 +1764,7 @@ export function ClientChatModal({
           </button>
         ) : null}
 
-        {!permissionError ? (
+        {!permissionError && !loading ? (
           <div
             ref={composerRef}
             className={`absolute bottom-0 left-0 right-0 z-10 border-t border-slate-800 bg-slate-950/95 backdrop-blur-sm px-5 py-4 transition-all duration-500 ease-out motion-reduce:transition-none ${
@@ -1846,7 +1908,7 @@ export function ClientChatModal({
           </div>
         ) : null}
       </div>
-      <aside className="relative z-40 hidden w-52 shrink-0 border-l border-slate-800 bg-slate-950/50 p-4 lg:flex lg:flex-col xl:w-64 xl:p-5">
+      <aside className={`relative z-40 hidden w-52 shrink-0 border-l border-slate-800 bg-slate-950/50 p-4 xl:w-64 xl:p-5 ${loading ? '' : 'lg:flex lg:flex-col'}`}>
         <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
           <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-500">
             {accountType === 'client' ? 'Agent' : 'Client'}
@@ -1971,7 +2033,7 @@ export function ClientChatModal({
 
   if (isPageVariant) {
     return (
-      <div className={plusJakarta.className}>
+      <div className={`${plusJakarta.className} flex min-w-0 flex-1 w-full`}>
         {shell}
         {attachmentLightbox}
       </div>

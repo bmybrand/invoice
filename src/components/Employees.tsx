@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { Plus_Jakarta_Sans } from 'next/font/google'
+import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useDashboardProfile } from '@/components/DashboardLayout'
 import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
@@ -35,10 +36,12 @@ let employeesTableCache: EmployeesTableCache | null = null
 
 function getDepartmentStyle(dept: string): string {
   const d = (dept || '').toLowerCase()
-  if (d.includes('design')) return 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-  if (d.includes('engineer')) return 'bg-purple-500/10 text-purple-400 border-purple-500/20'
-  if (d.includes('market')) return 'bg-orange-500/10 text-orange-400 border-orange-500/20'
-  if (d.includes('operation')) return 'bg-teal-500/10 text-teal-400 border-teal-500/20'
+  if (d.includes('sales')) return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+  if (d.includes('finance')) return 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+  if (d.includes('it')) return 'bg-sky-500/10 text-sky-400 border-sky-500/20'
+  if (d.includes('development') || d.includes('devomplent') || d.includes('develop')) {
+    return 'bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/20'
+  }
   return 'bg-slate-500/10 text-slate-400 border-slate-500/20'
 }
 
@@ -222,6 +225,7 @@ function EmployeeAvatar({
 }
 
 export default function Employees() {
+  const searchParams = useSearchParams()
   const { currentUserAuthId: profileCurrentUserAuthId, displayRole, onlineAuthIds } = useDashboardProfile()
   const scopedEmployeesCache =
     employeesTableCache?.ownerAuthId === profileCurrentUserAuthId ? employeesTableCache : null
@@ -237,7 +241,7 @@ export default function Employees() {
   const [addLoading, setAddLoading] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
-  const [searchQuery, setSearchQuery] = useState('')
+  const [searchQuery, setSearchQuery] = useState(() => (searchParams.get('globalSearch') || '').trim())
   const [roleFilter, setRoleFilter] = useState('') // '' = all, 'superadmin' | 'admin' | 'user'
   const [roleDropdownOpen, setRoleDropdownOpen] = useState(false)
   const [employeeAvatarUrls, setEmployeeAvatarUrls] = useState<Record<string, string>>(
@@ -271,6 +275,7 @@ export default function Employees() {
     (displayRole || '').trim().toLowerCase().replace(/\s+/g, '') === 'superadmin'
   const isAdmin =
     (displayRole || '').trim().toLowerCase().replace(/\s+/g, '') === 'admin'
+  const canManageArchivedEmployees = isSuperAdmin || isAdmin
   const onlineAuthIdSet = new Set(onlineAuthIds)
 
   const [currentUserEmployeeId, setCurrentUserEmployeeId] = useState<number | null>(null)
@@ -320,6 +325,14 @@ export default function Employees() {
     if (isAdmin && role === 'user') return true
     return false
   }
+
+  const canManageArchivedEmployee = useCallback((emp: ArchivedEmployeeRow): boolean => {
+    if (emp.auth_id === profileCurrentUserAuthId) return false
+    const role = (emp.role || '').trim().toLowerCase().replace(/\s+/g, '')
+    if (isSuperAdmin) return true
+    if (isAdmin && role === 'user') return true
+    return false
+  }, [isAdmin, isSuperAdmin, profileCurrentUserAuthId])
 
   const filteredEmployees = (() => {
     let list = employees
@@ -473,6 +486,11 @@ export default function Employees() {
     }
   }, [fetchEmployees])
 
+  useEffect(() => {
+    const nextQuery = (searchParams.get('globalSearch') || '').trim()
+    setSearchQuery((prev) => (prev === nextQuery ? prev : nextQuery))
+  }, [searchParams])
+
   const fetchArchivedEmployees = useCallback(async () => {
     setArchivedLoading(true)
     setArchivedError(null)
@@ -490,8 +508,9 @@ export default function Employees() {
       return
     }
 
-    setArchivedEmployees((data as ArchivedEmployeeRow[]) ?? [])
-  }, [])
+    const rows = ((data as ArchivedEmployeeRow[]) ?? []).filter((employee) => canManageArchivedEmployee(employee))
+    setArchivedEmployees(rows)
+  }, [canManageArchivedEmployee])
 
   useEffect(() => {
     if (!showArchivedModal) return
@@ -802,25 +821,29 @@ export default function Employees() {
             <h1 className="text-2xl sm:text-3xl font-black leading-tight text-white">Manage Employees</h1>
             <p className="text-slate-400 text-sm font-normal leading-5">Overview of your current workforce and roles</p>
           </div>
-          {isSuperAdmin && (
+          {(canManageArchivedEmployees || isSuperAdmin) && (
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setShowArchivedModal(true)}
-                className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-slate-700 bg-slate-800/80 text-slate-300 transition hover:bg-slate-700/80 hover:text-white"
-                aria-label="View archived employees"
-                title="View archived employees"
-              >
-                <ArchiveIcon className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowAddModal(true)}
-                className="h-12 min-w-36 px-6 bg-orange-500 rounded-xl shadow-[0px_4px_20px_0px_rgba(249,115,22,0.2)] flex justify-center items-center gap-2 hover:bg-orange-600 transition shrink-0"
-              >
-                <PlusIcon className="h-4 w-3 text-white" />
-                <span className="text-white text-sm font-bold">Add New Employee</span>
-              </button>
+              {canManageArchivedEmployees ? (
+                <button
+                  type="button"
+                  onClick={() => setShowArchivedModal(true)}
+                  className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-slate-700 bg-slate-800/80 text-slate-300 transition hover:bg-slate-700/80 hover:text-white"
+                  aria-label="View archived employees"
+                  title="View archived employees"
+                >
+                  <ArchiveIcon className="h-4 w-4" />
+                </button>
+              ) : null}
+              {isSuperAdmin ? (
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(true)}
+                  className="h-12 min-w-36 px-6 bg-orange-500 rounded-xl shadow-[0px_4px_20px_0px_rgba(249,115,22,0.2)] flex justify-center items-center gap-2 hover:bg-orange-600 transition shrink-0"
+                >
+                  <PlusIcon className="h-4 w-3 text-white" />
+                  <span className="text-white text-sm font-bold">Add New Employee</span>
+                </button>
+              ) : null}
             </div>
           )}
         </div>
@@ -1100,7 +1123,7 @@ export default function Employees() {
         </div>
       )}
 
-      {showArchivedModal && (
+      {showArchivedModal && canManageArchivedEmployees && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
           <div className="flex max-h-[80vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-800 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-700 px-6 py-4">

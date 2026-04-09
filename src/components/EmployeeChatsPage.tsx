@@ -30,6 +30,20 @@ type ChatMessageRow = {
   read_by_employee?: boolean | null
 }
 
+type ConversationSummaryRow = {
+  client_id: number | null
+  name: string | null
+  email: string | null
+  handler_id: string | null
+  created_date: string | null
+  latest_message_id: number | null
+  latest_sender_auth_id: string | null
+  latest_message: string | null
+  latest_attachment_name: string | null
+  latest_created_at: string | null
+  unread_count: number | null
+}
+
 type ConversationItem = {
   clientId: number
   name: string
@@ -130,12 +144,7 @@ export function EmployeeChatsPage() {
     return Number.isFinite(raw) && raw > 0 ? raw : null
   }, [searchParams])
 
-  const loadConversations = useCallback(async () => {
-    if (!currentUserAuthId) return
-
-    setError(null)
-    setLoading((prev) => prev && clients.length === 0)
-
+  const loadConversationsLegacy = useCallback(async () => {
     const { data: clientsData, error: clientsError } = await supabase
       .from('clients')
       .select('id, name, email, handler_id, status, created_date')
@@ -143,10 +152,7 @@ export function EmployeeChatsPage() {
       .order('created_date', { ascending: false })
 
     if (clientsError) {
-      logFetchError('Failed to load chat clients', clientsError)
-      setError(clientsError.message || 'Failed to load chats')
-      setLoading(false)
-      return
+      throw clientsError
     }
 
     const visibleClients = (((clientsData as Array<ClientRow & { status?: string | null }> | null) ?? []))
@@ -165,7 +171,6 @@ export function EmployeeChatsPage() {
     if (visibleClients.length === 0) {
       setLatestByClient({})
       setUnreadByClient({})
-      setLoading(false)
       return
     }
 
@@ -180,10 +185,7 @@ export function EmployeeChatsPage() {
       .limit(Math.max(200, clientIds.length * 8))
 
     if (messageError) {
-      logFetchError('Failed to load latest chat previews', messageError)
-      setError(messageError.message || 'Failed to load chats')
-      setLoading(false)
-      return
+      throw messageError
     }
 
     const nextLatest: Record<number, ChatMessageRow> = {}
@@ -192,7 +194,6 @@ export function EmployeeChatsPage() {
         nextLatest[row.client_id] = row
       }
     })
-    setLatestByClient(nextLatest)
 
     const { data: unreadRows, error: unreadError } = await supabase
       .from('client_chat_messages')
@@ -203,10 +204,7 @@ export function EmployeeChatsPage() {
       .or('read_by_employee.is.null,read_by_employee.eq.false')
 
     if (unreadError) {
-      logFetchError('Failed to load unread chat counts', unreadError)
-      setUnreadByClient({})
-      setLoading(false)
-      return
+      throw unreadError
     }
 
     const nextUnread = (((unreadRows as ChatMessageRow[] | null) ?? [])).reduce<Record<number, number>>((acc, row) => {
@@ -214,9 +212,88 @@ export function EmployeeChatsPage() {
       return acc
     }, {})
 
+    setLatestByClient(nextLatest)
+    setUnreadByClient(nextUnread)
+  }, [currentUserAuthId, isAdmin, isSuperAdmin])
+
+  const loadConversations = useCallback(async () => {
+    if (!currentUserAuthId) return
+
+    setError(null)
+    setLoading((prev) => prev && clients.length === 0)
+
+    const { data, error: summariesError } = await supabase.rpc('get_client_chat_conversation_summaries', {
+      p_include_all: isAdmin || isSuperAdmin,
+    })
+
+    if (summariesError) {
+      const message = summariesError.message || ''
+      const missingRpc =
+        message.includes('get_client_chat_conversation_summaries') &&
+        message.includes('schema cache')
+
+      if (!missingRpc) {
+        logFetchError('Failed to load chat conversation summaries', summariesError)
+        setError(message || 'Failed to load chats')
+        setLoading(false)
+        return
+      }
+
+      try {
+        await loadConversationsLegacy()
+        setLoading(false)
+      } catch (legacyError) {
+        logFetchError('Failed to load chats via legacy fallback', legacyError)
+        setError(legacyError instanceof Error ? legacyError.message : 'Failed to load chats')
+        setLoading(false)
+      }
+      return
+    }
+
+    const summaries = ((data as ConversationSummaryRow[] | null) ?? []).filter((row) =>
+      Number.isFinite(Number(row.client_id)) && Number(row.client_id) > 0
+    )
+
+    const visibleClients = summaries.map((row) => ({
+      id: Number(row.client_id),
+      name: row.name?.trim() || 'Client',
+      email: row.email?.trim() || '',
+      handler_id: row.handler_id ?? null,
+      created_date: row.created_date ?? null,
+    }))
+
+    setClients(visibleClients)
+
+    if (visibleClients.length === 0) {
+      setLatestByClient({})
+      setUnreadByClient({})
+      setLoading(false)
+      return
+    }
+
+    const nextLatest: Record<number, ChatMessageRow> = {}
+    const nextUnread: Record<number, number> = {}
+
+    summaries.forEach((row) => {
+      const clientId = Number(row.client_id)
+      if (!Number.isFinite(clientId) || clientId < 1) return
+      if (row.latest_message_id && Number(row.latest_message_id) > 0) {
+        nextLatest[clientId] = {
+          id: Number(row.latest_message_id),
+          client_id: clientId,
+          sender_auth_id: row.latest_sender_auth_id || '',
+          message: row.latest_message || null,
+          attachment_name: row.latest_attachment_name || null,
+          created_at: row.latest_created_at || null,
+        }
+      }
+      nextUnread[clientId] = Math.max(0, Number(row.unread_count ?? 0) || 0)
+    })
+
+    setLatestByClient(nextLatest)
     setUnreadByClient(nextUnread)
     setLoading(false)
-  }, [clients.length, currentUserAuthId, isAdmin, isSuperAdmin])
+  }, [clients.length, currentUserAuthId, isAdmin, isSuperAdmin, loadConversationsLegacy])
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -299,8 +376,6 @@ export function EmployeeChatsPage() {
   const selectedConversation =
     filteredConversations.find((item) => item.clientId === selectedClientId) ||
     conversations.find((item) => item.clientId === selectedClientId) ||
-    filteredConversations[0] ||
-    conversations[0] ||
     null
 
   useEffect(() => {
@@ -364,7 +439,11 @@ export function EmployeeChatsPage() {
                   <button
                     key={conversation.clientId}
                     type="button"
-                    onClick={() => router.replace(`/dashboard/chat?clientId=${conversation.clientId}`)}
+                    onClick={() =>
+                      router.replace(
+                        active ? '/dashboard/chat' : `/dashboard/chat?clientId=${conversation.clientId}`
+                      )
+                    }
                     className={`flex w-full items-start gap-3 border-b border-slate-700/50 px-4 py-4 text-left transition ${active ? 'bg-slate-700/35' : 'hover:bg-slate-800/50'}`}
                   >
                     <ConversationAvatar name={conversation.name} />
@@ -392,7 +471,7 @@ export function EmployeeChatsPage() {
           </div>
         </aside>
 
-        <div className="hidden min-w-0 flex-1 md:flex">
+        <div className="hidden min-w-0 flex-1 overflow-hidden md:flex">
           {selectedConversation ? (
             <ClientChatModal
               open

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { Plus_Jakarta_Sans } from 'next/font/google'
+import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useDashboardProfile } from '@/components/DashboardLayout'
 import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
@@ -108,11 +109,12 @@ function areBrandRowsEqual(a: BrandRow[], b: BrandRow[]) {
 }
 
 export default function Brand() {
+  const searchParams = useSearchParams()
   const { currentUserAuthId, displayRole } = useDashboardProfile()
   const scopedBrandCache = brandTableCache?.ownerAuthId === currentUserAuthId ? brandTableCache.rows : null
   const [brands, setBrands] = useState<BrandRow[]>(() => scopedBrandCache ?? [])
   const [brandsLoading, setBrandsLoading] = useState(() => !scopedBrandCache)
-  const [searchQuery, setSearchQuery] = useState('')
+  const [searchQuery, setSearchQuery] = useState(() => (searchParams.get('globalSearch') || '').trim())
   const [currentPage, setCurrentPage] = useState(1)
   const [showAddModal, setShowAddModal] = useState(false)
   const [showArchivedModal, setShowArchivedModal] = useState(false)
@@ -229,6 +231,11 @@ export default function Brand() {
       window.clearInterval(intervalId)
     }
   }, [fetchBrands])
+
+  useEffect(() => {
+    const nextQuery = (searchParams.get('globalSearch') || '').trim()
+    setSearchQuery((prev) => (prev === nextQuery ? prev : nextQuery))
+  }, [searchParams])
 
   useEffect(() => {
     if (!showArchivedModal) return

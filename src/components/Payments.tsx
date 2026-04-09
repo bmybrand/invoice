@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Plus_Jakarta_Sans } from 'next/font/google'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import JSZip from 'jszip'
 import { supabase } from '@/lib/supabase'
 import { useDashboardProfile } from '@/components/DashboardLayout'
@@ -244,6 +244,7 @@ function sanitizeFileName(name: string): string {
 
 export default function Payments() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { accountType, currentUserAuthId, displayRole, displayDepartment, currentEmployeeId, profileLoaded } = useDashboardProfile()
   const normalizedRole = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '')
   const normalizedDepartment = (displayDepartment || '').trim().toLowerCase()
@@ -255,7 +256,7 @@ export default function Payments() {
   const scopedPaymentsCache = paymentsTableCache?.ownerAuthId === currentUserAuthId ? paymentsTableCache.rows : null
   const [payments, setPayments] = useState<PaymentRow[]>(() => scopedPaymentsCache ?? [])
   const [paymentsLoading, setPaymentsLoading] = useState(() => !scopedPaymentsCache)
-  const [searchQuery, setSearchQuery] = useState('')
+  const [searchQuery, setSearchQuery] = useState(() => (searchParams.get('globalSearch') || '').trim())
   const [currentPage, setCurrentPage] = useState(1)
   const [selectedPaymentIds, setSelectedPaymentIds] = useState<number[]>([])
   const [showBulkDownloadModal, setShowBulkDownloadModal] = useState(false)
@@ -413,6 +414,11 @@ export default function Payments() {
       active = false
     }
   }, [accountType, clientData?.client?.id, clientData?.loading, currentEmployeeId, currentUserAuthId, isAdmin, isSuperAdmin, isUserRole, profileLoaded, scopedPaymentsCache])
+
+  useEffect(() => {
+    const nextQuery = (searchParams.get('globalSearch') || '').trim()
+    setSearchQuery((prev) => (prev === nextQuery ? prev : nextQuery))
+  }, [searchParams])
 
   const filteredPayments = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()

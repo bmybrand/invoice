@@ -180,7 +180,7 @@ export default function Clients() {
   const [registrationRequests, setRegistrationRequests] = useState<RegistrationRequestRow[]>(
     () => scopedClientsCache?.registrationRequests ?? []
   )
-  const [searchQuery, setSearchQuery] = useState('')
+  const [searchQuery, setSearchQuery] = useState(() => (searchParams.get('globalSearch') || '').trim())
   const [currentPage, setCurrentPage] = useState(1)
   const [showAddModal, setShowAddModal] = useState(false)
   const [showArchivedModal, setShowArchivedModal] = useState(false)
@@ -490,6 +490,11 @@ export default function Clients() {
       }
     }
   }, [chatTarget, fetchClients])
+
+  useEffect(() => {
+    const nextQuery = (searchParams.get('globalSearch') || '').trim()
+    setSearchQuery((prev) => (prev === nextQuery ? prev : nextQuery))
+  }, [searchParams])
 
   useEffect(() => {
     if (!showArchivedModal) return

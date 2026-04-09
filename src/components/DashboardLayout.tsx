@@ -7,6 +7,7 @@ import { Plus_Jakarta_Sans } from 'next/font/google'
 import { supabase } from '@/lib/supabase'
 import { ClientDashboardDataProvider, useClientDashboardData } from '@/context/ClientDashboardDataContext'
 import { NotificationsBell } from '@/components/NotificationsBell'
+import { GlobalDashboardSearch } from '@/components/GlobalDashboardSearch'
 import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
@@ -108,14 +109,6 @@ function ChatIcon({ className = 'h-5 w-5 text-slate-400' }: { className?: string
         strokeLinejoin="round"
         d="M7.5 8.25h9m-9 3h5.25M6.75 18l-3 2.25V6A2.25 2.25 0 016 3.75h12A2.25 2.25 0 0120.25 6v8.25A2.25 2.25 0 0118 16.5H9.75L6.75 18z"
       />
-    </svg>
-  )
-}
-
-function LogoutIcon() {
-  return (
-    <svg className="h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v3.75M15.75 9H15M12 15l-3-3m0 0l3-3m-3 3h12.75" />
     </svg>
   )
 }
@@ -289,7 +282,6 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
   const [displayAvatarUrl, setDisplayAvatarUrl] = useState('')
   const [currentUserAuthId, setCurrentUserAuthId] = useState<string | null>(null)
   const [currentUserEmail, setCurrentUserEmail] = useState('')
-  const [currentTime, setCurrentTime] = useState('')
   const [profileModalOpen, setProfileModalOpen] = useState(false)
   const [profileName, setProfileName] = useState('')
   const [profileEmail, setProfileEmail] = useState('')
@@ -374,23 +366,6 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
                       .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
                       .join(' / ')
                   : 'Analytics Center')
-
-  useEffect(() => {
-    function updateCurrentTime() {
-      setCurrentTime(
-        new Date().toLocaleTimeString('en-US', {
-          hour: 'numeric',
-          minute: '2-digit',
-          hour12: true,
-        })
-      )
-    }
-
-    updateCurrentTime()
-    const intervalId = window.setInterval(updateCurrentTime, 60000)
-
-    return () => window.clearInterval(intervalId)
-  }, [])
 
   const loadProfile = useCallback(async () => {
     if (profileLoadInFlightRef.current) {
@@ -1230,7 +1205,7 @@ if (clientError) {
               title={sidebarCollapsed ? 'Log Out' : undefined}
             >
               <span className="flex h-5 w-5 items-center justify-center">
-                <LogoutIcon />
+                <img src="/logout-svgrepo-com.svg" alt="" className="h-3.5 w-3.5 object-contain" />
               </span>
               <span
                 className={`truncate transition-opacity duration-200 ${sidebarCollapsed ? 'max-w-0 opacity-0' : 'opacity-100 delay-200'}`}
@@ -1245,14 +1220,23 @@ if (clientError) {
           id="dashboard-main-shell"
           className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-gray-900 pl-12 sm:pl-14 md:pl-20 xl:pl-0"
         >
-          <header className="absolute left-0 top-0 z-10 flex h-20 w-full items-center justify-between border-b border-slate-800 bg-gray-900 pl-12 pr-4 backdrop-blur-md sm:pl-14 sm:pr-6 md:pl-20 md:pr-8 xl:px-8">
-            <div className="flex items-center gap-3 pl-2 sm:pl-0">
-              <span className="text-[10px] font-bold uppercase leading-4 tracking-tight text-white sm:text-xs md:text-sm">
-                {headerTitle}
-              </span>
+          <header className="absolute left-0 top-0 z-10 flex h-20 w-full items-center justify-between gap-4 border-b border-slate-800 bg-gray-900 pl-12 pr-4 backdrop-blur-md sm:pl-14 sm:pr-6 md:pl-20 md:pr-8 xl:px-8">
+            <div className="flex min-w-0 flex-1 items-center gap-3 pl-2 sm:gap-4 sm:pl-0">
+              <div className="shrink-0">
+                <span className="text-[10px] font-bold uppercase leading-4 tracking-tight text-white sm:text-xs md:text-sm">
+                  {headerTitle}
+                </span>
+              </div>
+              <GlobalDashboardSearch
+                accountType={accountType}
+                displayRole={displayRole}
+                displayDepartment={displayDepartment}
+                currentUserAuthId={currentUserAuthId}
+                currentEmployeeId={currentEmployeeId}
+              />
             </div>
 
-            <div className="flex items-center gap-2 sm:gap-4">
+            <div className="flex items-center justify-end gap-2 sm:gap-4">
               {accountType === 'employee' && (
                 <NotificationsBell accountType={accountType} displayRole={displayRole} />
               )}
@@ -1283,18 +1267,6 @@ if (clientError) {
                 </div>
               </button>
 
-              <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-2 py-1.5 sm:gap-3 sm:px-4 sm:py-2">
-                <div className="flex items-center gap-1">
-                  <span className="h-1.5 w-1.5 rounded-full bg-green-500 sm:h-2 sm:w-2" />
-                  <span className="text-[10px] font-bold leading-4 text-slate-400 sm:text-xs">
-                    {accountType === 'client' ? 'Client Portal' : 'System Online'}
-                  </span>
-                </div>
-                <div className="h-3 w-px bg-slate-700 sm:h-4" />
-                <span className="text-[10px] font-bold leading-4 text-slate-400 sm:text-xs">
-                  {currentTime || '--'}
-                </span>
-              </div>
             </div>
           </header>
 
