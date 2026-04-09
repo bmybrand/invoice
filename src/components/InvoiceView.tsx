@@ -219,24 +219,68 @@ export default function InvoiceView({ invoiceId, invoiceToken, publicView = fals
           element.classList?.contains('no-print') || element.classList?.contains('print-hide-download'),
       })
 
-      const imageData = canvas.toDataURL('image/png')
       const pdf = new jsPDF('p', 'mm', 'a4')
       const pageWidth = pdf.internal.pageSize.getWidth()
       const pageHeight = pdf.internal.pageSize.getHeight()
-      const imageWidth = pageWidth
-      const imageHeight = (canvas.height * imageWidth) / canvas.width
 
-      let heightLeft = imageHeight
-      let position = 0
+      const drawRepeatedHeader = () => {
+        const headerBrand = (invoice.brand_name || 'bmy brand').trim() || 'bmy brand'
+        pdf.setFillColor(15, 23, 42)
+        pdf.rect(0, 0, pageWidth, 14, 'F')
+        pdf.setFont('helvetica', 'bold')
+        pdf.setFontSize(11)
+        pdf.setTextColor(255, 255, 255)
+        pdf.text(headerBrand, 10, 9)
+        pdf.setTextColor(234, 88, 12)
+        pdf.text('Invoice', pageWidth - 10, 9, { align: 'right' })
+      }
 
-      pdf.addImage(imageData, 'PNG', 0, position, imageWidth, imageHeight)
-      heightLeft -= pageHeight
+      const repeatHeaderHeight = 14
+      const repeatedPageTopPadding = 3
+      const repeatedPageTopInset = repeatHeaderHeight + repeatedPageTopPadding
 
-      while (heightLeft > 0) {
-        position -= pageHeight
+      const pxPerMm = canvas.width / pageWidth
+      const firstPageSliceHeightPx = Math.max(1, Math.floor(pageHeight * pxPerMm))
+      const repeatedPageSliceHeightPx = Math.max(1, Math.floor((pageHeight - repeatedPageTopInset) * pxPerMm))
+
+      const createSlice = (startY: number, maxHeightPx: number) => {
+        const remaining = Math.max(0, canvas.height - startY)
+        const sliceHeightPx = Math.min(maxHeightPx, remaining)
+        if (sliceHeightPx <= 0) return null
+
+        const sliceCanvas = document.createElement('canvas')
+        sliceCanvas.width = canvas.width
+        sliceCanvas.height = sliceHeightPx
+        const ctx = sliceCanvas.getContext('2d')
+        if (!ctx) return null
+
+        ctx.fillStyle = '#ffffff'
+        ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height)
+        ctx.drawImage(canvas, 0, startY, canvas.width, sliceHeightPx, 0, 0, sliceCanvas.width, sliceCanvas.height)
+
+        return {
+          dataUrl: sliceCanvas.toDataURL('image/png'),
+          heightMm: sliceHeightPx / pxPerMm,
+          heightPx: sliceHeightPx,
+        }
+      }
+
+      const firstSlice = createSlice(0, firstPageSliceHeightPx)
+      if (!firstSlice) {
+        throw new Error('Failed to render first PDF page')
+      }
+      pdf.addImage(firstSlice.dataUrl, 'PNG', 0, 0, pageWidth, firstSlice.heightMm)
+
+      let sourceOffsetPx = firstSlice.heightPx
+      while (sourceOffsetPx < canvas.height) {
         pdf.addPage()
-        pdf.addImage(imageData, 'PNG', 0, position, imageWidth, imageHeight)
-        heightLeft -= pageHeight
+        drawRepeatedHeader()
+
+        const pageSlice = createSlice(sourceOffsetPx, repeatedPageSliceHeightPx)
+        if (!pageSlice) break
+        pdf.addImage(pageSlice.dataUrl, 'PNG', 0, repeatedPageTopInset, pageWidth, pageSlice.heightMm)
+
+        sourceOffsetPx += pageSlice.heightPx
       }
 
       const fileStem = invoice.brand_name?.trim() ? invoice.brand_name.trim().replace(/[^a-z0-9]+/gi, '-').toLowerCase() : `invoice-${invoice.id}`
@@ -399,6 +443,12 @@ export default function InvoiceView({ invoiceId, invoiceToken, publicView = fals
             display: none !important;
           }
 
+          #invoice-print-root .invoice-print-header {
+            position: static !important;
+            width: 100% !important;
+            z-index: auto !important;
+          }
+
           #invoice-print-root {
             margin: 0 !important;
             min-height: 100vh !important;
@@ -411,6 +461,7 @@ export default function InvoiceView({ invoiceId, invoiceToken, publicView = fals
 
           #invoice-print-root > div.flex {
             flex: 1 1 auto !important;
+            padding-top: 0 !important;
           }
 
           #invoice-print-root .invoice-meta-grid {

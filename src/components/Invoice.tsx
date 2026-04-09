@@ -418,7 +418,7 @@ export function InvoiceDocument({
           </div>
         </div>
         <div className="text-right">
-          <p className="text-5xl font-black uppercase tracking-wide text-orange-600">Invoice</p>
+          <p className="text-4xl font-black uppercase tracking-wide text-orange-600">Invoice</p>
           {includeDownloadButton && canDownloadPdf && (
             <div className="no-print print-hide-download print:hidden mt-3 flex justify-end gap-2">
               <button
@@ -550,8 +550,8 @@ export function InvoiceDocument({
       ) : null}
       </div>
 
-      <div className="invoice-footer-contact mt-auto shrink-0 relative z-10 border-t border-slate-200 bg-slate-50 px-10 py-6 text-sm text-slate-500">
-        +1 (555) 000-1234 | www.studioshodwe.com | 456 Design Blvd, Creative City, NY
+      <div id="invoice-print-footer" className="invoice-footer-contact mt-auto shrink-0 relative z-10 border-t border-slate-200 bg-slate-50 px-10 py-6 text-sm text-slate-500">
+        +1(555) 000-1234 | www.studioshodwe.com | 456 DesignBlvd, Creative City, NY
       </div>
     </div>
   )
@@ -2072,7 +2072,7 @@ export default function Invoice() {
                         </div>
 
                         <div className="border-t border-slate-200 bg-slate-50 px-10 py-6 text-sm text-slate-500">
-                          +1 (555) 000-1234 | www.studioshodwe.com | 456 Design Blvd, Creative City, NY
+                          +1(555) 000-1234 | www.studioshodwe.com | 456 DesignBlvd, Creative City, NY
                         </div>
                       </>
                     )
@@ -2422,7 +2422,7 @@ export default function Invoice() {
                         </div>
 
                         <div className="border-t border-slate-200 bg-slate-50 px-10 py-6 text-sm text-slate-500">
-                          +1 (555) 000-1234 | www.studioshodwe.com | 456 Design Blvd, Creative City, NY
+                          +1(555) 000-1234 | www.studioshodwe.com | 456 DesignBlvd, Creative City, NY
                         </div>
                       </>
                     )

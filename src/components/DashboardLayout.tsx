@@ -1177,7 +1177,7 @@ if (clientError) {
 
             <button
               onClick={handleLogout}
-              className={`flex w-full items-center justify-center gap-1.5 rounded-md border border-slate-700/50 bg-slate-800/50 text-xs font-bold leading-4 text-white transition hover:bg-slate-800 sm:gap-2 sm:rounded-lg sm:text-sm sm:leading-5 md:rounded-xl md:leading-6 ${
+              className={`flex w-full items-center justify-center gap-1.5 rounded-md border border-orange-500/20 bg-orange-500 text-xs font-bold leading-4 text-white shadow-[0px_4px_20px_0px_rgba(249,115,22,0.2)] transition hover:bg-orange-600 sm:gap-2 sm:rounded-lg sm:text-sm sm:leading-5 md:rounded-xl md:leading-6 ${
                 sidebarCollapsed
                   ? 'h-9 px-0 sm:h-10 md:h-11'
                   : 'p-1.5 px-2.5 py-2 sm:p-2 sm:px-3 sm:py-2.5 md:px-4 md:py-3'

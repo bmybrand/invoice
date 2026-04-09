@@ -403,8 +403,8 @@ export function EmployeeChatsPage() {
         </p>
       </div>
 
-      <div className="flex h-[calc(100dvh-18rem)] min-h-[420px] w-full overflow-hidden rounded-[28px] border border-slate-700 bg-[#0f172a] shadow-2xl shadow-black/20 lg:h-[calc(100dvh-15rem)]">
-        <aside className="flex w-full max-w-full flex-col border-b border-slate-700 bg-[#101b24] md:w-[34%] md:min-w-[250px] md:max-w-[320px] md:border-b-0 md:border-r md:border-r-slate-700 lg:w-[32%] lg:max-w-[340px]">
+      <div className="flex h-[calc(100dvh-18rem)] min-h-105 w-full overflow-hidden rounded-[28px] border border-slate-700 bg-[#080e21] shadow-2xl shadow-black/20 lg:h-[calc(100dvh-15rem)]">
+        <aside className="flex w-full max-w-full flex-col border-b border-slate-700 bg-[#080e21] md:w-[34%] md:min-w-62.5 md:max-w-[320px] md:border-b-0 md:border-r md:border-r-slate-700 lg:w-[32%] lg:max-w-85">
           <div className="border-b border-slate-700 px-5 py-4">
             <h2 className="text-2xl font-black text-white">Chats</h2>
             <p className="mt-1 text-sm text-sky-100/75">All conversations in one place.</p>
