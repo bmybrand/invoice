@@ -210,16 +210,19 @@ export async function GET(
   )
 
   const messageIds = rows.map((row) => row.id)
-  const { data: attachmentRowsData } = messageIds.length
-    ? await actor.supabase
-        .from('client_chat_message_attachments')
-        .select('message_id, attachment_name, attachment_path, sort_order')
-        .in('message_id', messageIds)
-        .order('sort_order', { ascending: true })
-    : { data: [], error: null }
+  let attachmentRowsData: ClientChatAttachmentRow[] | null = []
+  if (messageIds.length) {
+    const { data } = await actor.supabase
+      .from('client_chat_message_attachments')
+      .select('message_id, attachment_name, attachment_path, sort_order')
+      .in('message_id', messageIds)
+      .order('sort_order', { ascending: true })
+
+    attachmentRowsData = (data as ClientChatAttachmentRow[] | null) ?? []
+  }
 
   const attachmentsByMessageId = new Map<number, Array<{ name: string; path: string }>>()
-  ;(((attachmentRowsData as ClientChatAttachmentRow[] | null) ?? [])).forEach((row) => {
+  ;((attachmentRowsData ?? [])).forEach((row) => {
     const messageId = Number(row.message_id)
     const attachmentName = (row.attachment_name || '').trim()
     const attachmentPath = (row.attachment_path || '').trim()
