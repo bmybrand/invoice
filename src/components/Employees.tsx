@@ -267,7 +267,17 @@ export default function Employees() {
     { value: '', label: 'All Roles' },
     { value: 'superadmin', label: 'Superadmin' },
     { value: 'admin', label: 'Admin' },
-    { value: 'user', label: 'User' },
+    { value: 'user', label: 'User' }
+  ]
+
+  // Department dropdown options
+  const departmentOptions = [
+    { value: '', label: 'Select department' },
+    { value: 'Finance', label: 'Finance' },
+    { value: 'Sales', label: 'Sales' },
+    { value: 'Development', label: 'Development' },
+    { value: 'IT', label: 'IT' },
+    { value: 'Other', label: 'Other' },
   ]
   const roleFilterLabel = roleOptions.find((o) => o.value === roleFilter)?.label ?? 'All Roles'
 
@@ -1305,21 +1315,22 @@ export default function Employees() {
               </div>
               <div>
                 <label htmlFor="edit-department" className="block text-sm font-medium text-slate-300">Department</label>
-                <input
+                <select
                   id="edit-department"
-                  type="text"
                   value={editDepartment}
                   onChange={(e) => setEditDepartment(e.target.value)}
-                  readOnly={editingEmployee.auth_id === profileCurrentUserAuthId}
                   disabled={editingEmployee.auth_id === profileCurrentUserAuthId}
                   required
-                  placeholder="e.g. Design, Engineering"
-                  className={`mt-1 w-full rounded-lg border px-4 py-3 placeholder:text-slate-500 ${
+                  className={`mt-1 w-full rounded-lg border px-4 py-3 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20 ${
                     editingEmployee.auth_id === profileCurrentUserAuthId
                       ? 'cursor-not-allowed border-slate-600 bg-slate-900/50 text-slate-500'
-                      : 'border-slate-600 bg-slate-900 text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20'
+                      : 'border-slate-600 bg-slate-900 text-white'
                   }`}
-                />
+                >
+                  {departmentOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
                 {editingEmployee.auth_id === profileCurrentUserAuthId ? (
                   <p className="mt-0.5 text-xs text-slate-500">You cannot change your own department.</p>
                 ) : null}
@@ -1429,15 +1440,17 @@ export default function Employees() {
               </div>
               <div>
                 <label htmlFor="add-department" className="block text-sm font-medium text-slate-300">Department</label>
-                <input
+                <select
                   id="add-department"
-                  type="text"
                   value={addDepartment}
                   onChange={(e) => setAddDepartment(e.target.value)}
                   required
-                  placeholder="e.g. Design, Engineering"
-                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
-                />
+                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                >
+                  {departmentOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
               </div>
               {addError && (
                 <p className="rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-400">{addError}</p>
