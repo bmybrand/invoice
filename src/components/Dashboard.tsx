@@ -79,6 +79,17 @@ type AnnualOverview = {
   upsaleLabel: string
 }
 
+type TopOperative = {
+  id: number
+  authId: string | null
+  name: string
+  avatarUrl: string
+  amount: string
+  rank: number
+  color: string
+  opacity?: string
+}
+
 function parseCurrencyAmount(valueLabel: string): number {
   const parsed = Number(String(valueLabel ?? '').replace(/[^0-9.-]/g, ''))
   return Number.isFinite(parsed) ? parsed : 0
@@ -108,16 +119,7 @@ function AnimatedCurrencyValue({ valueLabel, animate }: { valueLabel: string; an
 }
 
 type DashboardSnapshot = {
-  topOperatives: Array<{
-    id: number
-    authId: string | null
-    name: string
-    avatarUrl: string
-    amount: string
-    rank: number
-    color: string
-    opacity?: string
-  }>
+  topOperatives: TopOperative[]
   metrics: {
     today: DashboardMetric
     month: DashboardMetric
@@ -171,6 +173,7 @@ const createEmptySnapshot = (): DashboardSnapshot => ({
 })
 
 let dashboardSnapshotCache: DashboardScopedCache | null = null
+const topOperativeAvatarUrlCache = new Map<string, string>()
 
 function isSuccessfulPaymentStatus(value: string | null | undefined): boolean {
   const normalized = (value || '').trim().toLowerCase()
@@ -269,9 +272,9 @@ function TopOperativeAvatar({ name, imageUrl }: { name: string; imageUrl?: strin
 }
 
 export function Dashboard() {
-  const { displayRole, currentUserAuthId } = useDashboardProfile()
+  const { accountType, displayRole, currentEmployeeId: profileCurrentEmployeeId, currentUserAuthId } = useDashboardProfile()
   const normalizedRole = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '')
-  const canSeeTopOperatives = normalizedRole === 'admin' || normalizedRole === 'superadmin'
+  const canSeeTopOperatives = accountType === 'employee'
   const isUserRole = normalizedRole === 'user'
   const [dailyRange, setDailyRange] = useState<'this_week' | 'last_week'>('this_week')
   const [dailyRangeOpen, setDailyRangeOpen] = useState(false)
@@ -282,16 +285,7 @@ export function Dashboard() {
       ? dashboardSnapshotCache.snapshot
       : null
   const [shouldAnimateAmounts] = useState(() => !cachedSnapshot)
-  const [topOperatives, setTopOperatives] = useState<Array<{
-    id: number
-    authId: string | null
-    name: string
-    avatarUrl: string
-    amount: string
-    rank: number
-    color: string
-    opacity?: string
-  }>>(() => cachedSnapshot?.topOperatives ?? [])
+  const [topOperatives, setTopOperatives] = useState<TopOperative[]>(() => cachedSnapshot?.topOperatives ?? [])
   const [metrics, setMetrics] = useState<{
     today: DashboardMetric
     month: DashboardMetric
@@ -318,6 +312,8 @@ export function Dashboard() {
   )
 
   useEffect(() => {
+    let cancelled = false
+
     async function loadDashboardData() {
       const setEmptyState = () => {
         const emptySnapshot = createEmptySnapshot()
@@ -332,32 +328,13 @@ export function Dashboard() {
         setAnnualOverview(emptySnapshot.annualOverview)
       }
 
-      let currentEmployeeId: number | null = null
+      const currentEmployeeId = isUserRole ? profileCurrentEmployeeId : null
 
-      if (isUserRole) {
-        const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser()
-
-        if (userError || !user?.id) {
+      if (isUserRole && !currentEmployeeId) {
+        if (!cancelled) {
           setEmptyState()
-          return
         }
-
-        const { data: employeeRow, error: employeeError } = await supabase
-          .from('employees')
-          .select('id')
-          .eq('auth_id', user.id)
-          .neq('isdeleted', true)
-          .maybeSingle()
-
-        if (employeeError || !employeeRow) {
-          setEmptyState()
-          return
-        }
-
-        currentEmployeeId = (employeeRow as { id: number }).id
+        return
       }
 
       let allowedInvoiceIds: number[] | null = null
@@ -489,25 +466,21 @@ export function Dashboard() {
       const rankedCreators = Array.from(totalsByCreator.values())
         .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name))
         .slice(0, 5)
-      const topOperativeAvatarEntries = await Promise.all(
-        rankedCreators.map(async (creator) => {
-          const authId = employeeMap.get(creator.id)?.auth_id?.trim() || ''
-          if (!authId) return [creator.id, ''] as const
-          return [creator.id, await resolveProfileAvatarUrl(authId)] as const
-        })
-      )
-      const topOperativeAvatarMap = new Map<number, string>(topOperativeAvatarEntries)
-      const nextTopOperatives = rankedCreators.map((creator, index) => ({
+      const nextTopOperatives: TopOperative[] = rankedCreators.map((creator, index) => {
+        const authId = employeeMap.get(creator.id)?.auth_id?.trim() || ''
+        return {
         id: creator.id,
-        authId: employeeMap.get(creator.id)?.auth_id ?? null,
+        authId: authId || null,
         name: creator.name,
-        avatarUrl: topOperativeAvatarMap.get(creator.id) || '',
+        avatarUrl: authId ? topOperativeAvatarUrlCache.get(authId) || '' : '',
         amount: `$${creator.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         rank: index + 1,
         color: topOperativeStyles[index]?.color ?? 'text-slate-400',
         opacity: topOperativeStyles[index]?.opacity,
-      }))
-      setTopOperatives(nextTopOperatives)
+      }})
+      if (!cancelled) {
+        setTopOperatives(nextTopOperatives)
+      }
 
       const sumAmounts = (rows: PaymentSubmissionMetricRow[]) =>
         rows.reduce((sum, row) => sum + getPaymentAmount(row), 0)
@@ -553,7 +526,9 @@ export function Dashboard() {
           valueLabel: formatCurrency(upsaleTotal),
         },
       }
-      setMetrics(nextMetrics)
+      if (!cancelled) {
+        setMetrics(nextMetrics)
+      }
 
       const yearTotal = sumAmounts(currentYearPaid)
       const yearUpsaleTotal = sumAmounts(currentYearUpsales)
@@ -566,7 +541,9 @@ export function Dashboard() {
         paidCountLabel: `${currentYearPaid.length} successful payment${currentYearPaid.length === 1 ? '' : 's'}`,
         upsaleLabel: `${formatCurrency(yearUpsaleTotal)} upsale`,
       }
-      setAnnualOverview(nextAnnualOverview)
+      if (!cancelled) {
+        setAnnualOverview(nextAnnualOverview)
+      }
 
       const buildWeekSeries = (startDate: Date, highlightToday: boolean) =>
         WEEK_DAYS.map((day, index) => {
@@ -588,7 +565,9 @@ export function Dashboard() {
         this_week: thisWeekSeries,
         last_week: lastWeekSeries,
       }
-      setDailyRevenueSeries(nextDailyRevenueSeries)
+      if (!cancelled) {
+        setDailyRevenueSeries(nextDailyRevenueSeries)
+      }
 
       const paidRevenueSeries = YEAR_MONTHS.map((month, index) => {
         const monthKey = `${currentYear}-${String(index + 1).padStart(2, '0')}`
@@ -618,7 +597,9 @@ export function Dashboard() {
         paid_revenue: paidRevenueSeries,
         upsale_revenue: upsaleRevenueSeries,
       }
-      setGrowthVelocitySeries(nextGrowthVelocitySeries)
+      if (!cancelled) {
+        setGrowthVelocitySeries(nextGrowthVelocitySeries)
+      }
 
       dashboardSnapshotCache = {
         ownerAuthId: currentUserAuthId,
@@ -630,10 +611,51 @@ export function Dashboard() {
           annualOverview: nextAnnualOverview,
         },
       }
+
+      const missingAvatarOperatives = nextTopOperatives.filter((operative) => operative.authId && !operative.avatarUrl)
+      if (missingAvatarOperatives.length > 0) {
+        void (async () => {
+          const avatarEntries = await Promise.all(
+            missingAvatarOperatives.map(async (operative) => {
+              const authId = operative.authId?.trim() || ''
+              if (!authId) return [operative.id, ''] as const
+              const url = await resolveProfileAvatarUrl(authId)
+              if (url) {
+                topOperativeAvatarUrlCache.set(authId, url)
+              }
+              return [operative.id, url] as const
+            })
+          )
+
+          if (cancelled) return
+
+          const avatarUrlByOperativeId = new Map<number, string>(avatarEntries.filter((entry) => entry[1]))
+          if (avatarUrlByOperativeId.size === 0) return
+
+          const hydratedTopOperatives = nextTopOperatives.map((operative) => ({
+            ...operative,
+            avatarUrl: operative.avatarUrl || avatarUrlByOperativeId.get(operative.id) || '',
+          }))
+
+          setTopOperatives(hydratedTopOperatives)
+          if (dashboardSnapshotCache?.ownerAuthId === currentUserAuthId) {
+            dashboardSnapshotCache = {
+              ownerAuthId: currentUserAuthId,
+              snapshot: {
+                ...dashboardSnapshotCache.snapshot,
+                topOperatives: hydratedTopOperatives,
+              },
+            }
+          }
+        })()
+      }
     }
 
     loadDashboardData()
-  }, [currentUserAuthId, isUserRole])
+    return () => {
+      cancelled = true
+    }
+  }, [currentUserAuthId, isUserRole, profileCurrentEmployeeId])
 
   useEffect(() => {
     setDailyRevenueData(dailyRevenueSeries[dailyRange])

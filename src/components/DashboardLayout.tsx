@@ -64,26 +64,52 @@ function UsersIcon({ className = 'h-5 w-4 text-slate-400' }: { className?: strin
   )
 }
 
-function StarIcon({ className = 'h-5 w-5 text-slate-400' }: { className?: string }) {
+function ClientIcon({ className = 'h-5 w-5 text-slate-400' }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
-        d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z"
+        d="M15.75 6.75a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.5 20.118a7.5 7.5 0 0115 0A17.933 17.933 0 0112 21.75a17.933 17.933 0 01-7.5-1.632z"
       />
     </svg>
   )
 }
 
-function DollarIcon({ className = 'h-5 w-5 text-slate-400' }: { className?: string }) {
+function BrandIcon({ className = 'h-5 w-5 text-slate-400' }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
-        d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+        d="M3.75 7.5 12 3.75l8.25 3.75M4.5 7.5v6.75c0 .398.158.779.44 1.06L12 22.5l7.06-7.19c.282-.281.44-.662.44-1.06V7.5M9 10.5h6"
       />
+    </svg>
+  )
+}
+
+function InvoiceIcon({ className = 'h-5 w-5 text-slate-400' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M7.5 3.75h6l3 3V18a2.25 2.25 0 01-2.25 2.25h-6.75A2.25 2.25 0 015.25 18V6A2.25 2.25 0 017.5 3.75z"
+      />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 3.75V7.5h3.75M8.25 11.25h7.5M8.25 15h7.5" />
+    </svg>
+  )
+}
+
+function PaymentIcon({ className = 'h-5 w-5 text-slate-400' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M2.25 8.25h19.5m-18 0h16.5A1.5 1.5 0 0121.75 9.75v7.5a1.5 1.5 0 01-1.5 1.5H3.75a1.5 1.5 0 01-1.5-1.5v-7.5a1.5 1.5 0 011.5-1.5z"
+      />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 13.5h2.25" />
     </svg>
   )
 }
@@ -147,14 +173,16 @@ function NavIcon({ label, active }: { label: string; active: boolean }) {
       return <GridIcon className={className} />
     case 'Employees':
       return <UsersIcon className={className} />
+    case 'Clients':
+      return <ClientIcon className={className} />
     case 'Chats':
       return <ChatIcon className={className} />
     case 'Brand Identity':
-      return <StarIcon className={className} />
+      return <BrandIcon className={className} />
     case 'Invoice':
-      return <DollarIcon className={className} />
+      return <InvoiceIcon className={className} />
     case 'Payment':
-      return <DollarIcon className={className} />
+      return <PaymentIcon className={className} />
     case 'Chat':
       return <ChatIcon className={className} />
     case 'Settings':
@@ -270,7 +298,7 @@ const allNavItems: Array<{ label: string; href: string }> = [
   { label: 'Settings', href: '/dashboard/settings' },
 ]
 
-export function DashboardLayout({ children, title }: { children: React.ReactNode; title?: string }) {
+export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
 
@@ -338,34 +366,6 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
           const normalizedDepartment = (displayDepartment || '').trim().toLowerCase()
           return !(normalizedDepartment.includes('finance') && item.href === '/dashboard/clients')
         })
-
-  const headerTitle =
-    title ??
-    (pathname === '/dashboard'
-      ? accountType === 'client'
-        ? 'Client Overview'
-        : 'Analytics Center'
-      : pathname === '/dashboard/employees'
-        ? 'Employees'
-        : pathname === '/dashboard/clients'
-          ? 'Clients'
-          : pathname === '/dashboard/brands'
-            ? 'Brand Identity'
-            : pathname === '/dashboard/invoices'
-              ? 'Invoice'
-              : pathname === '/dashboard/payments'
-                ? 'Payment'
-                : pathname === '/dashboard/chat'
-                  ? 'Chat'
-                : pathname === '/dashboard/settings'
-                  ? 'Settings'
-                : pathname.startsWith('/dashboard/')
-                  ? pathname
-                      .split('/')
-                      .filter(Boolean)
-                      .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
-                      .join(' / ')
-                  : 'Analytics Center')
 
   const loadProfile = useCallback(async () => {
     if (profileLoadInFlightRef.current) {
@@ -1108,7 +1108,11 @@ if (clientError) {
         <aside
           className={`fixed left-0 top-0 z-20 flex h-screen flex-col border-r border-slate-800 bg-[#0b1323] transition-[width] duration-200 ease-out xl:sticky xl:left-auto xl:top-0 xl:z-auto xl:shrink-0 ${sidebarCollapsed ? 'w-12 sm:w-14 md:w-20' : 'w-full md:w-64'}`}
         >
-          <div className="flex items-center justify-center gap-2 overflow-hidden p-6 md:p-8">
+          <div
+            className={`flex items-center gap-2 overflow-hidden py-6 md:py-8 ${
+              sidebarCollapsed ? 'justify-center px-3 sm:px-4' : 'justify-start px-3 sm:px-4'
+            }`}
+          >
             <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md sm:h-7 sm:w-7 md:h-8 md:w-8 md:rounded-lg xl:h-9 xl:w-9">
               <img src="/bmybrand-B.svg" alt="Brand Logo" className="h-full w-full object-contain" />
             </div>
@@ -1189,7 +1193,11 @@ if (clientError) {
           <div className="p-3 sm:p-4 md:p-6">
             <button
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="mb-1 flex w-full items-center justify-center rounded-md border border-slate-700/50 bg-slate-800/50 p-1.5 text-slate-400 transition hover:bg-slate-800 hover:text-white sm:mb-1.5 sm:rounded-lg sm:p-2 md:mb-2 md:rounded-xl md:p-2.5"
+              className={`mb-1 flex items-center justify-center rounded-md border border-slate-700/50 bg-slate-800/50 text-slate-400 transition hover:bg-slate-800 hover:text-white sm:mb-1.5 sm:rounded-lg md:mb-2 md:rounded-xl ${
+                sidebarCollapsed
+                  ? 'h-9 w-full sm:h-10 md:h-11'
+                  : 'w-full p-1.5 sm:p-2 md:p-2.5'
+              }`}
               aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             >
               {sidebarCollapsed ? (
@@ -1201,7 +1209,11 @@ if (clientError) {
 
             <button
               onClick={handleLogout}
-              className={`flex w-full items-center justify-center gap-1.5 rounded-md border border-slate-700/50 bg-slate-800/50 p-1.5 text-xs font-bold leading-4 text-white transition hover:bg-slate-800 sm:gap-2 sm:rounded-lg sm:p-2 sm:text-sm sm:leading-5 md:rounded-xl md:leading-6 ${sidebarCollapsed ? '' : 'px-2.5 py-2 sm:px-3 sm:py-2.5 md:px-4 md:py-3'}`}
+              className={`flex w-full items-center justify-center gap-1.5 rounded-md border border-slate-700/50 bg-slate-800/50 text-xs font-bold leading-4 text-white transition hover:bg-slate-800 sm:gap-2 sm:rounded-lg sm:text-sm sm:leading-5 md:rounded-xl md:leading-6 ${
+                sidebarCollapsed
+                  ? 'h-9 px-0 sm:h-10 md:h-11'
+                  : 'p-1.5 px-2.5 py-2 sm:p-2 sm:px-3 sm:py-2.5 md:px-4 md:py-3'
+              }`}
               title={sidebarCollapsed ? 'Log Out' : undefined}
             >
               <span className="flex h-5 w-5 items-center justify-center">
@@ -1222,11 +1234,6 @@ if (clientError) {
         >
           <header className="absolute left-0 top-0 z-10 flex h-20 w-full items-center justify-between gap-4 border-b border-slate-800 bg-gray-900 pl-12 pr-4 backdrop-blur-md sm:pl-14 sm:pr-6 md:pl-20 md:pr-8 xl:px-8">
             <div className="flex min-w-0 flex-1 items-center gap-3 pl-2 sm:gap-4 sm:pl-0">
-              <div className="shrink-0">
-                <span className="text-[10px] font-bold uppercase leading-4 tracking-tight text-white sm:text-xs md:text-sm">
-                  {headerTitle}
-                </span>
-              </div>
               <GlobalDashboardSearch
                 accountType={accountType}
                 displayRole={displayRole}
