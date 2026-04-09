@@ -205,7 +205,7 @@ export function GlobalDashboardSearch({
           const shouldSearchPayments = normalizedQuery.length >= 3 || isNumericQuery
           const shouldSearchGateways = canSearchGateways && normalizedQuery.length >= 3
           const nextResults: SearchResult[] = []
-          const tasks: Array<Promise<void>> = []
+          const tasks: Array<PromiseLike<void>> = []
 
           if (canSearchEmployees) {
             tasks.push(

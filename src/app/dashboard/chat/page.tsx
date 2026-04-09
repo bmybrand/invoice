@@ -1,5 +1,6 @@
 'use client'
 
+import { Suspense } from 'react'
 import { ClientChatPage } from '@/components/ClientChatPage'
 import { EmployeeChatsPage } from '@/components/EmployeeChatsPage'
 import { useDashboardProfile } from '@/components/DashboardLayout'
@@ -19,5 +20,9 @@ export default function DashboardChatPage() {
     return <ClientChatPage />
   }
 
-  return <EmployeeChatsPage />
+  return (
+    <Suspense fallback={null}>
+      <EmployeeChatsPage />
+    </Suspense>
+  )
 }

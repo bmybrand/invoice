@@ -1,5 +1,10 @@
+import { Suspense } from 'react'
 import Brand from '@/components/Brand'
 
 export default function BrandsPage() {
-  return <Brand />
+  return (
+    <Suspense fallback={null}>
+      <Brand />
+    </Suspense>
+  )
 }
