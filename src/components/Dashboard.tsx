@@ -17,6 +17,8 @@ import {
   Cell,
 } from 'recharts'
 
+const PROFILE_AVATAR_BUCKET = 'profile-images'
+
 type TopOperativeStyle = {
   color: string
   opacity?: string
@@ -61,6 +63,7 @@ type InvoiceMetricRow = {
 
 type EmployeeMetricRow = {
   id: number
+  auth_id: string | null
   employee_name: string | null
 }
 
@@ -107,7 +110,9 @@ function AnimatedCurrencyValue({ valueLabel, animate }: { valueLabel: string; an
 type DashboardSnapshot = {
   topOperatives: Array<{
     id: number
+    authId: string | null
     name: string
+    avatarUrl: string
     amount: string
     rank: number
     color: string
@@ -177,6 +182,92 @@ function isSuccessfulPaymentStatus(value: string | null | undefined): boolean {
   )
 }
 
+async function resolveProfileAvatarUrl(authId: string): Promise<string> {
+  const normalizedAuthId = authId.trim()
+  if (!normalizedAuthId) return ''
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const { data, error } = await supabase.storage.from(PROFILE_AVATAR_BUCKET).list(normalizedAuthId)
+
+    if (!error && data?.length) {
+      const latestFile = [...data]
+        .sort((a, b) => {
+          const aTime = Date.parse(a.updated_at || a.created_at || '')
+          const bTime = Date.parse(b.updated_at || b.created_at || '')
+          return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime)
+        })[0]
+
+      if (!latestFile?.name) return ''
+
+      const { data: publicUrlData } = supabase.storage
+        .from(PROFILE_AVATAR_BUCKET)
+        .getPublicUrl(`${normalizedAuthId}/${latestFile.name}`)
+
+      const version = latestFile.updated_at || latestFile.created_at || latestFile.name
+      return publicUrlData.publicUrl ? `${publicUrlData.publicUrl}?v=${encodeURIComponent(version)}` : ''
+    }
+
+    if (attempt === 0) {
+      await new Promise((resolve) => window.setTimeout(resolve, 150))
+    }
+  }
+
+  return ''
+}
+
+function initials(name: string) {
+  const tokens = name.trim().split(/\s+/).filter(Boolean)
+  return (tokens[0]?.[0] || '') + (tokens[1]?.[0] || tokens[0]?.[1] || '')
+}
+
+function avatarColorsFromName(name: string) {
+  const normalized = name.trim().toLowerCase() || 'user'
+  let hash = 0
+
+  for (let index = 0; index < normalized.length; index += 1) {
+    hash = normalized.charCodeAt(index) + ((hash << 5) - hash)
+  }
+
+  const hue = Math.abs(hash) % 360
+  const background = `hsl(${hue} 56% 34%)`
+  const border = `hsl(${hue} 62% 46%)`
+
+  return { background, border }
+}
+
+function TopOperativeAvatar({ name, imageUrl }: { name: string; imageUrl?: string }) {
+  const [imageFailed, setImageFailed] = useState(false)
+  const showImage = Boolean(imageUrl && !imageFailed)
+  const colors = avatarColorsFromName(name)
+
+  return (
+    <div
+      className="h-8 w-8 overflow-hidden rounded-lg border text-xs font-bold text-white shadow-[0px_0px_0px_1px_rgba(255,255,255,0.10)] sm:h-10 sm:w-10 sm:rounded-xl"
+      style={
+        showImage
+          ? undefined
+          : {
+              backgroundColor: colors.background,
+              borderColor: colors.border,
+            }
+      }
+    >
+      {showImage ? (
+        <img
+          src={imageUrl || ''}
+          alt={name}
+          className="h-full w-full object-cover"
+          onError={() => setImageFailed(true)}
+        />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center">
+          <span>{initials(name).toUpperCase() || 'U'}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function Dashboard() {
   const { displayRole, currentUserAuthId } = useDashboardProfile()
   const normalizedRole = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '')
@@ -193,7 +284,9 @@ export function Dashboard() {
   const [shouldAnimateAmounts] = useState(() => !cachedSnapshot)
   const [topOperatives, setTopOperatives] = useState<Array<{
     id: number
+    authId: string | null
     name: string
+    avatarUrl: string
     amount: string
     rank: number
     color: string
@@ -367,7 +460,7 @@ export function Dashboard() {
       if (creatorIds.length > 0) {
         const { data: employeeData, error: employeeError } = await supabase
           .from('employees')
-          .select('id, employee_name')
+          .select('id, auth_id, employee_name')
           .neq('isdeleted', true)
           .in('id', creatorIds)
 
@@ -396,9 +489,19 @@ export function Dashboard() {
       const rankedCreators = Array.from(totalsByCreator.values())
         .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name))
         .slice(0, 5)
+      const topOperativeAvatarEntries = await Promise.all(
+        rankedCreators.map(async (creator) => {
+          const authId = employeeMap.get(creator.id)?.auth_id?.trim() || ''
+          if (!authId) return [creator.id, ''] as const
+          return [creator.id, await resolveProfileAvatarUrl(authId)] as const
+        })
+      )
+      const topOperativeAvatarMap = new Map<number, string>(topOperativeAvatarEntries)
       const nextTopOperatives = rankedCreators.map((creator, index) => ({
         id: creator.id,
+        authId: employeeMap.get(creator.id)?.auth_id ?? null,
         name: creator.name,
+        avatarUrl: topOperativeAvatarMap.get(creator.id) || '',
         amount: `$${creator.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         rank: index + 1,
         color: topOperativeStyles[index]?.color ?? 'text-slate-400',
@@ -664,7 +767,7 @@ export function Dashboard() {
                         <div key={op.id} className={`flex justify-between items-center rounded-lg border border-white/5 bg-white/5 px-2 py-2 sm:rounded-xl sm:px-3 sm:py-3 ${op.opacity || ''}`}>
                           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
                             <div className="relative shrink-0">
-                              <img src="https://placehold.co/40x40" alt="" className="h-8 w-8 rounded-lg shadow-[0px_0px_0px_1px_rgba(255,255,255,0.10)] sm:h-10 sm:w-10 sm:rounded-xl" />
+                              <TopOperativeAvatar name={op.name} imageUrl={op.avatarUrl} />
                               <span className={`absolute -left-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full border border-slate-900 text-[9px] font-black leading-4 text-white sm:-left-1 sm:-top-1 sm:h-5 sm:w-5 sm:text-[10px] ${op.rank === 1 ? 'bg-orange-500' : 'bg-slate-600'}`}>{op.rank}</span>
                             </div>
                             <p className="truncate text-xs font-bold leading-4 text-white sm:text-sm sm:leading-5">{op.name}</p>

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { logFetchError } from '@/lib/fetch-error'
 
 type GlobalDashboardSearchProps = {
   accountType: 'employee' | 'client' | null
@@ -67,6 +68,11 @@ function formatInvoiceCode(id: number) {
   return `INV-${id}`
 }
 
+function isLockAbortError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? '')
+  return /lock broken by another request with the 'steal' option/i.test(message)
+}
+
 const DEBOUNCE_MS = 140
 const MAX_RESULTS = 12
 const SECTION_LIMIT = 3
@@ -117,14 +123,17 @@ export function GlobalDashboardSearch({
   )
 
   const getAuthToken = useCallback(async () => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-    if (session?.access_token?.trim()) return session.access_token.trim()
-
-    const { data, error } = await supabase.auth.refreshSession()
-    if (error) return ''
-    return data.session?.access_token?.trim() || ''
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      return session?.access_token?.trim() || ''
+    } catch (error) {
+      if (!isLockAbortError(error)) {
+        logFetchError('global search auth token', error)
+      }
+      return ''
+    }
   }, [])
 
   const getGatewayRows = useCallback(async () => {
