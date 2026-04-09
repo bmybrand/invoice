@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { requirePaymentGatewayAdmin } from '@/lib/server-payment-gateway-auth'
+import { requireSuperAdmin } from '@/lib/server-superadmin-auth'
 
 function normalizeStatus(value: unknown): string {
   const normalized = String(value ?? 'Testing').trim().toLowerCase()
@@ -21,7 +21,7 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requirePaymentGatewayAdmin(request)
+  const auth = await requireSuperAdmin(request)
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
@@ -100,7 +100,7 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requirePaymentGatewayAdmin(request)
+  const auth = await requireSuperAdmin(request)
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }

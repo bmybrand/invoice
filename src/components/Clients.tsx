@@ -950,6 +950,17 @@ export default function Clients() {
   }
 
   useEffect(() => {
+    const legacyChatClientId = Number.parseInt(searchParams.get('chatClientId') || '', 10)
+    if (!Number.isFinite(legacyChatClientId) || legacyChatClientId < 1) return
+
+    const timeoutId = window.setTimeout(() => {
+      router.replace(`/dashboard/chat?clientId=${legacyChatClientId}`)
+    }, 0)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [router, searchParams])
+
+  useEffect(() => {
     const chatClientId = Number.parseInt(searchParams.get('chatClientId') || '', 10)
     if (!Number.isFinite(chatClientId) || chatClientId < 1) return
 
@@ -973,15 +984,7 @@ export default function Clients() {
   function openChatInNewTab(row: ClientTableRow) {
     const rowId = getRowId(row)
     if (rowId == null) return
-
-    const params = new URLSearchParams({
-      chatClientId: String(rowId),
-      chatTitle: row.name || row.email || 'Chat',
-      chatSubtitle: row.email || '',
-    })
-
-    const nextUrl = `/dashboard/clients?${params.toString()}`
-    window.open(nextUrl, '_blank')
+    router.push(`/dashboard/chat?clientId=${rowId}`)
   }
 
   if (chatTarget) {
@@ -1785,5 +1788,3 @@ export default function Clients() {
     </div>
   )
 }
-
-

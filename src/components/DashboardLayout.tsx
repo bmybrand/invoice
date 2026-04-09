@@ -154,6 +154,8 @@ function NavIcon({ label, active }: { label: string; active: boolean }) {
       return <GridIcon className={className} />
     case 'Employees':
       return <UsersIcon className={className} />
+    case 'Chats':
+      return <ChatIcon className={className} />
     case 'Brand Identity':
       return <StarIcon className={className} />
     case 'Invoice':
@@ -268,6 +270,7 @@ const allNavItems: Array<{ label: string; href: string }> = [
   { label: 'Dashboard', href: '/dashboard' },
   { label: 'Employees', href: '/dashboard/employees' },
   { label: 'Clients', href: '/dashboard/clients' },
+  { label: 'Chats', href: '/dashboard/chat' },
   { label: 'Brand Identity', href: '/dashboard/brands' },
   { label: 'Invoice', href: '/dashboard/invoices' },
   { label: 'Payment', href: '/dashboard/payments' },
@@ -1146,6 +1149,7 @@ if (clientError) {
           >
             {visibleNavItems.map((item) => {
               const active = pathname === item.href
+              const isChatItem = item.href === '/dashboard/chat'
 
               return active ? (
                 <Link
@@ -1156,7 +1160,7 @@ if (clientError) {
                 >
                   <span className="relative h-3 w-3 shrink-0 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4 lg:h-5 lg:w-5 [&_svg]:block [&_svg]:h-full! [&_svg]:w-full!">
                     <NavIcon label={item.label} active={!!active} />
-                    {item.label === 'Chat' && chatMessageCount > 0 && sidebarCollapsed ? (
+                    {isChatItem && chatMessageCount > 0 && sidebarCollapsed ? (
                       <span className="absolute -right-1.5 -top-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-500 px-1 text-[9px] font-black leading-none text-white">
                         {chatMessageCount > 99 ? '99+' : chatMessageCount}
                       </span>
@@ -1167,7 +1171,7 @@ if (clientError) {
                   >
                     <span className="inline-flex items-center gap-2">
                       <span>{item.label}</span>
-                      {item.label === 'Chat' && chatMessageCount > 0 ? (
+                      {isChatItem && chatMessageCount > 0 ? (
                         <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-orange-500 px-1.5 text-[10px] font-black leading-none text-white">
                           {chatMessageCount > 99 ? '99+' : chatMessageCount}
                         </span>
@@ -1184,7 +1188,7 @@ if (clientError) {
                 >
                   <span className="relative h-3 w-3 shrink-0 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4 lg:h-5 lg:w-5 [&_svg]:block [&_svg]:h-full! [&_svg]:w-full!">
                     <NavIcon label={item.label} active={!!active} />
-                    {item.label === 'Chat' && chatMessageCount > 0 && sidebarCollapsed ? (
+                    {isChatItem && chatMessageCount > 0 && sidebarCollapsed ? (
                       <span className="absolute -right-1.5 -top-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-500 px-1 text-[9px] font-black leading-none text-white">
                         {chatMessageCount > 99 ? '99+' : chatMessageCount}
                       </span>
@@ -1195,7 +1199,7 @@ if (clientError) {
                   >
                     <span className="inline-flex items-center gap-2">
                       <span>{item.label}</span>
-                      {item.label === 'Chat' && chatMessageCount > 0 ? (
+                      {isChatItem && chatMessageCount > 0 ? (
                         <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-orange-500 px-1.5 text-[10px] font-black leading-none text-white">
                           {chatMessageCount > 99 ? '99+' : chatMessageCount}
                         </span>

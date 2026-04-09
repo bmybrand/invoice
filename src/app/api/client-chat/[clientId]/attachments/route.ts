@@ -25,6 +25,10 @@ type CompleteAttachmentBody = {
   filePath?: string
   attachmentName?: string
   message?: string
+  attachments?: Array<{
+    filePath?: string
+    attachmentName?: string
+  }>
 }
 
 export async function POST(
@@ -81,13 +85,29 @@ export async function POST(
     }
 
     if (body?.operation === 'complete') {
-      const filePath = String(body.filePath ?? '').trim()
-      const attachmentName = String(body.attachmentName ?? '').trim()
+      const normalizedAttachments = Array.isArray(body.attachments)
+        ? body.attachments
+            .map((attachment) => ({
+              filePath: String(attachment?.filePath ?? '').trim(),
+              attachmentName: String(attachment?.attachmentName ?? '').trim(),
+            }))
+            .filter((attachment) => attachment.filePath && attachment.attachmentName)
+        : []
+      const legacyFilePath = String(body.filePath ?? '').trim()
+      const legacyAttachmentName = String(body.attachmentName ?? '').trim()
+      const attachments =
+        normalizedAttachments.length > 0
+          ? normalizedAttachments
+          : legacyFilePath && legacyAttachmentName
+            ? [{ filePath: legacyFilePath, attachmentName: legacyAttachmentName }]
+            : []
       const message = String(body.message ?? '').trim()
 
-      if (!filePath || !attachmentName) {
+      if (attachments.length === 0) {
         return NextResponse.json({ error: 'Attachment details are required' }, { status: 400 })
       }
+
+      const primaryAttachment = attachments[0]
 
       const { data: messageData, error: insertError } = await auth.actor.supabase
         .from('client_chat_messages')
@@ -95,13 +115,13 @@ export async function POST(
           client_id: clientId,
           sender_auth_id: auth.actor.user.id,
           message: message || null,
-          attachment_name: attachmentName,
-          attachment_path: filePath,
+          attachment_name: primaryAttachment.attachmentName,
+          attachment_path: primaryAttachment.filePath,
           isdeleted: false,
           read_by_client: auth.actor.accountType === 'client',
           read_by_employee: auth.actor.accountType === 'employee',
         })
-        .select('id')
+        .select('id, attachment_name')
         .single()
 
       if (insertError) {
@@ -111,16 +131,48 @@ export async function POST(
         )
       }
 
+      const messageId = Number(messageData?.id ?? 0)
+      if (!Number.isFinite(messageId) || messageId < 1) {
+        return NextResponse.json({ error: 'Failed to save attachment message' }, { status: 500 })
+      }
+
+      const { error: attachmentsInsertError } = await auth.actor.supabase
+        .from('client_chat_message_attachments')
+        .insert(
+          attachments.map((attachment, index) => ({
+            message_id: messageId,
+            attachment_name: attachment.attachmentName,
+            attachment_path: attachment.filePath,
+            sort_order: index,
+          }))
+        )
+
+      if (attachmentsInsertError) {
+        await auth.actor.supabase
+          .from('client_chat_messages')
+          .update({ isdeleted: true })
+          .eq('id', messageId)
+
+        return NextResponse.json(
+          { error: attachmentsInsertError.message || 'Failed to save message attachments' },
+          { status: 500 }
+        )
+      }
+
       await sendHandlerChatPush({
         supabase: auth.actor.supabase,
         clientId,
         senderAuthId: auth.actor.user.id,
         title: `New file from ${auth.actor.clientRow.name || auth.actor.clientRow.email || 'Client'}`,
-        body: message || `Attachment: ${attachmentName}`,
+        body:
+          message ||
+          (attachments.length === 1
+            ? `Attachment: ${primaryAttachment.attachmentName}`
+            : `${attachments.length} attachments`),
         url: `/dashboard/clients?chatClientId=${clientId}`,
       })
 
-      return NextResponse.json({ ok: true, id: messageData?.id ?? null })
+      return NextResponse.json({ ok: true, id: messageId })
     }
 
     return NextResponse.json({ error: 'Invalid attachment operation' }, { status: 400 })

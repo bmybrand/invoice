@@ -229,7 +229,8 @@ async function fetchWithSession(url: string, init?: RequestInit) {
 export default function Settings() {
   const { currentUserAuthId, displayRole } = useDashboardProfile()
   const normalizedRole = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '')
-  const canManageGateways = normalizedRole === 'superadmin' || normalizedRole === 'admin'
+  const canViewGateways = normalizedRole === 'superadmin' || normalizedRole === 'admin'
+  const canManageGateways = normalizedRole === 'superadmin'
   const scopedGatewaysCache =
     settingsGatewaysCache?.ownerAuthId === currentUserAuthId ? settingsGatewaysCache.gateways : null
   const hasScopedGatewaysCache = Boolean(scopedGatewaysCache)
@@ -258,7 +259,7 @@ export default function Settings() {
     const fetchVersion = ++fetchVersionRef.current
     const mutationVersionAtStart = mutationVersionRef.current
 
-    if (!canManageGateways) {
+    if (!canViewGateways) {
       setGateways([])
       setGatewaysLoading(false)
       return
@@ -300,7 +301,7 @@ export default function Settings() {
     if (!isBackgroundRefresh) {
       setGatewaysLoading(false)
     }
-  }, [canManageGateways, currentUserAuthId, hasScopedGatewaysCache])
+  }, [canViewGateways, currentUserAuthId, hasScopedGatewaysCache])
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -323,6 +324,7 @@ export default function Settings() {
   }, [hasScopedGatewaysCache, loadGateways])
 
   function openCreateModal() {
+    if (!canManageGateways) return
     setEditingGateway(null)
     setFormState(EMPTY_FORM)
     setFormError(null)
@@ -330,6 +332,7 @@ export default function Settings() {
   }
 
   function openEditModal(gateway: PaymentGatewayRow) {
+    if (!canManageGateways) return
     setEditingGateway(gateway)
     setFormState(toFormState(gateway))
     setFormError(null)
@@ -364,6 +367,7 @@ export default function Settings() {
   }
 
   async function updateGatewayStatus(gateway: PaymentGatewayRow, nextStatus: 'Testing' | 'Live' | 'Inactive') {
+    if (!canManageGateways) return
     setPageError(null)
     if (nextStatus === 'Live' && !gatewayHasLiveKeys(gateway)) {
       setPageError('Enter both live keys before switching a gateway to Live mode.')
@@ -427,6 +431,7 @@ export default function Settings() {
   }
 
   async function handleDeleteGateway(gateway: PaymentGatewayRow) {
+    if (!canManageGateways) return
     if (!window.confirm(`Delete ${gateway.name}?`)) return
 
     setPageError(null)
@@ -444,6 +449,7 @@ export default function Settings() {
   }
 
   async function handleSetGlobalGatewayMode(nextStatus: 'Testing' | 'Live') {
+    if (!canManageGateways) return
     if (globalModeLoading) return
 
     const targetGateways = gateways.filter(
@@ -538,6 +544,10 @@ export default function Settings() {
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
+    if (!canManageGateways) {
+      setFormError('Only super admin can manage payment gateways.')
+      return
+    }
     if (submitting) return
 
     const name = formState.name.trim()
@@ -633,7 +643,7 @@ export default function Settings() {
         </div>
       </div>
 
-      {!canManageGateways ? (
+      {!canViewGateways ? (
         <div className="rounded-xl border border-slate-700 bg-slate-800/80 px-6 py-5 text-sm text-slate-400">
           Payment gateway settings are restricted to admin users.
         </div>
@@ -754,6 +764,7 @@ export default function Settings() {
                         <button
                           type="button"
                           onClick={() => void handleToggleGatewayMode(gateway)}
+                          disabled={!canManageGateways}
                           className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-amber-400"
                           aria-label={`Switch ${gateway.name} mode`}
                           title={`Switch ${gateway.name} between live and testing`}
@@ -763,6 +774,7 @@ export default function Settings() {
                         <button
                           type="button"
                           onClick={() => void handleToggleGatewayEnabled(gateway)}
+                          disabled={!canManageGateways}
                           className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-emerald-400"
                           aria-label={`${normalizeGatewayStatus(gateway.status) === 'Inactive' ? 'Enable' : 'Disable'} ${gateway.name}`}
                           title={`${normalizeGatewayStatus(gateway.status) === 'Inactive' ? 'Enable' : 'Disable'} ${gateway.name}`}
@@ -772,6 +784,7 @@ export default function Settings() {
                         <button
                           type="button"
                           onClick={() => openEditModal(gateway)}
+                          disabled={!canManageGateways}
                           className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-blue-400"
                           aria-label={`Edit ${gateway.name}`}
                           title={`Edit ${gateway.name}`}
@@ -781,6 +794,7 @@ export default function Settings() {
                         <button
                           type="button"
                           onClick={() => void handleDeleteGateway(gateway)}
+                          disabled={!canManageGateways}
                           className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-rose-400"
                           aria-label={`Delete ${gateway.name}`}
                           title={`Delete ${gateway.name}`}
@@ -803,48 +817,50 @@ export default function Settings() {
             </div>
           </div>
 
-          <div className="pointer-events-none fixed bottom-4 left-0 right-0 z-20 sm:bottom-6">
-            <div className="mx-6 flex justify-end sm:mx-8">
-              <div className="pointer-events-auto flex items-center gap-2 rounded-xl border border-slate-700/80 bg-slate-900/85 px-3 py-2 shadow-[0px_14px_34px_rgba(2,6,23,0.32)] backdrop-blur">
-              <button
-                type="button"
-                onClick={() => void handleSetGlobalGatewayMode('Testing')}
-                disabled={globalModeLoading || globalGatewayMode === 'Testing'}
-                className={`rounded-md px-2 py-1 text-xs font-black uppercase tracking-[0.16em] transition ${
-                  globalGatewayMode === 'Testing'
-                    ? 'bg-slate-700 text-white'
-                    : 'bg-slate-800/70 text-slate-400 hover:bg-slate-700/80 hover:text-slate-200'
-                } disabled:cursor-not-allowed disabled:opacity-60`}
-              >
-                Test
-              </button>
-              <label className="relative inline-block h-6 w-10">
-                <input
-                  type="checkbox"
-                  checked={globalGatewayMode === 'Live'}
-                  onChange={() => void handleSetGlobalGatewayMode(globalGatewayMode === 'Live' ? 'Testing' : 'Live')}
-                  disabled={globalModeLoading}
-                  className="peer sr-only"
-                  aria-label={`Switch global gateway mode to ${globalGatewayMode === 'Live' ? 'Testing' : 'Live'}`}
-                />
-                <span className="absolute inset-0 cursor-pointer rounded-full border border-orange-400/70 bg-orange-500 shadow-[inset_0_-2px_6px_rgba(0,0,0,0.18),0px_4px_12px_rgba(249,115,22,0.16)] transition peer-disabled:cursor-not-allowed peer-disabled:opacity-60" />
-                <span className="pointer-events-none absolute bottom-1 left-1 h-4 w-4 rounded-full bg-white shadow-[0px_3px_8px_rgba(15,23,42,0.2)] transition-transform duration-300 ease-out peer-checked:translate-x-4" />
-              </label>
-              <button
-                type="button"
-                onClick={() => void handleSetGlobalGatewayMode('Live')}
-                disabled={globalModeLoading || globalGatewayMode === 'Live'}
-                className={`rounded-md px-2 py-1 text-xs font-black uppercase tracking-[0.16em] transition ${
-                  globalGatewayMode === 'Live'
-                    ? 'bg-slate-700 text-white'
-                    : 'bg-slate-800/70 text-slate-400 hover:bg-slate-700/80 hover:text-slate-200'
-                } disabled:cursor-not-allowed disabled:opacity-60`}
-                >
-                  Live
-                </button>
+          {canManageGateways ? (
+            <div className="pointer-events-none fixed bottom-4 left-0 right-0 z-20 sm:bottom-6">
+              <div className="mx-6 flex justify-end sm:mx-8">
+                <div className="pointer-events-auto flex items-center gap-2 rounded-xl border border-slate-700/80 bg-slate-900/85 px-3 py-2 shadow-[0px_14px_34px_rgba(2,6,23,0.32)] backdrop-blur">
+                  <button
+                    type="button"
+                    onClick={() => void handleSetGlobalGatewayMode('Testing')}
+                    disabled={globalModeLoading || globalGatewayMode === 'Testing'}
+                    className={`rounded-md px-2 py-1 text-xs font-black uppercase tracking-[0.16em] transition ${
+                      globalGatewayMode === 'Testing'
+                        ? 'bg-slate-700 text-white'
+                        : 'bg-slate-800/70 text-slate-400 hover:bg-slate-700/80 hover:text-slate-200'
+                    } disabled:cursor-not-allowed disabled:opacity-60`}
+                  >
+                    Test
+                  </button>
+                  <label className="relative inline-block h-6 w-10">
+                    <input
+                      type="checkbox"
+                      checked={globalGatewayMode === 'Live'}
+                      onChange={() => void handleSetGlobalGatewayMode(globalGatewayMode === 'Live' ? 'Testing' : 'Live')}
+                      disabled={globalModeLoading}
+                      className="peer sr-only"
+                      aria-label={`Switch global gateway mode to ${globalGatewayMode === 'Live' ? 'Testing' : 'Live'}`}
+                    />
+                    <span className="absolute inset-0 cursor-pointer rounded-full border border-orange-400/70 bg-orange-500 shadow-[inset_0_-2px_6px_rgba(0,0,0,0.18),0px_4px_12px_rgba(249,115,22,0.16)] transition peer-disabled:cursor-not-allowed peer-disabled:opacity-60" />
+                    <span className="pointer-events-none absolute bottom-1 left-1 h-4 w-4 rounded-full bg-white shadow-[0px_3px_8px_rgba(15,23,42,0.2)] transition-transform duration-300 ease-out peer-checked:translate-x-4" />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => void handleSetGlobalGatewayMode('Live')}
+                    disabled={globalModeLoading || globalGatewayMode === 'Live'}
+                    className={`rounded-md px-2 py-1 text-xs font-black uppercase tracking-[0.16em] transition ${
+                      globalGatewayMode === 'Live'
+                        ? 'bg-slate-700 text-white'
+                        : 'bg-slate-800/70 text-slate-400 hover:bg-slate-700/80 hover:text-slate-200'
+                    } disabled:cursor-not-allowed disabled:opacity-60`}
+                  >
+                    Live
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
+          ) : null}
         </>
       )}
 

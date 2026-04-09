@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requirePaymentGatewayAdmin } from '@/lib/server-payment-gateway-auth'
+import { requireSuperAdmin } from '@/lib/server-superadmin-auth'
 
 function normalizeStatus(value: unknown): string {
   const normalized = String(value ?? 'Testing').trim().toLowerCase()
@@ -36,7 +37,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = await requirePaymentGatewayAdmin(request)
+  const auth = await requireSuperAdmin(request)
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }

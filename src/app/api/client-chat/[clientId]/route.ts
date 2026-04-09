@@ -18,6 +18,13 @@ type ClientChatRow = {
   isdeleted: boolean | null
 }
 
+type ClientChatAttachmentRow = {
+  message_id: number
+  attachment_name: string | null
+  attachment_path: string | null
+  sort_order: number | null
+}
+
 const CHAT_BUCKET = 'client-chat-files'
 const PROFILE_AVATAR_BUCKET = 'profile-images'
 const AVATAR_CACHE_TTL_MS = 5 * 60 * 1000
@@ -202,10 +209,44 @@ export async function GET(
     })
   )
 
+  const messageIds = rows.map((row) => row.id)
+  const { data: attachmentRowsData } = messageIds.length
+    ? await actor.supabase
+        .from('client_chat_message_attachments')
+        .select('message_id, attachment_name, attachment_path, sort_order')
+        .in('message_id', messageIds)
+        .order('sort_order', { ascending: true })
+    : { data: [], error: null }
+
+  const attachmentsByMessageId = new Map<number, Array<{ name: string; path: string }>>()
+  ;(((attachmentRowsData as ClientChatAttachmentRow[] | null) ?? [])).forEach((row) => {
+    const messageId = Number(row.message_id)
+    const attachmentName = (row.attachment_name || '').trim()
+    const attachmentPath = (row.attachment_path || '').trim()
+    if (!Number.isFinite(messageId) || messageId < 1 || !attachmentName || !attachmentPath) return
+    const current = attachmentsByMessageId.get(messageId) || []
+    current.push({ name: attachmentName, path: attachmentPath })
+    attachmentsByMessageId.set(messageId, current)
+  })
+
+  rows.forEach((row) => {
+    const existing = attachmentsByMessageId.get(row.id)
+    if (existing && existing.length > 0) return
+    const attachmentName = (row.attachment_name || '').trim()
+    const attachmentPath = (row.attachment_path || '').trim()
+    if (!attachmentName || !attachmentPath) return
+    attachmentsByMessageId.set(row.id, [{ name: attachmentName, path: attachmentPath }])
+  })
+
   const attachmentUrlByPath = new Map<string, string>()
   const nowForAttachments = Date.now()
   const attachmentPaths = Array.from(
-    new Set(rows.map((row) => (row.attachment_path || '').trim()).filter(Boolean))
+    new Set(
+      Array.from(attachmentsByMessageId.values())
+        .flat()
+        .map((attachment) => attachment.path)
+        .filter(Boolean)
+    )
   )
   const attachmentPathsToSign = attachmentPaths.filter((path) => {
     const cached = attachmentSignedUrlCache.get(path)
@@ -232,8 +273,11 @@ export async function GET(
   )
 
   const messages = rows.map((row) => {
-    const attachmentPath = (row.attachment_path || '').trim()
-    const attachmentUrl = attachmentPath ? attachmentUrlByPath.get(attachmentPath) || null : null
+    const attachments = (attachmentsByMessageId.get(row.id) || []).map((attachment) => ({
+      name: attachment.name,
+      url: attachmentUrlByPath.get(attachment.path) || null,
+    }))
+    const primaryAttachment = attachments[0]
 
     return {
       id: row.id,
@@ -242,8 +286,9 @@ export async function GET(
       senderName: senderNameByAuthId.get(row.sender_auth_id) || 'User',
       senderAvatarUrl: senderAvatarByAuthId.get(row.sender_auth_id) || null,
       message: row.message || '',
-      attachmentName: row.attachment_name || '',
-      attachmentUrl,
+      attachmentName: primaryAttachment?.name || row.attachment_name || '',
+      attachmentUrl: primaryAttachment?.url || null,
+      attachments,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       isOwnMessage:

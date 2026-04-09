@@ -39,6 +39,12 @@ type ChatMessage = {
   seenByRecipient?: boolean
   isPending?: boolean
   attachmentMetaLabel?: string | null
+  attachments?: Array<{
+    name: string
+    url: string | null
+    metaLabel?: string | null
+    isPending?: boolean
+  }>
 }
 
 type ChatResponse = {
@@ -62,6 +68,7 @@ type ChatInvoice = {
 }
 
 type PendingAttachmentPreview = {
+  id: string
   file: File
   previewUrl: string | null
   isImage: boolean
@@ -266,6 +273,25 @@ function isPreviewableImage(name: string, url: string | null) {
   )
 }
 
+function getMessageAttachments(message: ChatMessage) {
+  if (message.attachments && message.attachments.length > 0) {
+    return message.attachments
+  }
+
+  if (message.attachmentName) {
+    return [
+      {
+        name: message.attachmentName,
+        url: message.attachmentUrl,
+        metaLabel: message.attachmentMetaLabel,
+        isPending: message.isPending,
+      },
+    ]
+  }
+
+  return []
+}
+
 export function ClientChatModal({
   open,
   clientId,
@@ -297,7 +323,7 @@ export function ClientChatModal({
   const [headerTitle, setHeaderTitle] = useState(title)
   const [headerSubtitle, setHeaderSubtitle] = useState(subtitle || '')
   const [typingLabel, setTypingLabel] = useState('')
-  const [pendingAttachment, setPendingAttachment] = useState<PendingAttachmentPreview | null>(null)
+  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachmentPreview[]>([])
   const [invoices, setInvoices] = useState<ChatInvoice[]>([])
   const [invoicesLoading, setInvoicesLoading] = useState(false)
   const [hasOlderMessages, setHasOlderMessages] = useState(false)
@@ -308,8 +334,11 @@ export function ClientChatModal({
   const [messageOverflowMap, setMessageOverflowMap] = useState<Record<number, boolean>>({})
   const [composerVisible, setComposerVisible] = useState(false)
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
+  const [composerHeight, setComposerHeight] = useState(112)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const messageInputRef = useRef<HTMLTextAreaElement | null>(null)
+  const composerRef = useRef<HTMLDivElement | null>(null)
+  const pendingAttachmentsRef = useRef<PendingAttachmentPreview[]>([])
   const messageContentRefs = useRef(new Map<number, HTMLParagraphElement | null>())
   const messagesRef = useRef<HTMLDivElement | null>(null)
   const fetchVersionRef = useRef(0)
@@ -846,11 +875,11 @@ export function ClientChatModal({
 
   const canSend = useMemo(
     () =>
-      (draft.trim().length > 0 || pendingAttachment !== null) &&
+      (draft.trim().length > 0 || pendingAttachments.length > 0) &&
       !sending &&
       !uploading &&
       !permissionError,
-    [draft, pendingAttachment, sending, uploading, permissionError]
+    [draft, pendingAttachments, sending, uploading, permissionError]
   )
 
   const setMessageContentRef = useCallback(
@@ -888,8 +917,13 @@ export function ClientChatModal({
   const syncComposerHeight = useCallback((target?: HTMLTextAreaElement | null) => {
     const input = target ?? messageInputRef.current
     if (!input) return
+    if (!input.value.trim()) {
+      input.style.height = '40px'
+      return
+    }
     input.style.height = '40px'
-    input.style.height = `${Math.max(40, Math.min(input.scrollHeight, 200))}px`
+    const responsiveMaxHeight = Math.min(Math.max(window.innerHeight * 0.14, 72), 160)
+    input.style.height = `${Math.max(40, Math.min(input.scrollHeight, responsiveMaxHeight))}px`
   }, [])
 
   const handleMessageInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -909,7 +943,28 @@ export function ClientChatModal({
   }, [draft, syncComposerHeight])
 
   useEffect(() => {
-    let frameId = window.requestAnimationFrame(() => {
+    const node = composerRef.current
+    if (!node) return
+
+    const updateComposerHeight = () => {
+      setComposerHeight(node.offsetHeight || 112)
+    }
+
+    updateComposerHeight()
+
+    const observer = new ResizeObserver(() => {
+      updateComposerHeight()
+    })
+
+    observer.observe(node)
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [draft, error, pendingAttachments, permissionError, typingLabel])
+
+  useEffect(() => {
+    const frameId = window.requestAnimationFrame(() => {
       const nextOverflowMap: Record<number, boolean> = {}
       messageContentRefs.current.forEach((node, messageId) => {
         if (!node) return
@@ -925,8 +980,9 @@ export function ClientChatModal({
 
   async function handleSendMessage() {
     if (!clientId || !canSend) return
-    if (pendingAttachment) {
-      await handleUploadFile(pendingAttachment.file)
+    if (pendingAttachments.length > 0) {
+      const draftMessage = draft.trim()
+      await handleUploadFile(pendingAttachments, draftMessage)
       return
     }
     mutationVersionRef.current += 1
@@ -1087,6 +1143,29 @@ export function ClientChatModal({
     }
   }
 
+  async function handleDownloadMessageAttachment(attachment: { name: string; url: string | null }) {
+    if (!attachment.url) return
+
+    try {
+      const response = await fetch(attachment.url)
+      if (!response.ok) {
+        throw new Error('download failed')
+      }
+
+      const blob = await response.blob()
+      const downloadUrl = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = downloadUrl
+      link.download = attachment.name || 'attachment'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(downloadUrl)
+    } catch {
+      window.open(attachment.url, '_blank', 'noopener,noreferrer')
+    }
+  }
+
   function handleViewAttachment(message: ChatMessage) {
     if (!message.attachmentUrl) return
 
@@ -1097,12 +1176,26 @@ export function ClientChatModal({
     })
   }
 
-  async function handleUploadFile(file: File | null) {
-    if (!clientId || !file) return
+  function handleViewMessageAttachment(attachment: { name: string; url: string | null }) {
+    if (!attachment.url) return
 
-    if (file.size > MAX_CHAT_ATTACHMENT_BYTES) {
-      setError(getAttachmentTooLargeMessage(file.size))
-      setPendingAttachment(null)
+    setExpandedAttachment({
+      url: attachment.url,
+      name: attachment.name || 'Attachment',
+      isImage: isPreviewableImage(attachment.name, attachment.url),
+    })
+  }
+
+  async function handleUploadFile(attachmentsToUpload: PendingAttachmentPreview[], messageOverride?: string) {
+    if (!clientId || attachmentsToUpload.length === 0) return
+
+    const invalidFile = attachmentsToUpload.find((attachment) => attachment.file.size > MAX_CHAT_ATTACHMENT_BYTES)
+    if (invalidFile) {
+      setError(getAttachmentTooLargeMessage(invalidFile.file.size))
+      setPendingAttachments((prev) => prev.filter((item) => item.id !== invalidFile.id))
+      if (invalidFile.previewUrl) {
+        URL.revokeObjectURL(invalidFile.previewUrl)
+      }
       if (fileInputRef.current) {
         fileInputRef.current.value = ''
       }
@@ -1118,78 +1211,92 @@ export function ClientChatModal({
 
     setUploading(true)
     setError(null)
-    const attachmentMessage = draft.trim()
+    const attachmentMessage = messageOverride ?? draft.trim()
     const optimisticMessage: ChatMessage = {
       id: localMessageIdRef.current--,
       clientId,
       senderAuthId: currentUserAuthId || 'local-user',
       senderName: displayName || 'You',
       message: attachmentMessage,
-      attachmentName: file.name,
-      attachmentUrl: null,
+      attachmentName: attachmentsToUpload[0]?.file.name || '',
+      attachmentUrl: attachmentsToUpload[0]?.previewUrl || null,
       createdAt: new Date().toISOString(),
       updatedAt: null,
       isOwnMessage: true,
       seenByRecipient: false,
       isPending: true,
-      attachmentMetaLabel: formatAttachmentMeta(file.name, file.size),
+      attachmentMetaLabel: formatAttachmentMeta(attachmentsToUpload[0]?.file.name || 'attachment', attachmentsToUpload[0]?.file.size),
+      attachments: attachmentsToUpload.map((attachment) => ({
+        name: attachment.file.name,
+        url: attachment.previewUrl,
+        metaLabel: formatAttachmentMeta(attachment.file.name, attachment.file.size),
+        isPending: true,
+      })),
     }
+
     optimisticMessagesRef.current = [...optimisticMessagesRef.current, optimisticMessage]
     setMessages((prev) => [...prev, optimisticMessage])
-    setDraft('')
-    setPendingAttachment(null)
-
-    const prepareResponse = await fetch(`/api/client-chat/${clientId}/attachments`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        operation: 'prepare',
-        fileName: file.name,
-      }),
-    })
-
-    const prepareResult = (await prepareResponse.json().catch(() => null)) as {
-      error?: string
-      filePath?: string
-      token?: string
-    } | null
-
-    if (!prepareResponse.ok || !prepareResult?.filePath || !prepareResult.token) {
-      optimisticMessagesRef.current = optimisticMessagesRef.current.filter((message) => message.id !== optimisticMessage.id)
-      setMessages((prev) => prev.filter((message) => message.id !== optimisticMessage.id))
-      setDraft(attachmentMessage)
-      setPendingAttachment({
-        file,
-        previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
-        isImage: file.type.startsWith('image/'),
-      })
-      setUploading(false)
-      setError(prepareResult?.error || 'Failed to prepare file upload')
-      return
+    if (attachmentMessage === draft.trim()) {
+      setDraft('')
     }
+    setPendingAttachments((prev) => prev.filter((item) => !attachmentsToUpload.some((attachment) => attachment.id === item.id)))
 
-    const uploadResult = await supabase.storage
-      .from(CHAT_BUCKET)
-      .uploadToSignedUrl(prepareResult.filePath, prepareResult.token, file, {
-        contentType: file.type || 'application/octet-stream',
-        upsert: false,
+    const uploadedAttachments: Array<{ filePath: string; attachmentName: string }> = []
+
+    for (const attachment of attachmentsToUpload) {
+      const prepareResponse = await fetch(`/api/client-chat/${clientId}/attachments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          operation: 'prepare',
+          fileName: attachment.file.name,
+        }),
       })
 
-    if (uploadResult.error) {
-      optimisticMessagesRef.current = optimisticMessagesRef.current.filter((message) => message.id !== optimisticMessage.id)
-      setMessages((prev) => prev.filter((message) => message.id !== optimisticMessage.id))
-      setDraft(attachmentMessage)
-      setPendingAttachment({
-        file,
-        previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
-        isImage: file.type.startsWith('image/'),
+      const prepareResult = (await prepareResponse.json().catch(() => null)) as {
+        error?: string
+        filePath?: string
+        token?: string
+      } | null
+
+      if (!prepareResponse.ok || !prepareResult?.filePath || !prepareResult.token) {
+        optimisticMessagesRef.current = optimisticMessagesRef.current.filter((message) => message.id !== optimisticMessage.id)
+        setMessages((prev) => prev.filter((message) => message.id !== optimisticMessage.id))
+        if (attachmentMessage) {
+          setDraft(attachmentMessage)
+        }
+        setPendingAttachments((prev) => [...attachmentsToUpload, ...prev])
+        setUploading(false)
+        setError(prepareResult?.error || 'Failed to prepare file upload')
+        return
+      }
+
+      const uploadResult = await supabase.storage
+        .from(CHAT_BUCKET)
+        .uploadToSignedUrl(prepareResult.filePath, prepareResult.token, attachment.file, {
+          contentType: attachment.file.type || 'application/octet-stream',
+          upsert: false,
+        })
+
+      if (uploadResult.error) {
+        optimisticMessagesRef.current = optimisticMessagesRef.current.filter((message) => message.id !== optimisticMessage.id)
+        setMessages((prev) => prev.filter((message) => message.id !== optimisticMessage.id))
+        if (attachmentMessage) {
+          setDraft(attachmentMessage)
+        }
+        setPendingAttachments((prev) => [...attachmentsToUpload, ...prev])
+        setUploading(false)
+        setError(uploadResult.error.message || 'Failed to upload file')
+        return
+      }
+
+      uploadedAttachments.push({
+        filePath: prepareResult.filePath,
+        attachmentName: attachment.file.name,
       })
-      setUploading(false)
-      setError(uploadResult.error.message || 'Failed to upload file')
-      return
     }
 
     const completeResponse = await fetch(`/api/client-chat/${clientId}/attachments`, {
@@ -1200,78 +1307,91 @@ export function ClientChatModal({
       },
       body: JSON.stringify({
         operation: 'complete',
-        filePath: prepareResult.filePath,
-        attachmentName: file.name,
+        attachments: uploadedAttachments,
         message: attachmentMessage,
       }),
     })
 
     const completeResult = (await completeResponse.json().catch(() => null)) as { error?: string } | null
-    setUploading(false)
-
     if (!completeResponse.ok) {
       optimisticMessagesRef.current = optimisticMessagesRef.current.filter((message) => message.id !== optimisticMessage.id)
       setMessages((prev) => prev.filter((message) => message.id !== optimisticMessage.id))
-      setDraft(attachmentMessage)
-      setPendingAttachment({
-        file,
-        previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
-        isImage: file.type.startsWith('image/'),
-      })
-      setError(completeResult?.error || 'Failed to share file')
+      if (attachmentMessage) {
+        setDraft(attachmentMessage)
+      }
+      setPendingAttachments((prev) => [...attachmentsToUpload, ...prev])
+      setUploading(false)
+      setError(completeResult?.error || 'Failed to share files')
       return
     }
 
-    optimisticMessagesRef.current = optimisticMessagesRef.current.filter((message) => message.id !== optimisticMessage.id)
-    setPendingAttachment((prev) => {
-      if (prev?.previewUrl) {
-        URL.revokeObjectURL(prev.previewUrl)
+    attachmentsToUpload.forEach((attachment) => {
+      if (attachment.previewUrl) {
+        URL.revokeObjectURL(attachment.previewUrl)
       }
-      return null
     })
+    optimisticMessagesRef.current = optimisticMessagesRef.current.filter((message) => message.id !== optimisticMessage.id)
 
     void broadcastTyping(false)
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
+    setUploading(false)
     suppressPolling()
   }
 
-  function handleSelectAttachment(file: File | null) {
-    if (!file) return
+  function handleSelectAttachment(files: FileList | null) {
+    if (!files?.length) return
     setError(null)
-    if (file.size > MAX_CHAT_ATTACHMENT_BYTES) {
-      setError(getAttachmentTooLargeMessage(file.size))
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ''
-      }
-      return
-    }
+    const nextAttachments: PendingAttachmentPreview[] = []
 
-    setPendingAttachment((prev) => {
-      if (prev?.previewUrl) {
-        URL.revokeObjectURL(prev.previewUrl)
+    Array.from(files).forEach((file) => {
+      if (file.size > MAX_CHAT_ATTACHMENT_BYTES) {
+        setError(getAttachmentTooLargeMessage(file.size))
+        return
       }
+
       const isImage = file.type.startsWith('image/')
-      return {
+      nextAttachments.push({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
         file,
         previewUrl: isImage ? URL.createObjectURL(file) : null,
         isImage,
-      }
+      })
     })
+
+    if (nextAttachments.length > 0) {
+      setPendingAttachments((prev) => [...prev, ...nextAttachments])
+    }
 
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
   }
 
+  function handleRemovePendingAttachment(attachmentId: string) {
+    setPendingAttachments((prev) => {
+      const target = prev.find((attachment) => attachment.id === attachmentId)
+      if (target?.previewUrl) {
+        URL.revokeObjectURL(target.previewUrl)
+      }
+      return prev.filter((attachment) => attachment.id !== attachmentId)
+    })
+  }
+
+  useEffect(() => {
+    pendingAttachmentsRef.current = pendingAttachments
+  }, [pendingAttachments])
+
   useEffect(() => {
     return () => {
-      if (pendingAttachment?.previewUrl) {
-        URL.revokeObjectURL(pendingAttachment.previewUrl)
-      }
+      pendingAttachmentsRef.current.forEach((attachment) => {
+        if (attachment.previewUrl) {
+          URL.revokeObjectURL(attachment.previewUrl)
+        }
+      })
     }
-  }, [pendingAttachment])
+  }, [])
 
   if (!open || !clientId) return null
 
@@ -1298,8 +1418,12 @@ export function ClientChatModal({
 
         <div
           ref={messagesRef}
-          className="flex-1 overflow-y-auto px-5 py-5 pb-32 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-track]:shadow-none [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-600/70 hover:[&::-webkit-scrollbar-thumb]:bg-slate-500/80"
-          style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(71,85,105,0.7) transparent' }}
+          className="flex-1 overflow-y-auto px-5 py-5 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-track]:shadow-none [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-600/70 hover:[&::-webkit-scrollbar-thumb]:bg-slate-500/80"
+          style={{
+            paddingBottom: `${composerHeight + 20}px`,
+            scrollbarWidth: 'thin',
+            scrollbarColor: 'rgba(71,85,105,0.7) transparent',
+          }}
         >
           {loading ? (
             <div className="py-12 text-center text-sm text-slate-400">Loading chat...</div>
@@ -1317,7 +1441,7 @@ export function ClientChatModal({
                 >
                   <MessageAvatar name={message.senderName} imageUrl={message.senderAvatarUrl} />
                   <div className={`min-w-0 flex-1 ${message.isOwnMessage ? 'flex justify-end' : ''}`}>
-                    <div className={`min-w-0 w-fit max-w-[min(92vw,44rem)] ${message.isOwnMessage ? 'flex flex-col items-end' : ''}`}>
+                    <div className={`min-w-0 w-fit max-w-[72%] ${message.isOwnMessage ? 'flex flex-col items-end' : ''}`}>
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-lg font-bold text-white">{message.senderName}</span>
                       <span className="text-xs text-sky-300">{formatStamp(message.createdAt)}</span>
@@ -1413,80 +1537,99 @@ export function ClientChatModal({
                           />
                         ) : (
                           <>
-                            {message.attachmentName ? (
-                              message.attachmentUrl ? (
-                              isPreviewableImage(message.attachmentName, message.attachmentUrl) ? (
-                                <button
-                                  type="button"
-                                  onClick={() => handleViewAttachment(message)}
-                                  className="inline-flex w-fit max-w-full flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-900/70 transition hover:border-sky-500/40"
-                                >
-                                  <img
-                                    src={message.attachmentUrl}
-                                    alt={message.attachmentName || 'Attachment preview'}
-                                    className="block h-80 w-full object-cover object-center"
-                                  />
-                                  <div className="flex w-full min-w-0 items-center gap-2 border-t border-slate-700 px-3 py-2 text-xs text-sky-300">
-                                    <AttachmentIcon className="h-4 w-4" />
-                                    <span
-                                      className="min-w-0 max-w-40 flex-1 truncate"
-                                      title={message.attachmentName || 'Attachment'}
-                                    >
-                                      {message.attachmentName || 'Attachment'}
-                                    </span>
+                            {getMessageAttachments(message).length > 0 ? (
+                              <div className="space-y-3">
+                                {getMessageAttachments(message).map((attachment, attachmentIndex) => {
+                                  const attachmentCount = getMessageAttachments(message).length
+
+                                  return (
+                                  <div key={`${message.id}-${attachment.name}-${attachmentIndex}`}>
+                                    {attachment.url ? (
+                                      attachmentCount === 1 && isPreviewableImage(attachment.name, attachment.url) ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleViewMessageAttachment(attachment)}
+                                          className="inline-flex w-fit max-w-full flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-900/70 transition hover:border-sky-500/40"
+                                        >
+                                          <img
+                                            src={attachment.url}
+                                            alt={attachment.name || 'Attachment preview'}
+                                            className="block h-80 w-full object-cover object-center"
+                                          />
+                                          <div className="flex w-full min-w-0 items-center gap-2 border-t border-slate-700 px-3 py-2 text-xs text-sky-300">
+                                            <AttachmentIcon className="h-4 w-4" />
+                                            <span className="min-w-0 max-w-40 flex-1 truncate" title={attachment.name || 'Attachment'}>
+                                              {attachment.name || 'Attachment'}
+                                            </span>
+                                          </div>
+                                        </button>
+                                      ) : (
+                                      <div className="block max-w-full overflow-hidden rounded-2xl border border-slate-700 bg-slate-900/70">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleViewMessageAttachment(attachment)}
+                                          className="flex h-32 w-full items-center gap-4 px-4 text-left transition hover:bg-slate-900/70"
+                                        >
+                                          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-slate-700 bg-slate-950 text-slate-400">
+                                            <FileIcon className="h-7 w-7" />
+                                          </div>
+                                          <div className="min-w-0 flex-1">
+                                            <p className="truncate text-sm font-semibold text-slate-200">
+                                              {attachment.name || 'Attachment'}
+                                            </p>
+                                            <p className="mt-1 text-xs text-slate-400">
+                                              {attachment.metaLabel || getAttachmentExtension(attachment.name || 'Attachment')}
+                                            </p>
+                                          </div>
+                                        </button>
+                                        <div className="flex items-center justify-end gap-2 border-t border-slate-700 px-3 py-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => handleViewMessageAttachment(attachment)}
+                                            className="text-xs font-semibold text-sky-300 transition hover:text-sky-200"
+                                          >
+                                            View
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => void handleDownloadMessageAttachment(attachment)}
+                                            className="text-xs font-semibold text-orange-300 transition hover:text-orange-200"
+                                          >
+                                            Download
+                                          </button>
+                                        </div>
+                                      </div>
+                                      )
+                                    ) : (
+                                      <div className="max-w-full overflow-hidden rounded-2xl border border-slate-700 bg-slate-900/70">
+                                        <div className="flex h-44 flex-col items-center justify-center px-6 text-center">
+                                          <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-slate-700 bg-slate-950/90">
+                                            <img
+                                              src="/bmybrand-B.svg"
+                                              alt=""
+                                              className="h-10 w-10 animate-spin object-contain opacity-80"
+                                            />
+                                          </div>
+                                          <p className="mt-4 break-all text-base font-medium leading-tight text-slate-200">
+                                            {attachment.name || 'Attachment'}
+                                          </p>
+                                          <p className="mt-2 text-sm text-slate-400">Uploading attachment...</p>
+                                          <p className="mt-1 text-xs text-slate-500">
+                                            {attachment.metaLabel || 'Preparing preview'}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
-                                </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => handleViewAttachment(message)}
-                                  className="block overflow-hidden rounded-2xl border border-slate-700 bg-slate-900/70 transition hover:border-sky-500/40"
-                                >
-                                  <div className="flex h-56 flex-col items-center justify-center px-6 text-center">
-                                    <div className="flex h-20 w-20 items-center justify-center rounded-2xl border border-slate-700 bg-slate-950 text-slate-400">
-                                      <FileIcon className="h-9 w-9" />
-                                    </div>
-                                    <p className="mt-5 break-all text-2xl font-medium leading-tight text-slate-200">
-                                      {message.attachmentName || 'Attachment'}
-                                    </p>
-                                    <p className="mt-2 text-base text-slate-400">
-                                      No preview available
-                                    </p>
-                                    <p className="mt-1 text-sm text-slate-500">
-                                      {message.attachmentMetaLabel || getAttachmentExtension(message.attachmentName || 'Attachment')}
-                                    </p>
-                                  </div>
-                                </button>
-                              )
-                              ) : (
-                                <div className="overflow-hidden rounded-2xl border border-slate-700 bg-slate-900/70">
-                                  <div className="flex h-56 flex-col items-center justify-center px-6 text-center">
-                                    <div className="flex h-20 w-20 items-center justify-center rounded-2xl border border-slate-700 bg-slate-950/90">
-                                      <img
-                                        src="/bmybrand-B.svg"
-                                        alt=""
-                                        className="h-10 w-10 animate-spin object-contain opacity-80"
-                                      />
-                                    </div>
-                                    <p className="mt-5 break-all text-2xl font-medium leading-tight text-slate-200">
-                                      {message.attachmentName || 'Attachment'}
-                                    </p>
-                                    <p className="mt-2 text-base text-slate-400">
-                                      Uploading attachment...
-                                    </p>
-                                    <p className="mt-1 text-sm text-slate-500">
-                                      {message.attachmentMetaLabel || 'Preparing preview'}
-                                    </p>
-                                  </div>
-                                </div>
-                              )
+                                )})}
+                              </div>
                             ) : null}
 
                             {message.message ? (
-                              <div className={`${message.attachmentUrl ? 'mt-3' : 'mt-0'} space-y-2`}>
+                              <div className={`${getMessageAttachments(message).length > 0 ? 'mt-3' : 'mt-0'} space-y-2`}>
                                 <p
                                   ref={setMessageContentRef(message.id)}
-                                  className="whitespace-pre-wrap wrap-break-word text-sm text-white"
+                                  className="whitespace-pre-wrap break-all text-sm text-white"
                                   style={
                                     messageLineLimits[message.id] || messageOverflowMap[message.id] || message.message.length > 180 || message.message.includes('\n')
                                       ? {
@@ -1510,7 +1653,7 @@ export function ClientChatModal({
                                   </button>
                                 ) : null}
                               </div>
-                            ) : !message.attachmentUrl ? (
+                            ) : getMessageAttachments(message).length === 0 ? (
                               <p className="mt-0 text-xs italic text-slate-400">Shared an attachment</p>
                             ) : null}
                           </>
@@ -1550,7 +1693,8 @@ export function ClientChatModal({
           <button
             type="button"
             onClick={() => scrollToBottom(true)}
-            className="absolute bottom-28 left-1/2 z-20 -translate-x-1/2 rounded-full border border-slate-700 bg-slate-900/90 p-2 text-slate-200 shadow-lg transition hover:border-orange-500/40 hover:text-orange-300"
+            className="absolute left-1/2 z-20 -translate-x-1/2 rounded-full border border-slate-700 bg-slate-900/90 p-2 text-slate-200 shadow-lg transition hover:border-orange-500/40 hover:text-orange-300"
+            style={{ bottom: `${composerHeight + 16}px` }}
             aria-label="Jump to latest message"
             title="Jump to latest"
           >
@@ -1560,6 +1704,7 @@ export function ClientChatModal({
 
         {!permissionError ? (
           <div
+            ref={composerRef}
             className={`absolute bottom-0 left-0 right-0 z-10 border-t border-slate-800 bg-slate-950/95 backdrop-blur-sm px-5 py-4 transition-all duration-500 ease-out motion-reduce:transition-none ${
               accountType === 'employee'
                 ? composerVisible
@@ -1573,64 +1718,95 @@ export function ClientChatModal({
                 <span className="text-[11px] text-sky-300">{typingLabel}</span>
               </div>
             ) : null}
-              {pendingAttachment ? (
+              {pendingAttachments.length > 1 ? (
                 <div className="mb-3 rounded-2xl border border-slate-700 bg-slate-800/80 p-3">
-                  <div className="relative overflow-hidden rounded-2xl border border-slate-700 bg-slate-900/70">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setPendingAttachment((prev) => {
-                          if (prev?.previewUrl) {
-                            URL.revokeObjectURL(prev.previewUrl)
-                          }
-                          return null
-                        })
-                      }
-                      className="absolute right-3 top-3 z-10 rounded-full bg-slate-950/80 p-1.5 text-slate-300 transition hover:bg-slate-900 hover:text-white"
-                      aria-label="Remove attachment"
-                    >
-                      <CloseIcon className="h-3.5 w-3.5" />
-                    </button>
-
-                    {pendingAttachment.isImage && pendingAttachment.previewUrl ? (
-                      <img
-                        src={pendingAttachment.previewUrl}
-                        alt={pendingAttachment.file.name}
-                        className="block h-80 w-full object-cover object-center"
-                      />
-                    ) : (
-                      <div className="flex h-56 flex-col items-center justify-center px-6 text-center">
-                        <div className="flex h-20 w-20 items-center justify-center rounded-2xl border border-slate-700 bg-slate-950 text-slate-400">
-                          <FileIcon className="h-9 w-9" />
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-white">{pendingAttachments.length} files selected</p>
+                      <p className="text-xs text-slate-400">Multiple files use a compact list instead of previews.</p>
+                    </div>
+                  </div>
+                  <div className="max-h-40 space-y-2 overflow-y-auto pr-1">
+                    {pendingAttachments.map((attachment) => (
+                      <div
+                        key={attachment.id}
+                        className="flex items-center gap-3 rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2"
+                      >
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-700 bg-slate-950 text-slate-400">
+                          <FileIcon className="h-5 w-5" />
                         </div>
-                        <p className="mt-5 break-all text-2xl font-medium leading-tight text-slate-200">
-                          {pendingAttachment.file.name}
-                        </p>
-                        <p className="mt-2 text-base text-slate-400">
-                          No preview available
-                        </p>
-                        <p className="mt-1 text-sm text-slate-500">
-                          {formatAttachmentSize(pendingAttachment.file.size)} - {getAttachmentExtension(pendingAttachment.file.name)}
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs font-semibold text-white">{attachment.file.name}</p>
+                          <p className="mt-0.5 text-[11px] text-slate-400">
+                            {formatAttachmentSize(attachment.file.size)} - {getAttachmentExtension(attachment.file.name)}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemovePendingAttachment(attachment.id)}
+                          className="rounded-full bg-slate-950/80 p-1.5 text-slate-300 transition hover:bg-slate-900 hover:text-white"
+                          aria-label="Remove attachment"
+                        >
+                          <CloseIcon className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : pendingAttachments.length === 1 ? (
+                <div className="mb-3 rounded-2xl border border-slate-700 bg-slate-800/80 p-3">
+                  {pendingAttachments.map((attachment) => (
+                    <div key={attachment.id}>
+                      <div className="relative overflow-hidden rounded-2xl border border-slate-700 bg-slate-900/70">
+                        <button
+                          type="button"
+                          onClick={() => handleRemovePendingAttachment(attachment.id)}
+                          className="absolute right-3 top-3 z-10 rounded-full bg-slate-950/80 p-1.5 text-slate-300 transition hover:bg-slate-900 hover:text-white"
+                          aria-label="Remove attachment"
+                        >
+                          <CloseIcon className="h-3.5 w-3.5" />
+                        </button>
+
+                        {attachment.isImage && attachment.previewUrl ? (
+                          <img
+                            src={attachment.previewUrl}
+                            alt={attachment.file.name}
+                            className="block h-40 w-full object-cover object-center"
+                          />
+                        ) : (
+                          <div className="flex h-32 flex-col items-center justify-center px-4 text-center">
+                            <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-700 bg-slate-950 text-slate-400">
+                              <FileIcon className="h-7 w-7" />
+                            </div>
+                            <p className="mt-4 break-all text-sm font-medium leading-tight text-slate-200">
+                              {attachment.file.name}
+                            </p>
+                            <p className="mt-2 text-xs text-slate-400">
+                              No preview available
+                            </p>
+                            <p className="mt-1 text-[11px] text-slate-500">
+                              {formatAttachmentSize(attachment.file.size)} - {getAttachmentExtension(attachment.file.name)}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                      <div className="mt-3 px-1">
+                        <p className="truncate text-xs font-semibold text-white">{attachment.file.name}</p>
+                        <p className="mt-1 text-[11px] text-slate-400">
+                          {formatAttachmentSize(attachment.file.size)} - {getAttachmentExtension(attachment.file.name)}
                         </p>
                       </div>
-                    )}
-                  </div>
-                  {pendingAttachment.isImage ? (
-                    <div className="mt-3 px-1">
-                      <p className="truncate text-xs font-semibold text-white">{pendingAttachment.file.name}</p>
-                      <p className="mt-1 text-[11px] text-slate-400">
-                        {formatAttachmentSize(pendingAttachment.file.size)} - {getAttachmentExtension(pendingAttachment.file.name)}
-                      </p>
                     </div>
-                  ) : null}
+                  ))}
                 </div>
               ) : null}
               <div className="rounded-2xl border border-slate-700 bg-slate-800/50 p-3 flex items-end gap-2">
                 <input
                   ref={fileInputRef}
                   type="file"
+                  multiple
                   className="hidden"
-                  onChange={(e) => handleSelectAttachment(e.target.files?.[0] ?? null)}
+                  onChange={(e) => handleSelectAttachment(e.target.files)}
                 />
                 <button
                   type="button"
@@ -1644,6 +1820,7 @@ export function ClientChatModal({
                 </button>
                 <textarea
                   ref={messageInputRef}
+                  rows={1}
                   value={draft}
                   onChange={handleMessageInputChange}
                   onKeyDown={handleMessageInputKeyDown}
@@ -1651,7 +1828,7 @@ export function ClientChatModal({
                   placeholder={permissionError ? 'Only assigned handler can message' : 'Write a message...'}
                   disabled={Boolean(permissionError)}
                   className="flex-1 resize-none overflow-y-auto rounded-lg border border-slate-700 bg-slate-900/40 px-3 py-2 text-[13px] leading-5 text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent focus:ring-offset-0 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-track]:shadow-none [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-600/70 hover:[&::-webkit-scrollbar-thumb]:bg-slate-500/80"
-                  style={{ height: '40px', minHeight: '40px', maxHeight: '200px', scrollbarWidth: 'thin', scrollbarColor: 'rgba(71,85,105,0.7) transparent' }}
+                  style={{ height: '40px', minHeight: '40px', maxHeight: 'clamp(72px, 14vh, 160px)', scrollbarWidth: 'thin', scrollbarColor: 'rgba(71,85,105,0.7) transparent' }}
                 />
                 <button
                   type="button"
@@ -1669,7 +1846,7 @@ export function ClientChatModal({
           </div>
         ) : null}
       </div>
-      <aside className="relative z-40 hidden w-64 border-l border-slate-800 bg-slate-950/50 p-5 lg:flex lg:flex-col">
+      <aside className="relative z-40 hidden w-52 shrink-0 border-l border-slate-800 bg-slate-950/50 p-4 lg:flex lg:flex-col xl:w-64 xl:p-5">
         <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
           <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-500">
             {accountType === 'client' ? 'Agent' : 'Client'}
