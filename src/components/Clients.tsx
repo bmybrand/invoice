@@ -504,16 +504,10 @@ export default function Clients() {
 
     channel.subscribe()
 
-    // Fallback polling every 20s
-    const intervalId = window.setInterval(() => {
-      if (document.visibilityState === 'visible' && requestActionLoadingIdRef.current === null) {
-        void fetchClients({ background: true })
-      }
-    }, TABLE_REFRESH_INTERVAL_MS)
+
 
     return () => {
       window.clearTimeout(timeoutId)
-      window.clearInterval(intervalId)
       void supabase.removeChannel(channel)
       if (refreshTimeoutRef.current !== null) {
         window.clearTimeout(refreshTimeoutRef.current)

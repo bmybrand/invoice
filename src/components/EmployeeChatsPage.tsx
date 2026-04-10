@@ -303,15 +303,7 @@ export function EmployeeChatsPage() {
     return () => window.clearTimeout(timeoutId)
   }, [loadConversations])
 
-  useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        void loadConversations()
-      }
-    }, CHAT_LIST_REFRESH_MS)
 
-    return () => window.clearInterval(intervalId)
-  }, [loadConversations])
 
   useEffect(() => {
     if (!currentUserAuthId) return

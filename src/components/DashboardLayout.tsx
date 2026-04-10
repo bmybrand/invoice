@@ -668,16 +668,12 @@ if (clientError) {
       void enforceSessionGuard()
     }, 0)
 
-    const intervalId = window.setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        void enforceSessionGuard()
-      }
-    }, SESSION_GUARD_POLL_MS)
+
 
     return () => {
       cancelled = true
       window.clearTimeout(timeoutId)
-      window.clearInterval(intervalId)
+      // window.clearInterval(intervalId) // removed polling
     }
   }, [accountType, currentUserAuthId, currentUserEmail, redirectToLoginHard, resetDashboardProfile])
 
