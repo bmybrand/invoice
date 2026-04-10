@@ -787,23 +787,24 @@ export function ClientChatModal({
           const nextRow = (payload.new ?? null) as RealtimeChatRow | null
           const previousRow = (payload.old ?? null) as RealtimeChatRow | null
 
+          // Handle DELETE
           if (payload.eventType === 'DELETE' || nextRow?.isdeleted === true) {
             const messageId = Number(nextRow?.id ?? previousRow?.id ?? 0)
             if (!Number.isFinite(messageId) || messageId < 1) {
               void loadMessages({ background: true })
               return
             }
-
             applyMessages((current) => current.filter((message) => message.id !== messageId))
             pendingDeletedIdsRef.current.add(messageId)
             return
           }
 
+          // Ignore invalid rows
           if (!nextRow || !Number.isFinite(Number(nextRow.id)) || nextRow.id < 1) {
-            void loadMessages({ background: true })
             return
           }
 
+          // Handle UPDATE
           if (payload.eventType === 'UPDATE') {
             applyMessages((current) =>
               current.map((message) =>
@@ -825,33 +826,34 @@ export function ClientChatModal({
             return
           }
 
+          // Handle INSERT
           if (payload.eventType === 'INSERT') {
             const realtimeMessage = buildRealtimeMessage(nextRow)
+            // Remove matching optimistic message
             optimisticMessagesRef.current = optimisticMessagesRef.current.filter(
               (optimisticMessage) => !matchesOptimisticMessage(realtimeMessage.message, optimisticMessage)
             )
-
+            // Only add if not already present
             applyMessages((current) => {
+              const exists = current.some((msg) => msg.id === realtimeMessage.message.id)
+              if (exists) return current
               const persistedMessages = current.filter(
                 (message) => message.id > 0 && !pendingDeletedIdsRef.current.has(message.id)
               )
               return mergeChatMessages(persistedMessages, [realtimeMessage.message])
             })
-
             shouldStickToBottomRef.current = true
             window.requestAnimationFrame(() => {
               const node = messagesRef.current
               if (!node) return
               node.scrollTop = node.scrollHeight
             })
-
+            // Only fetch if hydration is needed (e.g., missing attachment URL or meta)
             if (realtimeMessage.needsHydration || realtimeMessage.incomingFromOtherSender) {
               void loadMessages({ background: true })
             }
             return
           }
-
-          void loadMessages({ background: true })
         }
       )
       .subscribe()
