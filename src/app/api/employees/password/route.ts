@@ -1,5 +1,12 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
+const verificationClient = supabaseUrl && publishableKey
+  ? createClient(supabaseUrl, publishableKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    })
+  : null
 import { requireSuperAdmin } from '@/lib/server-superadmin-auth'
 
 export async function POST(request: Request) {
@@ -57,12 +64,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Employee email is missing, cannot verify password update' }, { status: 500 })
   }
 
-  const verificationClient = createClient(supabaseUrl, publishableKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
-  })
+
+  if (!verificationClient) {
+    return NextResponse.json({ error: 'Server not configured for password verification' }, { status: 503 })
+  }
 
   const { error: verificationError } = await verificationClient.auth.signInWithPassword({
     email: employeeEmail,

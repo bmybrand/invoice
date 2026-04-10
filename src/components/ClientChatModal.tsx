@@ -9,7 +9,7 @@ import { useDashboardProfile } from '@/components/DashboardLayout'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
-const CHAT_REFRESH_MS = 3000
+const CHAT_REFRESH_MS = 20000 // 20 seconds fallback polling
 const TYPING_STOP_DELAY_MS = 1800
 const OLDER_LOAD_TRIGGER_PX = 140
 const CHAT_BUCKET = 'client-chat-files'

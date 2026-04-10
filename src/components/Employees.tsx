@@ -11,7 +11,7 @@ import { logFetchError } from '@/lib/fetch-error'
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
 const PAGE_SIZE = 4
-const TABLE_REFRESH_INTERVAL_MS = 5000
+const TABLE_REFRESH_INTERVAL_MS = 20000 // 20 seconds fallback polling
 const PROFILE_AVATAR_BUCKET = 'profile-images'
 
 type EmployeeRow = {
@@ -484,6 +484,22 @@ export default function Employees() {
       void fetchEmployees()
     }, 0)
 
+    // Supabase Realtime subscription for employees table
+    const channelName = `employees-table-sync-${profileCurrentUserAuthId || 'unknown'}`
+    const channel = supabase.channel(channelName)
+
+    channel.on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'employees',
+      },
+      () => { void fetchEmployees({ background: true }) }
+    )
+    channel.subscribe()
+
+    // Fallback polling every 20s
     const intervalId = window.setInterval(() => {
       if (document.visibilityState === 'visible') {
         void fetchEmployees({ background: true })
@@ -493,8 +509,9 @@ export default function Employees() {
     return () => {
       window.clearTimeout(timeoutId)
       window.clearInterval(intervalId)
+      void supabase.removeChannel(channel)
     }
-  }, [fetchEmployees])
+  }, [fetchEmployees, profileCurrentUserAuthId])
 
   useEffect(() => {
     const nextQuery = (searchParams.get('globalSearch') || '').trim()

@@ -13,7 +13,7 @@ import { logFetchError } from '@/lib/fetch-error'
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
 const PAGE_SIZE = 8
-const TABLE_REFRESH_INTERVAL_MS = 5000
+const TABLE_REFRESH_INTERVAL_MS = 20000 // 20 seconds fallback polling
 type ClientRow = {
   id: number
   name: string
@@ -476,6 +476,35 @@ export default function Clients() {
       void fetchClients()
     }, 0)
 
+    // Supabase Realtime subscription for clients table
+    const channelName = `clients-table-sync-${currentUserAuthId || 'unknown'}`
+    const channel = supabase.channel(channelName)
+
+    if (currentUserAuthId) {
+      channel.on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'clients',
+          filter: `handler_id=eq.${currentUserAuthId}`,
+        },
+        () => { void fetchClients({ background: true }) }
+      )
+      channel.on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'registration_requests',
+        },
+        () => { void fetchClients({ background: true }) }
+      )
+    }
+
+    channel.subscribe()
+
+    // Fallback polling every 20s
     const intervalId = window.setInterval(() => {
       if (document.visibilityState === 'visible' && requestActionLoadingIdRef.current === null) {
         void fetchClients({ background: true })
@@ -485,11 +514,12 @@ export default function Clients() {
     return () => {
       window.clearTimeout(timeoutId)
       window.clearInterval(intervalId)
+      void supabase.removeChannel(channel)
       if (refreshTimeoutRef.current !== null) {
         window.clearTimeout(refreshTimeoutRef.current)
       }
     }
-  }, [chatTarget, fetchClients])
+  }, [chatTarget, fetchClients, currentUserAuthId])
 
   useEffect(() => {
     const nextQuery = (searchParams.get('globalSearch') || '').trim()

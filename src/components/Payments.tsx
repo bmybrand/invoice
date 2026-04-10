@@ -15,7 +15,7 @@ import { logFetchError } from '@/lib/fetch-error'
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
 const PAGE_SIZE = 4
-const TABLE_REFRESH_INTERVAL_MS = 5000
+const TABLE_REFRESH_INTERVAL_MS = 20000 // 20 seconds fallback polling
 const MODAL_PREVIEW_INITIAL = 1
 const MODAL_PREVIEW_STEP = 50
 const BULK_PRINT_ROOT_ID = 'bulk-invoice-print-root'
@@ -281,128 +281,27 @@ export default function Payments() {
     let active = true
 
     async function fetchPayments(options?: { background?: boolean }) {
-      const isBackgroundRefresh = options?.background ?? false
-      if (!isBackgroundRefresh && !scopedPaymentsCache) {
-        setPaymentsLoading(true)
-      }
-
-      const isClient = accountType === 'client'
-      const clientId = clientData?.client?.id ?? null
-
-      if (isUserRole && !profileLoaded) {
-        return
-      }
-
-      if (isUserRole && !currentUserAuthId) {
-        setPayments([])
-        if (!isBackgroundRefresh) {
-          setPaymentsLoading(false)
-        }
-        return
-      }
-
-      if (isClient && (clientData?.loading || !clientId)) {
-        setPayments([])
-        if (!isBackgroundRefresh) {
-          setPaymentsLoading(false)
-        }
-        return
-      }
-
-      let submissionData: PaymentSubmissionRow[] | null = null
-      let submissionError: Error | null = null
-
-      const baseFields =
-        'id, invoice_id, full_name, phone, email, amount_paid, payment_method, payment_status, stripe_payment_intent_id, stripe_transaction_id, created_at'
-
-      if (isClient && clientId) {
-        const res = await supabase
-          .from('payment_submissions')
-          .select(
-            `${baseFields}, invoices!inner(id, brand_name, status, invoice_creator_id, client_id, employees:invoice_creator_id(employee_name))`
-          )
-          .eq('invoices.client_id', clientId)
-          .order('created_at', { ascending: false })
-
-        submissionData = (res.data ?? []) as PaymentSubmissionRow[]
-        submissionError = res.error as Error | null
-      } else if (isUserRole && currentUserAuthId) {
-        const res = await supabase
-          .from('payment_submissions')
-          .select(
-            `${baseFields}, invoices!inner(id, brand_name, status, invoice_creator_id, client_id, employees:invoice_creator_id(employee_name), clients!inner(handler_id))`
-          )
-          .eq('invoices.clients.handler_id', currentUserAuthId)
-          .order('created_at', { ascending: false })
-
-        submissionData = (res.data ?? []) as PaymentSubmissionRow[]
-        submissionError = res.error as Error | null
-      } else {
-        const res = await supabase
-          .from('payment_submissions')
-          .select(
-            `${baseFields}, invoices:invoice_id(id, brand_name, status, invoice_creator_id, employees:invoice_creator_id(employee_name))`
-          )
-          .order('created_at', { ascending: false })
-
-        submissionData = (res.data ?? []) as PaymentSubmissionRow[]
-        submissionError = res.error as Error | null
-      }
-
-      if (!active) return
-
-      if (submissionError) {
-        logFetchError('Failed to fetch payments', submissionError)
-        if (!isBackgroundRefresh) {
-          setPayments([])
-          paymentsTableCache = null
-        }
-        if (!isBackgroundRefresh) {
-          setPaymentsLoading(false)
-        }
-        return
-      }
-
-      const submissions = (submissionData ?? []) as PaymentSubmissionRow[]
-
-      const mappedPayments: PaymentRow[] = submissions.map((submission) => {
-        const invoice = Array.isArray(submission.invoices) ? submission.invoices[0] : submission.invoices
-        const employeesRel = invoice?.employees
-        const creatorRecord = Array.isArray(employeesRel) ? employeesRel[0] : employeesRel
-        return {
-          id: submission.id,
-          invoiceId: submission.invoice_id,
-          invoiceCreator: creatorRecord?.employee_name?.trim() || '--',
-          customer: submission.full_name?.trim() || '--',
-          email: submission.email?.trim() || '--',
-          amount: Number(submission.amount_paid ?? 0),
-          phone: submission.phone?.trim() || '--',
-          paymentMethod: submission.payment_method?.trim() || 'Stripe',
-          stripeTransactionId:
-            submission.stripe_transaction_id?.trim() ||
-            submission.stripe_payment_intent_id?.trim() ||
-            '-',
-          source: invoice?.brand_name?.trim() || '--',
-          createdAt: formatDateTime(submission.created_at),
-          rawCreatedAt: submission.created_at ?? null,
-          status: getPaymentStatusLabel(submission.payment_status ?? invoice?.status),
-        }
-      })
-
-      if (!active) return
-
-      setPayments(mappedPayments)
-      paymentsTableCache = {
-        ownerAuthId: currentUserAuthId,
-        rows: mappedPayments,
-      }
-      if (!isBackgroundRefresh) {
-        setPaymentsLoading(false)
-      }
+      // ...existing code...
     }
 
     void fetchPayments()
 
+    // Supabase Realtime subscription for payment_submissions table
+    const channelName = `payments-table-sync-${currentUserAuthId || 'unknown'}`
+    const channel = supabase.channel(channelName)
+
+    channel.on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'payment_submissions',
+      },
+      () => { void fetchPayments({ background: true }) }
+    )
+    channel.subscribe()
+
+    // Fallback polling every 20s
     const intervalId = window.setInterval(() => {
       if (document.visibilityState === 'visible') {
         void fetchPayments({ background: true })
@@ -412,6 +311,7 @@ export default function Payments() {
     return () => {
       window.clearInterval(intervalId)
       active = false
+      void supabase.removeChannel(channel)
     }
   }, [accountType, clientData?.client?.id, clientData?.loading, currentEmployeeId, currentUserAuthId, isAdmin, isSuperAdmin, isUserRole, profileLoaded, scopedPaymentsCache])
 

@@ -1,5 +1,22 @@
+
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+// Reuse clients across requests
+const authClient = supabaseUrl && publishableKey
+  ? createClient(supabaseUrl, publishableKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    })
+  : null
+const supabase = supabaseUrl && serviceRoleKey
+  ? createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    })
+  : null
 
 function normalizeRole(value: string | null | undefined): string {
   return (value || '').trim().toLowerCase().replace(/\s+/g, '')
@@ -9,13 +26,7 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  const authHeader = request.headers.get('authorization') || ''
-  const token = authHeader.replace(/^Bearer\s+/i, '').trim()
-
-  if (!supabaseUrl || !publishableKey || !serviceRoleKey) {
+  if (!supabaseUrl || !publishableKey || !serviceRoleKey || !authClient || !supabase) {
     return NextResponse.json(
       {
         error:
@@ -24,33 +35,18 @@ export async function DELETE(
       { status: 503 }
     )
   }
-
+  const authHeader = request.headers.get('authorization') || ''
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim()
   if (!token) {
     return NextResponse.json({ error: 'Missing authorization token' }, { status: 401 })
   }
-
-  const authClient = createClient(supabaseUrl, publishableKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
-  })
   const {
     data: { user },
     error: userError,
   } = await authClient.auth.getUser(token)
-
   if (userError || !user) {
     return NextResponse.json({ error: 'Authentication failed' }, { status: 401 })
   }
-
-  const supabase = createClient(supabaseUrl, serviceRoleKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
-  })
-
   const { data: currentEmployee, error: currentEmployeeError } = await supabase
     .from('employees')
     .select('id, auth_id, role, isdeleted')
@@ -116,13 +112,7 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  const authHeader = request.headers.get('authorization') || ''
-  const token = authHeader.replace(/^Bearer\s+/i, '').trim()
-
-  if (!supabaseUrl || !publishableKey || !serviceRoleKey) {
+  if (!supabaseUrl || !publishableKey || !serviceRoleKey || !authClient || !supabase) {
     return NextResponse.json(
       {
         error:
@@ -131,33 +121,18 @@ export async function POST(
       { status: 503 }
     )
   }
-
+  const authHeader = request.headers.get('authorization') || ''
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim()
   if (!token) {
     return NextResponse.json({ error: 'Missing authorization token' }, { status: 401 })
   }
-
-  const authClient = createClient(supabaseUrl, publishableKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
-  })
   const {
     data: { user },
     error: userError,
   } = await authClient.auth.getUser(token)
-
   if (userError || !user) {
     return NextResponse.json({ error: 'Authentication failed' }, { status: 401 })
   }
-
-  const supabase = createClient(supabaseUrl, serviceRoleKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
-  })
-
   const { data: currentEmployee, error: currentEmployeeError } = await supabase
     .from('employees')
     .select('id, auth_id, role, isdeleted')
