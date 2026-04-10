@@ -1,6 +1,16 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { FiCopy } from 'react-icons/fi'
+
+function generateStrongPassword(length = 12) {
+  const charset = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*()_+-=~';
+  let password = '';
+  for (let i = 0; i < length; ++i) {
+    password += charset.charAt(Math.floor(Math.random() * charset.length));
+  }
+  return password;
+}
 import { Plus_Jakarta_Sans } from 'next/font/google'
 import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -1322,6 +1332,30 @@ export default function Employees() {
                     placeholder="Leave blank to keep current password"
                     className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                   />
+                  <div className="flex gap-2 w-full mt-2">
+                    <button
+                      type="button"
+                      className={`flex-1 rounded-xl h-12 py-0 font-semibold text-sm focus:outline-none transition-all duration-200 bg-slate-700 text-white hover:bg-orange-500 flex items-center justify-center`}
+                      style={{ minHeight: '3rem' }}
+                      onClick={() => setEditPassword(generateStrongPassword())}
+                    >
+                      {editPassword ? 'Re-generate password' : 'Generate password'}
+                    </button>
+                    {editPassword && (
+                      <button
+                        type="button"
+                        className="ml-1 px-3 h-12 flex items-center justify-center rounded-xl bg-slate-700 hover:bg-orange-500 text-white transition-all duration-200"
+                        style={{ minHeight: '3rem' }}
+                        title="Copy password"
+                        onClick={() => { navigator.clipboard.writeText(editPassword) }}
+                      >
+                        <FiCopy size={18} />
+                      </button>
+                    )}
+                  </div>
+                  {editPassword && (
+                    <span className="text-xs text-orange-400 mt-1 block">alert: before you save plz copy the password</span>
+                  )}
                   <p className="mt-0.5 text-xs text-slate-500">
                     Superadmin only. Leave this blank if you do not want to change the password.
                   </p>
@@ -1401,6 +1435,30 @@ export default function Employees() {
                   placeholder="••••••••"
                   className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                 />
+                <div className="flex gap-2 w-full mt-2">
+                  <button
+                    type="button"
+                    className={`flex-1 rounded-xl h-12 py-0 font-semibold text-sm focus:outline-none transition-all duration-200 bg-slate-700 text-white hover:bg-orange-500 flex items-center justify-center`}
+                    style={{ minHeight: '3rem' }}
+                    onClick={() => setAddPassword(generateStrongPassword())}
+                  >
+                    {addPassword ? 'Re-generate password' : 'Generate password'}
+                  </button>
+                  {addPassword && (
+                    <button
+                      type="button"
+                      className="ml-1 px-3 h-12 flex items-center justify-center rounded-xl bg-slate-700 hover:bg-orange-500 text-white transition-all duration-200"
+                      style={{ minHeight: '3rem' }}
+                      title="Copy password"
+                      onClick={() => { navigator.clipboard.writeText(addPassword) }}
+                    >
+                      <FiCopy size={18} />
+                    </button>
+                  )}
+                </div>
+                {addPassword && (
+                  <span className="text-xs text-orange-400 mt-1 block">alert: before you save plz copy the password</span>
+                )}
               </div>
               <div>
                 <label htmlFor="add-role" className="block text-sm font-medium text-slate-300">Role</label>

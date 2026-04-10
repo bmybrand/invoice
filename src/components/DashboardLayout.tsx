@@ -1,6 +1,16 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback, createContext, useContext } from 'react'
+import { FiCopy } from 'react-icons/fi'
+
+function generateStrongPassword(length = 12) {
+  const charset = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*()_+-=~';
+  let password = '';
+  for (let i = 0; i < length; ++i) {
+    password += charset.charAt(Math.floor(Math.random() * charset.length));
+  }
+  return password;
+}
 import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
 import { Plus_Jakarta_Sans } from 'next/font/google'
@@ -1352,6 +1362,7 @@ if (clientError) {
                   </p>
                 </div>
 
+
                 <div>
                   <label htmlFor="profile-password" className="block text-sm font-medium text-slate-300">
                     New Password
@@ -1361,7 +1372,7 @@ if (clientError) {
                     type="password"
                     value={profilePassword}
                     onChange={(e) => setProfilePassword(e.target.value)}
-                    placeholder="Leave blank to keep current password"
+                    placeholder="Leave blank if you do not want to change the password."
                     className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                   />
                   <p className="mt-1 text-xs text-slate-500">
@@ -1382,6 +1393,35 @@ if (clientError) {
                     className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                   />
                 </div>
+
+                <div className="flex gap-2 w-full mt-2">
+                  <button
+                    type="button"
+                    className={`flex-1 rounded-xl h-12 py-0 font-semibold text-sm focus:outline-none transition-all duration-200 bg-slate-700 text-white hover:bg-orange-500 flex items-center justify-center`}
+                    style={{ minHeight: '3rem' }}
+                    onClick={() => {
+                      const pwd = generateStrongPassword();
+                      setProfilePassword(pwd);
+                      setProfileConfirmPassword(pwd);
+                    }}
+                  >
+                    {profilePassword ? 'Re-generate password' : 'Generate password'}
+                  </button>
+                  {profilePassword && (
+                    <button
+                      type="button"
+                      className="ml-1 px-3 h-12 flex items-center justify-center rounded-xl bg-slate-700 hover:bg-orange-500 text-white transition-all duration-200"
+                      style={{ minHeight: '3rem' }}
+                      title="Copy password"
+                      onClick={() => { navigator.clipboard.writeText(profilePassword) }}
+                    >
+                      <FiCopy size={18} />
+                    </button>
+                  )}
+                </div>
+                {profilePassword && (
+                  <span className="text-xs text-orange-400 mt-1 block">alert: before you save plz copy the password</span>
+                )}
 
                 {profileError && (
                   <p className="rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-400">

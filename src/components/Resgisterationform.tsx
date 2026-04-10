@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { PasswordGeneratorButton } from './PasswordGeneratorButton'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
@@ -312,6 +313,10 @@ export function RegisterForm() {
                       className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none sm:text-base lg:text-base xl:text-lg"
                     />
                   </div>
+                  <PasswordGeneratorButton password={password} setPassword={setPassword} />
+                  {password && (
+                    <span className="text-xs text-orange-400 mt-1 block">alert: before you save plz copy the password</span>
+                  )}
                 </div>
 
                 <div className="flex flex-col gap-1">
