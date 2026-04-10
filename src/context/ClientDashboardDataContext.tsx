@@ -41,15 +41,13 @@ type ClientDashboardData = {
 }
 
 const ClientDashboardDataContext = createContext<ClientDashboardData | null>(null)
-const TABLE_REFRESH_INTERVAL_MS = 5000
-
 export function useClientDashboardData() {
   const ctx = useContext(ClientDashboardDataContext)
   return ctx
 }
 
 export function ClientDashboardDataProvider({ children }: { children: React.ReactNode }) {
-  const { accountType } = useDashboardProfile()
+  const { accountType, currentUserAuthId, currentUserEmail } = useDashboardProfile()
   const [client, setClient] = useState<ClientRow | null>(null)
   const [clientEmail, setClientEmail] = useState('')
   const [clientBrandName, setClientBrandName] = useState<string | null>(null)
@@ -85,29 +83,17 @@ export function ClientDashboardDataProvider({ children }: { children: React.Reac
       setError(null)
     }
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
+    const authId = currentUserAuthId?.trim() || ''
+    const email = currentUserEmail.trim()
 
-    if (userError || !user) {
-      if (!isBackgroundRefresh) {
-        setError('Unable to load your account.')
-        setLoading(false)
-      }
-      markFetched()
+    if (!authId && !email) {
       isFetchingRef.current = false
-
-      if (queuedRefreshRef.current) {
-        queuedRefreshRef.current = false
-        void loadDataRef.current?.({ background: true })
+      if (!isBackgroundRefresh) {
+        setLoading(true)
       }
-
       return
     }
 
-    const authEmail = (user.email ?? '').trim()
-    const email = authEmail
     setClientEmail(email)
 
     const { data: clientData, error: clientError } = await supabase
@@ -115,7 +101,7 @@ export function ClientDashboardDataProvider({ children }: { children: React.Reac
       .select('id, name, email')
       .eq('status', 'approved')
       .neq('isdeleted', true)
-      .or(`handler_id.eq.${user.id},email.eq.${email}`)
+      .or([authId ? `auth_id.eq.${authId}` : '', email ? `email.eq.${email}` : ''].filter(Boolean).join(','))
       .maybeSingle()
 
     if (clientError) {
@@ -222,7 +208,7 @@ export function ClientDashboardDataProvider({ children }: { children: React.Reac
       queuedRefreshRef.current = false
       void loadDataRef.current?.({ background: true })
     }
-  }, [accountType, markFetched])
+  }, [accountType, currentUserAuthId, currentUserEmail, markFetched])
 
   useEffect(() => {
     loadDataRef.current = loadData
@@ -248,10 +234,6 @@ export function ClientDashboardDataProvider({ children }: { children: React.Reac
     const refresh = () => {
       void loadData({ background: true })
     }
-
-    const intervalId = window.setInterval(() => {
-      refresh()
-    }, TABLE_REFRESH_INTERVAL_MS)
 
     const channelName = `client-dashboard-sync-${client?.id ?? 'unknown'}`
     const channel = supabase.channel(channelName)
@@ -289,7 +271,6 @@ export function ClientDashboardDataProvider({ children }: { children: React.Reac
     })
 
     return () => {
-      window.clearInterval(intervalId)
       void supabase.removeChannel(channel)
     }
   }, [accountType, client?.id, clientEmail, hasFetched, loadData])

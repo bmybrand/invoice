@@ -24,6 +24,7 @@ type DashboardProfile = {
   displayRole: string
   displayDepartment: string
   currentUserAuthId: string | null
+  currentUserEmail: string
   currentEmployeeId: number | null
   onlineAuthIds: string[]
   accountType: 'employee' | 'client' | null
@@ -35,6 +36,7 @@ const DashboardProfileContext = createContext<DashboardProfile>({
   displayRole: '',
   displayDepartment: '',
   currentUserAuthId: null,
+  currentUserEmail: '',
   currentEmployeeId: null,
   onlineAuthIds: [],
   accountType: null,
@@ -1053,6 +1055,7 @@ if (clientError) {
         displayRole,
         displayDepartment,
         currentUserAuthId,
+        currentUserEmail,
         currentEmployeeId,
         onlineAuthIds: accountType === 'employee' ? onlineAuthIds : [],
         accountType,

@@ -28,9 +28,7 @@ export const SessionProvider = ({ children }: { children: React.ReactNode }) => 
       if (error) throw error;
       setSession(session);
       setToken(session?.access_token || null);
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError) throw userError;
-      setUser(user);
+      setUser(session?.user || null);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch session');
       setSession(null);
@@ -43,8 +41,12 @@ export const SessionProvider = ({ children }: { children: React.ReactNode }) => 
 
   useEffect(() => {
     refreshSession();
-    const { data: listener } = supabase.auth.onAuthStateChange(async () => {
-      await refreshSession();
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setToken(session?.access_token || null);
+      setUser(session?.user || null);
+      setError(null);
+      setLoading(false);
     });
     return () => {
       listener?.subscription.unsubscribe();
