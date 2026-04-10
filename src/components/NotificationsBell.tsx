@@ -324,7 +324,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
       if (document.visibilityState === 'visible') {
         void fetchNotifications()
       }
-    }, 5000)
+    }, 20000) // 20 seconds fallback polling
 
     const channels: RealtimeChannel[] = []
 
