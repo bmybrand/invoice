@@ -1009,7 +1009,7 @@ export function ClientChatModal({
       return
     }
 
-    setComposerVisible(false)
+    // Only show composer for handlers with permission
     const frameId = window.requestAnimationFrame(() => {
       setComposerVisible(true)
     })
