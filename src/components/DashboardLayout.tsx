@@ -375,7 +375,7 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
 
     let { data: employeeData, error: employeeError } = await supabase
       .from('employees')
-      .select('id, employee_name, role, department')
+      .select('id, employee_name, role, department, avatar_url')
       .eq('auth_id', user.id)
       .neq('isdeleted', true)
       .maybeSingle()
@@ -384,7 +384,7 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
       await new Promise((resolve) => window.setTimeout(resolve, 180))
       const retryResult = await supabase
         .from('employees')
-        .select('id, employee_name, role, department')
+        .select('id, employee_name, role, department, avatar_url')
         .eq('auth_id', user.id)
         .neq('isdeleted', true)
         .maybeSingle()
@@ -393,10 +393,11 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
     }
 
     if (employeeData) {
-      const row = employeeData as { id?: number; employee_name?: string; role?: string; department?: string } | null
+      const row = employeeData as { id?: number; employee_name?: string; role?: string; department?: string; avatar_url?: string | null } | null
 
       setDisplayName(row?.employee_name?.trim() || metadataDisplayName || user.email || 'User')
       setCurrentEmployeeId(typeof row?.id === 'number' ? row.id : null)
+      setDisplayAvatarUrl((row?.avatar_url || '').trim() || metadataAvatarUrl)
       setDisplayRole(
         row?.role
           ? String(row.role).charAt(0).toUpperCase() + String(row.role).slice(1).toLowerCase()
@@ -920,6 +921,7 @@ if (clientError) {
     const nextPassword = profilePassword.trim()
     const nextConfirmPassword = profileConfirmPassword.trim()
     let nextAvatarUrl = displayAvatarUrl.trim()
+    let nextAvatarPath = ''
 
     if (!nextName) {
       setProfileError('Name is required.')
@@ -950,6 +952,7 @@ if (clientError) {
     if (profileImageFile) {
       const extension = profileImageFile.name.split('.').pop()?.toLowerCase() || 'png'
       const filePath = `${currentUserAuthId}/avatar-${Date.now()}.${extension}`
+      nextAvatarPath = filePath
 
       const { error: uploadError } = await supabase.storage
         .from(PROFILE_AVATAR_BUCKET)
@@ -993,6 +996,8 @@ if (clientError) {
         .update({
           employee_name: nextName,
           email: nextEmail,
+          avatar_path: nextAvatarPath || undefined,
+          avatar_url: nextAvatarUrl || null,
         })
         .eq('auth_id', currentUserAuthId)
 

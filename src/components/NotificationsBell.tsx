@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useSessionContext } from '@/context/SessionContext'
-import type { RealtimeChannel } from '@supabase/supabase-js'
+import type { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 
 type NotificationsBellProps = {
   accountType: 'employee' | 'client' | null
@@ -27,6 +27,27 @@ type MessageNotification = {
   count: number
   createdAt: string
   handlerId?: string
+}
+
+type RealtimeChatMessageRow = {
+  id?: number | null
+  client_id?: number | null
+  sender_auth_id?: string | null
+  message?: string | null
+  attachment_name?: string | null
+  created_at?: string | null
+  read_by_employee?: boolean | null
+  isdeleted?: boolean | null
+}
+
+type RealtimeClientRow = {
+  id?: number | null
+  name?: string | null
+  email?: string | null
+  handler_id?: string | null
+  status?: string | null
+  created_date?: string | null
+  isdeleted?: boolean | null
 }
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || ''
@@ -68,6 +89,24 @@ function formatRelativeTime(value: string) {
   if (diffDays < 7) return `${diffDays}d ago`
 
   return new Date(timestamp).toLocaleDateString()
+}
+
+function isMessageUnread(row: RealtimeChatMessageRow | null | undefined) {
+  return !!row && row.read_by_employee !== true && row.isdeleted !== true
+}
+
+function compareCreatedAt(a: string | null | undefined, b: string | null | undefined) {
+  const aTime = Date.parse(a || '')
+  const bTime = Date.parse(b || '')
+  return (Number.isFinite(aTime) ? aTime : 0) - (Number.isFinite(bTime) ? bTime : 0)
+}
+
+function buildMessagePreview(row: RealtimeChatMessageRow | null | undefined) {
+  const text = (row?.message || '').trim()
+  if (text) return text
+  const attachment = (row?.attachment_name || '').trim()
+  if (attachment) return `Attachment: ${attachment}`
+  return 'New message'
 }
 
 function BellIcon({ className = 'h-5 w-5' }: { className?: string }) {
@@ -120,6 +159,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
   const queuedRefreshRef = useRef(false)
   const notifiedMessageIdsRef = useRef<Set<number>>(new Set())
   const pushSetupStartedRef = useRef(false)
+  const messagesRef = useRef<MessageNotification[]>([])
 
   const normalizedRole = useMemo(() => normalizeRole(displayRole || ''), [displayRole])
   const isAdminBell = accountType === 'employee' && (normalizedRole === 'admin' || normalizedRole === 'superadmin')
@@ -162,7 +202,17 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
     }
   }, [isEmployeeBell, notificationPermission, router])
 
-  const fetchNotifications = useCallback(async (options?: { showLoading?: boolean; forceDesktopNotify?: boolean }) => {
+  const applyMessageNotifications = useCallback((updater: (prev: MessageNotification[]) => MessageNotification[]) => {
+    let nextMessages: MessageNotification[] = []
+    setMessages((prev) => {
+      nextMessages = updater(prev)
+      messagesRef.current = nextMessages
+      return nextMessages
+    })
+    return nextMessages
+  }, [])
+
+  const fetchNotifications = useCallback(async (options?: { showLoading?: boolean }) => {
     if (!shouldShowBell) return
 
     if (isFetchingRef.current) {
@@ -175,6 +225,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
     if (!accessToken) {
       setRequests([])
       setMessages([])
+      messagesRef.current = []
       hasLoadedRef.current = false
       setLoading(false)
       return
@@ -210,6 +261,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
       const json = await res.json()
       const nextMessages = json.items ?? []
       setMessages(nextMessages)
+      messagesRef.current = nextMessages
       maybeNotifyDesktop(nextMessages)
       hasLoadedRef.current = true
     } catch {
@@ -316,6 +368,176 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
 
     const channels: RealtimeChannel[] = []
 
+    const handleChatMessageChange = (payload: RealtimePostgresChangesPayload<RealtimeChatMessageRow>) => {
+      const nextRow = (payload.new ?? null) as RealtimeChatMessageRow | null
+      const previousRow = (payload.old ?? null) as RealtimeChatMessageRow | null
+      const activeRow = payload.eventType === 'DELETE' ? previousRow : nextRow
+      const clientId = Number(activeRow?.client_id ?? 0)
+      const messageId = Number((nextRow?.id ?? previousRow?.id) ?? 0)
+      const senderAuthId = (activeRow?.sender_auth_id || '').trim()
+
+      if (!Number.isFinite(clientId) || clientId <= 0 || !messageId || !senderAuthId) {
+        void fetchNotifications()
+        return
+      }
+
+      if (payload.eventType === 'DELETE' || nextRow?.isdeleted === true) {
+        applyMessageNotifications((prev) => {
+          const target = prev.find((item) => item.clientId === clientId)
+          if (!target) return prev
+          if (target.latestMessageId === messageId) {
+            void fetchNotifications()
+            return prev
+          }
+          if (senderAuthId === target.handlerId) return prev
+          const nextCount = Math.max(0, target.count - 1)
+          if (nextCount < 1) {
+            return prev.filter((item) => item.clientId !== clientId)
+          }
+          return prev.map((item) =>
+            item.clientId === clientId
+              ? {
+                  ...item,
+                  count: nextCount,
+                }
+              : item
+          )
+        })
+        return
+      }
+
+      const wasUnread = isMessageUnread(previousRow)
+      const isUnread = isMessageUnread(nextRow)
+
+      if (senderAuthId === messagesRef.current.find((item) => item.clientId === clientId)?.handlerId) {
+        if (payload.eventType !== 'INSERT' && wasUnread !== isUnread) {
+          applyMessageNotifications((prev) => {
+            const target = prev.find((item) => item.clientId === clientId)
+            if (!target) return prev
+            const delta = (isUnread ? 1 : 0) - (wasUnread ? 1 : 0)
+            const nextCount = Math.max(0, target.count + delta)
+            if (nextCount < 1) {
+              return prev.filter((item) => item.clientId !== clientId)
+            }
+            return prev.map((item) =>
+              item.clientId === clientId
+                ? {
+                    ...item,
+                    count: nextCount,
+                  }
+                : item
+            )
+          })
+        }
+        return
+      }
+
+      if (!isUnread) {
+        applyMessageNotifications((prev) => {
+          const target = prev.find((item) => item.clientId === clientId)
+          if (!target) return prev
+          const delta = (isUnread ? 1 : 0) - (wasUnread ? 1 : 0)
+          const nextCount = Math.max(0, target.count + delta)
+          if (target.latestMessageId === messageId && nextCount > 0) {
+            void fetchNotifications()
+            return prev
+          }
+          if (nextCount < 1) {
+            return prev.filter((item) => item.clientId !== clientId)
+          }
+          return prev.map((item) =>
+            item.clientId === clientId
+              ? {
+                  ...item,
+                  count: nextCount,
+                }
+              : item
+          )
+        })
+        return
+      }
+
+      const preview = buildMessagePreview(nextRow)
+      const createdAt = nextRow?.created_at || previousRow?.created_at || new Date().toISOString()
+
+      const nextMessages = applyMessageNotifications((prev) => {
+        const target = prev.find((item) => item.clientId === clientId)
+        if (!target) {
+          void fetchNotifications()
+          return prev
+        }
+
+        const shouldPromote =
+          payload.eventType === 'INSERT' ||
+          target.latestMessageId === messageId ||
+          compareCreatedAt(createdAt, target.createdAt) >= 0
+        const delta = payload.eventType === 'INSERT' ? 1 : (isUnread ? 1 : 0) - (wasUnread ? 1 : 0)
+        const nextCount = Math.max(0, target.count + delta)
+
+        const updated = prev.map((item) =>
+          item.clientId === clientId
+            ? {
+                ...item,
+                count: nextCount,
+                latestMessage: shouldPromote ? preview : item.latestMessage,
+                latestMessageId: shouldPromote ? messageId : item.latestMessageId,
+                createdAt: shouldPromote ? createdAt : item.createdAt,
+              }
+            : item
+        )
+
+        return updated.sort((a, b) => compareCreatedAt(b.createdAt, a.createdAt))
+      })
+
+      if (payload.eventType === 'INSERT') {
+        maybeNotifyDesktop(nextMessages)
+      }
+    }
+
+    const handleClientChange = (payload: RealtimePostgresChangesPayload<RealtimeClientRow>) => {
+      const nextRow = (payload.new ?? null) as RealtimeClientRow | null
+      const previousRow = (payload.old ?? null) as RealtimeClientRow | null
+      const activeRow = payload.eventType === 'DELETE' ? previousRow : nextRow
+      const clientId = Number(activeRow?.id ?? 0)
+      if (!Number.isFinite(clientId) || clientId <= 0) {
+        void fetchNotifications()
+        return
+      }
+
+      if (isAdminBell) {
+        const status = ((nextRow?.status ?? previousRow?.status) || '').trim().toLowerCase()
+        const isDeleted = nextRow?.isdeleted === true || payload.eventType === 'DELETE'
+        if (status === 'pending' && !isDeleted && nextRow) {
+          setRequests((prev) => {
+            const existing = prev.find((item) => item.id === clientId)
+            const nextItem: PendingRequest = {
+              id: clientId,
+              name: (nextRow.name || '').trim() || existing?.name || 'Client',
+              email: (nextRow.email || '').trim() || existing?.email || '',
+              created_at: nextRow.created_date || existing?.created_at || new Date().toISOString(),
+            }
+            const filtered = prev.filter((item) => item.id !== clientId)
+            return [nextItem, ...filtered].sort((a, b) => compareCreatedAt(b.created_at, a.created_at))
+          })
+        } else {
+          setRequests((prev) => prev.filter((item) => item.id !== clientId))
+        }
+      }
+
+      applyMessageNotifications((prev) =>
+        prev.map((item) =>
+          item.clientId === clientId
+            ? {
+                ...item,
+                clientName: (nextRow?.name || '').trim() || item.clientName,
+                clientEmail: (nextRow?.email || '').trim() || item.clientEmail,
+                handlerId: (nextRow?.handler_id || '').trim() || item.handlerId,
+              }
+            : item
+        )
+      )
+    }
+
     if (isEmployeeBell) {
       channels.push(
         supabase
@@ -327,19 +549,15 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
               schema: 'public',
               table: 'client_chat_messages',
             },
-            (payload) => {
-              void fetchNotifications({
-                forceDesktopNotify: payload.eventType === 'INSERT',
-              })
-            }
+            handleChatMessageChange
           )
       )
     }
 
-    if (isAdminBell) {
+    if (isEmployeeBell || isAdminBell) {
       channels.push(
         supabase
-          .channel('admin-registration-requests-clients')
+          .channel(`notification-clients-${isAdminBell ? 'admin' : 'employee'}`)
           .on(
             'postgres_changes',
             {
@@ -347,19 +565,13 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
               schema: 'public',
               table: 'clients',
             },
-            () => {
-              void fetchNotifications()
-            }
+            handleClientChange
           )
       )
     }
 
     channels.forEach((channel) => {
-      channel.subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          void fetchNotifications()
-        }
-      })
+      channel.subscribe()
     })
 
     return () => {
@@ -382,8 +594,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
       const readClientId = Number(customEvent.detail?.clientId ?? 0)
       if (!Number.isFinite(readClientId) || readClientId <= 0) return
 
-      setMessages((prev) => prev.filter((item) => item.clientId !== readClientId))
-      void fetchNotifications()
+      applyMessageNotifications((prev) => prev.filter((item) => item.clientId !== readClientId))
     }
 
     window.addEventListener('client-chat:read', handleChatRead as EventListener)

@@ -60,6 +60,20 @@ type ChatResponse = {
   canMessage?: boolean
 }
 
+type RealtimeChatRow = {
+  id: number
+  client_id: number
+  sender_auth_id: string
+  message: string | null
+  attachment_name: string | null
+  attachment_path: string | null
+  read_by_client: boolean | null
+  read_by_employee: boolean | null
+  created_at: string | null
+  updated_at: string | null
+  isdeleted: boolean | null
+}
+
 type ChatInvoice = {
   id: number
   invoiceDate: string | null
@@ -243,6 +257,14 @@ function matchesOptimisticMessage(serverMessage: ChatMessage, optimisticMessage:
   )
 }
 
+function getChatPartnerName(accountType: 'employee' | 'client' | null, headerTitle: string) {
+  if (!headerTitle.trim()) return 'User'
+  if (accountType === 'client') {
+    return headerTitle.replace(/^Chat with\s+/i, '').trim() || 'User'
+  }
+  return headerTitle.trim()
+}
+
 function formatInvoiceAmount(invoice: ChatInvoice) {
   const amountSource = invoice.payableAmount != null ? invoice.payableAmount : Number(invoice.amount || 0)
   const amount = Number.isFinite(amountSource) ? amountSource : 0
@@ -406,6 +428,62 @@ export function ClientChatModal({
   const getCurrentAuthToken = useCallback(async () => {
     return token?.trim() || ''
   }, [token])
+
+  const applyMessages = useCallback((updater: (current: ChatMessage[]) => ChatMessage[]) => {
+    setMessages((current) => {
+      const next = updater(current)
+      loadedMessagesRef.current = next
+      return next
+    })
+  }, [])
+
+  const buildRealtimeMessage = useCallback(
+    (row: RealtimeChatRow) => {
+      const currentMessages = loadedMessagesRef.current
+      const matchingSenderMessage = currentMessages.find((message) => message.senderAuthId === row.sender_auth_id)
+      const senderName =
+        row.sender_auth_id === currentUserAuthId
+          ? displayName || (accountType === 'client' ? 'Client' : 'User')
+          : matchingSenderMessage?.senderName || getChatPartnerName(accountType, headerTitle)
+      const senderAvatarUrl =
+        row.sender_auth_id === currentUserAuthId ? matchingSenderMessage?.senderAvatarUrl || null : matchingSenderMessage?.senderAvatarUrl || null
+      const isOwnMessage = row.sender_auth_id === currentUserAuthId
+      const attachmentName = (row.attachment_name || '').trim()
+      const needsHydration = Boolean(attachmentName || row.attachment_path || !matchingSenderMessage)
+
+      return {
+        needsHydration,
+        incomingFromOtherSender: !isOwnMessage,
+        message: {
+          id: row.id,
+          clientId: row.client_id,
+          senderAuthId: row.sender_auth_id,
+          senderName,
+          senderAvatarUrl,
+          message: row.message || '',
+          attachmentName,
+          attachmentUrl: null,
+          attachments: attachmentName
+            ? [
+                {
+                  name: attachmentName,
+                  url: null,
+                },
+              ]
+            : [],
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+          isOwnMessage,
+          seenByRecipient: isOwnMessage
+            ? accountType === 'client'
+              ? Boolean(row.read_by_employee)
+              : Boolean(row.read_by_client)
+            : false,
+        } as ChatMessage,
+      }
+    },
+    [accountType, currentUserAuthId, displayName, headerTitle]
+  )
 
   const loadMessages = useCallback(
     async (options?: { background?: boolean; older?: boolean }) => {
@@ -690,8 +768,75 @@ export function ClientChatModal({
           table: 'client_chat_messages',
           filter: `client_id=eq.${clientId}`,
         },
-        () => {
+        (payload) => {
           if (document.visibilityState !== 'visible' || loadingOlderMessagesRef.current) return
+          const nextRow = (payload.new ?? null) as RealtimeChatRow | null
+          const previousRow = (payload.old ?? null) as RealtimeChatRow | null
+
+          if (payload.eventType === 'DELETE' || nextRow?.isdeleted === true) {
+            const messageId = Number(nextRow?.id ?? previousRow?.id ?? 0)
+            if (!Number.isFinite(messageId) || messageId < 1) {
+              void loadMessages({ background: true })
+              return
+            }
+
+            applyMessages((current) => current.filter((message) => message.id !== messageId))
+            pendingDeletedIdsRef.current.add(messageId)
+            return
+          }
+
+          if (!nextRow || !Number.isFinite(Number(nextRow.id)) || nextRow.id < 1) {
+            void loadMessages({ background: true })
+            return
+          }
+
+          if (payload.eventType === 'UPDATE') {
+            applyMessages((current) =>
+              current.map((message) =>
+                message.id === nextRow.id
+                  ? {
+                      ...message,
+                      message: nextRow.message || '',
+                      attachmentName: (nextRow.attachment_name || '').trim() || message.attachmentName,
+                      updatedAt: nextRow.updated_at,
+                      seenByRecipient: message.isOwnMessage
+                        ? accountType === 'client'
+                          ? Boolean(nextRow.read_by_employee)
+                          : Boolean(nextRow.read_by_client)
+                        : message.seenByRecipient,
+                    }
+                  : message
+              )
+            )
+            return
+          }
+
+          if (payload.eventType === 'INSERT') {
+            const realtimeMessage = buildRealtimeMessage(nextRow)
+            optimisticMessagesRef.current = optimisticMessagesRef.current.filter(
+              (optimisticMessage) => !matchesOptimisticMessage(realtimeMessage.message, optimisticMessage)
+            )
+
+            applyMessages((current) => {
+              const persistedMessages = current.filter(
+                (message) => message.id > 0 && !pendingDeletedIdsRef.current.has(message.id)
+              )
+              return mergeChatMessages(persistedMessages, [realtimeMessage.message])
+            })
+
+            shouldStickToBottomRef.current = true
+            window.requestAnimationFrame(() => {
+              const node = messagesRef.current
+              if (!node) return
+              node.scrollTop = node.scrollHeight
+            })
+
+            if (realtimeMessage.needsHydration || realtimeMessage.incomingFromOtherSender) {
+              void loadMessages({ background: true })
+            }
+            return
+          }
+
           void loadMessages({ background: true })
         }
       )
@@ -703,7 +848,7 @@ export function ClientChatModal({
       messageChannelRef.current = null
       void supabase.removeChannel(channel)
     }
-  }, [clientId, loadMessages, open])
+  }, [accountType, applyMessages, buildRealtimeMessage, clientId, loadMessages, mergeChatMessages, open])
 
   useEffect(() => {
     if (!open || !typingChannelName) return

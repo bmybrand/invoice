@@ -6,6 +6,7 @@ import { Plus_Jakarta_Sans } from 'next/font/google'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useDashboardProfile } from '@/components/DashboardLayout'
+import { useSessionContext } from '@/context/SessionContext'
 import { ClientChatModal } from '@/components/ClientChatModal'
 import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
 import { logFetchError } from '@/lib/fetch-error'
@@ -13,7 +14,6 @@ import { logFetchError } from '@/lib/fetch-error'
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
 const PAGE_SIZE = 8
-const TABLE_REFRESH_INTERVAL_MS = 20000 // 20 seconds fallback polling
 type ClientRow = {
   id: number
   name: string
@@ -174,6 +174,7 @@ export default function Clients() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { currentUserAuthId, displayRole } = useDashboardProfile()
+  const { token } = useSessionContext()
   const scopedClientsCache = clientsTableCache?.ownerAuthId === currentUserAuthId ? clientsTableCache : null
   const [clients, setClients] = useState<ClientRow[]>(() => scopedClientsCache?.clients ?? [])
   const [clientsLoading, setClientsLoading] = useState(() => !scopedClientsCache)
@@ -243,14 +244,6 @@ export default function Clients() {
   useEffect(() => {
     requestActionLoadingIdRef.current = requestActionLoadingId
   }, [requestActionLoadingId])
-
-  async function getCurrentAuthToken() {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (session?.access_token?.trim()) return session.access_token.trim()
-    const { data: refreshedData, error } = await supabase.auth.refreshSession()
-    if (error) return ''
-    return refreshedData.session?.access_token?.trim() || ''
-  }
 
   const fetchSalesAgents = useCallback(async () => {
     setAgentsLoading(true)
@@ -596,8 +589,8 @@ export default function Clients() {
 
     setAddLoading(true)
 
-    const token = await getCurrentAuthToken()
-    if (!token) {
+    const accessToken = token?.trim() || ''
+    if (!accessToken) {
       setAddLoading(false)
       setAddError('Authentication expired. Sign in again and try again.')
       return
@@ -607,7 +600,7 @@ export default function Clients() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({
         name: addName,
@@ -655,8 +648,8 @@ export default function Clients() {
     setEditError(null)
     setEditLoading(true)
 
-    const token = await getCurrentAuthToken()
-    if (!token) {
+    const accessToken = token?.trim() || ''
+    if (!accessToken) {
       setEditLoading(false)
       setEditError('Authentication expired. Sign in again and try again.')
       return
@@ -674,7 +667,7 @@ export default function Clients() {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify(payload),
     })
@@ -704,8 +697,8 @@ export default function Clients() {
     pendingClientDeleteIdsRef.current.add(targetClient.id)
     setClients((prev) => prev.filter((c) => c.id !== targetClient.id))
 
-    const token = await getCurrentAuthToken()
-    if (!token) {
+    const accessToken = token?.trim() || ''
+    if (!accessToken) {
       pendingClientDeleteIdsRef.current.delete(targetClient.id)
       setClients(previousClients)
       setDeleteLoading(false)
@@ -716,7 +709,7 @@ export default function Clients() {
 
     const response = await fetch(`/api/clients/${targetClient.id}`, {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${accessToken}` },
     })
 
     const result = (await response.json().catch(() => null)) as { error?: string } | null
@@ -745,8 +738,8 @@ export default function Clients() {
     setArchivedError(null)
     setArchivedActionClientId(client.id)
 
-    const token = await getCurrentAuthToken()
-    if (!token) {
+    const accessToken = token?.trim() || ''
+    if (!accessToken) {
       setArchivedActionClientId(null)
       setArchivedError('Authentication expired. Sign in again and try again.')
       return
@@ -756,7 +749,7 @@ export default function Clients() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({ action }),
     })
@@ -807,8 +800,8 @@ export default function Clients() {
     const previousClients = clients
     const previousRequests = registrationRequests
 
-    const token = await getCurrentAuthToken()
-    if (!token) {
+    const accessToken = token?.trim() || ''
+    if (!accessToken) {
       suppressBackgroundRefreshRef.current = false
       setClients(previousClients)
       setRegistrationRequests(previousRequests)
@@ -820,7 +813,7 @@ export default function Clients() {
 
     const response = await fetch(`/api/clients/registration-requests/${targetClient.id}/reject`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${accessToken}` },
     })
 
     const result = (await response.json().catch(() => null)) as { error?: string } | null
@@ -886,8 +879,8 @@ export default function Clients() {
       text: decision === 'approve' ? 'Request approved successfully.' : 'Request rejected successfully.',
     })
 
-    const token = await getCurrentAuthToken()
-    if (!token) {
+    const accessToken = token?.trim() || ''
+    if (!accessToken) {
       suppressBackgroundRefreshRef.current = false
       setClients(previousClients)
       setRegistrationRequests(previousRequests)
@@ -901,7 +894,7 @@ export default function Clients() {
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${accessToken}`,
       },
     })
 
@@ -928,8 +921,8 @@ export default function Clients() {
     setRequestActionLoadingId(requestId)
     setActionMessage({ type: 'success', text: 'Request deleted successfully.' })
 
-    const token = await getCurrentAuthToken()
-    if (!token) {
+    const accessToken = token?.trim() || ''
+    if (!accessToken) {
       suppressBackgroundRefreshRef.current = false
       setRequestActionLoadingId(null)
       setRequestActionError('Authentication expired. Sign in again and try again.')
@@ -940,7 +933,7 @@ export default function Clients() {
     const response = await fetch(`/api/clients/registration-requests/${requestId}`, {
       method: 'DELETE',
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${accessToken}`,
       },
     })
 

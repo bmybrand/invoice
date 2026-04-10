@@ -5,6 +5,7 @@ import { Plus_Jakarta_Sans } from 'next/font/google'
 import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useDashboardProfile } from '@/components/DashboardLayout'
+import { useSessionContext } from '@/context/SessionContext'
 import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
 import { logFetchError } from '@/lib/fetch-error'
 
@@ -110,6 +111,7 @@ function areBrandRowsEqual(a: BrandRow[], b: BrandRow[]) {
 export default function Brand() {
   const searchParams = useSearchParams()
   const { currentUserAuthId, displayRole } = useDashboardProfile()
+  const { token } = useSessionContext()
   const scopedBrandCache = brandTableCache?.ownerAuthId === currentUserAuthId ? brandTableCache.rows : null
   const [brands, setBrands] = useState<BrandRow[]>(() => scopedBrandCache ?? [])
   const [brandsLoading, setBrandsLoading] = useState(() => !scopedBrandCache)
@@ -140,27 +142,6 @@ export default function Brand() {
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const isSuperAdmin = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '') === 'superadmin'
-
-  async function getCurrentAuthToken() {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-
-    if (session?.access_token?.trim()) {
-      return session.access_token.trim()
-    }
-
-    const {
-      data: refreshedData,
-      error: refreshError,
-    } = await supabase.auth.refreshSession()
-
-    if (refreshError) {
-      return ''
-    }
-
-    return refreshedData.session?.access_token?.trim() || ''
-  }
 
   const fetchBrands = useCallback(async (options?: { background?: boolean }) => {
     const isBackgroundRefresh = options?.background ?? false
@@ -281,8 +262,8 @@ export default function Brand() {
     setAddError(null)
     setAddLoading(true)
 
-    const token = await getCurrentAuthToken()
-    if (!token) {
+    const accessToken = token?.trim() || ''
+    if (!accessToken) {
       setAddLoading(false)
       setAddError('Authentication expired. Sign in again and try again.')
       setActionMessage({ type: 'error', text: 'Authentication expired. Sign in again and try again.' })
@@ -293,7 +274,7 @@ export default function Brand() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({
         brand_name: addName,
@@ -336,8 +317,8 @@ export default function Brand() {
     setEditError(null)
     setEditLoading(true)
 
-    const token = await getCurrentAuthToken()
-    if (!token) {
+    const accessToken = token?.trim() || ''
+    if (!accessToken) {
       setEditLoading(false)
       setEditError('Authentication expired. Sign in again and try again.')
       setActionMessage({ type: 'error', text: 'Authentication expired. Sign in again and try again.' })
@@ -348,7 +329,7 @@ export default function Brand() {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({
         brand_name: editName,
@@ -376,8 +357,8 @@ export default function Brand() {
     if (!deletingBrand || !isSuperAdmin) return
     setDeleteLoading(true)
 
-    const token = await getCurrentAuthToken()
-    if (!token) {
+    const accessToken = token?.trim() || ''
+    if (!accessToken) {
       setDeleteLoading(false)
       setActionMessage({ type: 'error', text: 'Authentication expired. Sign in again and try again.' })
       return
@@ -386,7 +367,7 @@ export default function Brand() {
     const response = await fetch(`/api/brands/${deletingBrand.id}`, {
       method: 'DELETE',
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${accessToken}`,
       },
     })
     const result = (await response.json().catch(() => null)) as { error?: string } | null
@@ -410,8 +391,8 @@ export default function Brand() {
     setArchivedActionBrandId(brand.id)
     setArchivedError(null)
 
-    const token = await getCurrentAuthToken()
-    if (!token) {
+    const accessToken = token?.trim() || ''
+    if (!accessToken) {
       setArchivedActionBrandId(null)
       setArchivedError('Authentication expired. Sign in again and try again.')
       setActionMessage({ type: 'error', text: 'Authentication expired. Sign in again and try again.' })
@@ -422,7 +403,7 @@ export default function Brand() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({ action }),
     })

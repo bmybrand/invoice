@@ -7,10 +7,9 @@ import { supabase } from '@/lib/supabase'
 import { logFetchError } from '@/lib/fetch-error'
 import { useDashboardProfile } from '@/components/DashboardLayout'
 import { ClientChatModal } from '@/components/ClientChatModal'
-import type { RealtimeChannel } from '@supabase/supabase-js'
+import type { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
-const CHAT_LIST_REFRESH_MS = 5000
 
 type ClientRow = {
   id: number
@@ -51,6 +50,26 @@ type ConversationItem = {
   preview: string
   updatedAt: string | null
   unreadCount: number
+}
+
+type RealtimeClientRow = {
+  id?: number | null
+  name?: string | null
+  email?: string | null
+  handler_id?: string | null
+  status?: string | null
+  created_date?: string | null
+  isdeleted?: boolean | null
+}
+
+function isApprovedClient(row: RealtimeClientRow | null | undefined) {
+  return ((row?.status || '').trim().toLowerCase() === 'approved') && row?.isdeleted !== true
+}
+
+function compareDateValues(a: string | null | undefined, b: string | null | undefined) {
+  const aTime = Date.parse(a || '')
+  const bTime = Date.parse(b || '')
+  return (Number.isFinite(aTime) ? aTime : 0) - (Number.isFinite(bTime) ? bTime : 0)
 }
 
 function SearchIcon({ className = 'h-4 w-4' }: { className?: string }) {
@@ -134,6 +153,8 @@ export function EmployeeChatsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const channelRef = useRef<RealtimeChannel | null>(null)
+  const clientsRef = useRef<ClientRow[]>([])
+  const latestByClientRef = useRef<Record<number, ChatMessageRow>>({})
 
   const normalizedRole = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '')
   const isAdmin = normalizedRole === 'admin'
@@ -143,6 +164,35 @@ export function EmployeeChatsPage() {
     const raw = Number.parseInt(searchParams.get('clientId') || '', 10)
     return Number.isFinite(raw) && raw > 0 ? raw : null
   }, [searchParams])
+
+  const setClientsState = useCallback((value: ClientRow[] | ((prev: ClientRow[]) => ClientRow[])) => {
+    setClients((prev) => {
+      const next = typeof value === 'function' ? (value as (prev: ClientRow[]) => ClientRow[])(prev) : value
+      clientsRef.current = next
+      return next
+    })
+  }, [])
+
+  const setLatestByClientState = useCallback((value: Record<number, ChatMessageRow> | ((prev: Record<number, ChatMessageRow>) => Record<number, ChatMessageRow>)) => {
+    setLatestByClient((prev) => {
+      const next =
+        typeof value === 'function'
+          ? (value as (prev: Record<number, ChatMessageRow>) => Record<number, ChatMessageRow>)(prev)
+          : value
+      latestByClientRef.current = next
+      return next
+    })
+  }, [])
+
+  const setUnreadByClientState = useCallback((value: Record<number, number> | ((prev: Record<number, number>) => Record<number, number>)) => {
+    setUnreadByClient((prev) => {
+      const next =
+        typeof value === 'function'
+          ? (value as (prev: Record<number, number>) => Record<number, number>)(prev)
+          : value
+      return next
+    })
+  }, [])
 
   const loadConversationsLegacy = useCallback(async () => {
     const { data: clientsData, error: clientsError } = await supabase
@@ -166,11 +216,11 @@ export function EmployeeChatsPage() {
         created_date: row.created_date ?? null,
       }))
 
-    setClients(visibleClients)
+    setClientsState(visibleClients)
 
     if (visibleClients.length === 0) {
-      setLatestByClient({})
-      setUnreadByClient({})
+      setLatestByClientState({})
+      setUnreadByClientState({})
       return
     }
 
@@ -212,9 +262,9 @@ export function EmployeeChatsPage() {
       return acc
     }, {})
 
-    setLatestByClient(nextLatest)
-    setUnreadByClient(nextUnread)
-  }, [currentUserAuthId, isAdmin, isSuperAdmin])
+    setLatestByClientState(nextLatest)
+    setUnreadByClientState(nextUnread)
+  }, [currentUserAuthId, isAdmin, isSuperAdmin, setClientsState, setLatestByClientState, setUnreadByClientState])
 
   const loadConversations = useCallback(async () => {
     if (!currentUserAuthId) return
@@ -262,11 +312,11 @@ export function EmployeeChatsPage() {
       created_date: row.created_date ?? null,
     }))
 
-    setClients(visibleClients)
+    setClientsState(visibleClients)
 
     if (visibleClients.length === 0) {
-      setLatestByClient({})
-      setUnreadByClient({})
+      setLatestByClientState({})
+      setUnreadByClientState({})
       setLoading(false)
       return
     }
@@ -290,10 +340,10 @@ export function EmployeeChatsPage() {
       nextUnread[clientId] = Math.max(0, Number(row.unread_count ?? 0) || 0)
     })
 
-    setLatestByClient(nextLatest)
-    setUnreadByClient(nextUnread)
+    setLatestByClientState(nextLatest)
+    setUnreadByClientState(nextUnread)
     setLoading(false)
-  }, [clients.length, currentUserAuthId, isAdmin, isSuperAdmin, loadConversationsLegacy])
+  }, [clients.length, currentUserAuthId, isAdmin, isSuperAdmin, loadConversationsLegacy, setClientsState, setLatestByClientState, setUnreadByClientState])
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -308,22 +358,160 @@ export function EmployeeChatsPage() {
   useEffect(() => {
     if (!currentUserAuthId) return
 
+    const handleMessageChange = (payload: RealtimePostgresChangesPayload<ChatMessageRow>) => {
+      const nextRow = (payload.new ?? null) as ChatMessageRow | null
+      const previousRow = (payload.old ?? null) as ChatMessageRow | null
+      const activeRow = payload.eventType === 'DELETE' ? previousRow : nextRow
+      const clientId = Number(activeRow?.client_id ?? 0)
+      if (!Number.isFinite(clientId) || clientId <= 0) return
+
+      const client = clientsRef.current.find((item) => item.id === clientId)
+      if (!client) {
+        if (payload.eventType === 'INSERT') {
+          void loadConversations()
+        }
+        return
+      }
+
+      const wasUnread =
+        !!previousRow &&
+        previousRow.sender_auth_id !== currentUserAuthId &&
+        previousRow.read_by_employee !== true
+      const isUnread =
+        !!nextRow &&
+        nextRow.sender_auth_id !== currentUserAuthId &&
+        nextRow.read_by_employee !== true &&
+        (nextRow as ChatMessageRow & { isdeleted?: boolean | null }).isdeleted !== true
+
+      if (payload.eventType === 'DELETE') {
+        const deletedMessageId = Number(previousRow?.id ?? 0)
+        const currentLatest = latestByClientRef.current[clientId]
+        if (currentLatest?.id === deletedMessageId) {
+          void loadConversations()
+          return
+        }
+
+        if (wasUnread) {
+          setUnreadByClientState((prev) => ({
+            ...prev,
+            [clientId]: Math.max(0, (prev[clientId] || 0) - 1),
+          }))
+        }
+        return
+      }
+
+      if (nextRow && (nextRow as ChatMessageRow & { isdeleted?: boolean | null }).isdeleted === true) {
+        const deletedMessageId = Number(nextRow.id ?? 0)
+        const currentLatest = latestByClientRef.current[clientId]
+        if (currentLatest?.id === deletedMessageId) {
+          void loadConversations()
+          return
+        }
+
+        if (wasUnread) {
+          setUnreadByClientState((prev) => ({
+            ...prev,
+            [clientId]: Math.max(0, (prev[clientId] || 0) - 1),
+          }))
+        }
+        return
+      }
+
+      if (payload.eventType === 'INSERT' && nextRow) {
+        setLatestByClientState((prev) => ({
+          ...prev,
+          [clientId]: nextRow,
+        }))
+        if (isUnread) {
+          setUnreadByClientState((prev) => ({
+            ...prev,
+            [clientId]: (prev[clientId] || 0) + 1,
+          }))
+        }
+        return
+      }
+
+      if (!nextRow) return
+
+      const previousLatest = latestByClientRef.current[clientId]
+      const messageId = Number(nextRow.id ?? 0)
+      const previousMessageId = Number(previousRow?.id ?? 0)
+      const delta = (isUnread ? 1 : 0) - (wasUnread ? 1 : 0)
+
+      if (delta !== 0) {
+        setUnreadByClientState((prev) => ({
+          ...prev,
+          [clientId]: Math.max(0, (prev[clientId] || 0) + delta),
+        }))
+      }
+
+      const shouldReplaceLatest =
+        !previousLatest ||
+        previousLatest.id === messageId ||
+        previousLatest.id === previousMessageId ||
+        compareDateValues(nextRow.created_at, previousLatest.created_at) >= 0
+
+      if (shouldReplaceLatest) {
+        setLatestByClientState((prev) => ({
+          ...prev,
+          [clientId]: nextRow,
+        }))
+      }
+    }
+
+    const handleClientChange = (payload: RealtimePostgresChangesPayload<RealtimeClientRow>) => {
+      const nextRow = (payload.new ?? null) as RealtimeClientRow | null
+      const previousRow = (payload.old ?? null) as RealtimeClientRow | null
+      const activeRow = payload.eventType === 'DELETE' ? previousRow : nextRow
+      const clientId = Number(activeRow?.id ?? 0)
+      if (!Number.isFinite(clientId) || clientId <= 0) return
+
+      const visibleToUser = (row: RealtimeClientRow | null | undefined) => {
+        if (!row || !isApprovedClient(row)) return false
+        return isAdmin || isSuperAdmin || (row.handler_id || '').trim() === currentUserAuthId
+      }
+
+      if (!visibleToUser(nextRow)) {
+        setClientsState((prev) => prev.filter((item) => item.id !== clientId))
+        setLatestByClientState((prev) => {
+          const next = { ...prev }
+          delete next[clientId]
+          return next
+        })
+        setUnreadByClientState((prev) => {
+          const next = { ...prev }
+          delete next[clientId]
+          return next
+        })
+        return
+      }
+
+      const nextClient: ClientRow = {
+        id: clientId,
+        name: (nextRow?.name || '').trim() || 'Client',
+        email: (nextRow?.email || '').trim() || '',
+        handler_id: nextRow?.handler_id ?? null,
+        created_date: nextRow?.created_date ?? null,
+      }
+
+      setClientsState((prev) => {
+        const filtered = prev.filter((item) => item.id !== clientId)
+        return [nextClient, ...filtered].sort((a, b) => compareDateValues(b.created_date, a.created_date))
+      })
+    }
+
     channelRef.current?.unsubscribe()
     channelRef.current = supabase
       .channel(`employee-chat-page-${currentUserAuthId}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'client_chat_messages' },
-        () => {
-          void loadConversations()
-        }
+        handleMessageChange
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'clients' },
-        () => {
-          void loadConversations()
-        }
+        handleClientChange
       )
       .subscribe()
 
@@ -331,7 +519,7 @@ export function EmployeeChatsPage() {
       channelRef.current?.unsubscribe()
       channelRef.current = null
     }
-  }, [currentUserAuthId, loadConversations])
+  }, [currentUserAuthId, isAdmin, isSuperAdmin, loadConversations, setClientsState, setLatestByClientState, setUnreadByClientState])
 
   const conversations = useMemo<ConversationItem[]>(() => {
     return clients

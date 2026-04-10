@@ -5,6 +5,7 @@ import { Plus_Jakarta_Sans } from 'next/font/google'
 import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useDashboardProfile } from '@/components/DashboardLayout'
+import { useSessionContext } from '@/context/SessionContext'
 import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
 import { logFetchError } from '@/lib/fetch-error'
 
@@ -20,6 +21,8 @@ type EmployeeRow = {
   email: string
   role: string
   department: string
+  avatar_path?: string | null
+  avatar_url?: string | null
   created_at?: string
 }
 
@@ -156,6 +159,15 @@ function areAvatarMapsEqual(a: Record<string, string>, b: Record<string, string>
   return JSON.stringify(a) === JSON.stringify(b)
 }
 
+function buildEmployeeAvatarUrl(employee: Pick<EmployeeRow, 'avatar_path' | 'avatar_url'>) {
+  const avatarPath = (employee.avatar_path || '').trim()
+  if (avatarPath) {
+    const { data } = supabase.storage.from(PROFILE_AVATAR_BUCKET).getPublicUrl(avatarPath)
+    return data.publicUrl || ''
+  }
+  return (employee.avatar_url || '').trim()
+}
+
 function initials(name: string) {
   const tokens = name.trim().split(/\s+/).filter(Boolean)
   return (tokens[0]?.[0] || '') + (tokens[1]?.[0] || tokens[0]?.[1] || '')
@@ -226,6 +238,7 @@ function EmployeeAvatar({
 export default function Employees() {
   const searchParams = useSearchParams()
   const { currentUserAuthId: profileCurrentUserAuthId, displayRole, onlineAuthIds } = useDashboardProfile()
+  const { token } = useSessionContext()
   const scopedEmployeesCache =
     employeesTableCache?.ownerAuthId === profileCurrentUserAuthId ? employeesTableCache : null
   const [employees, setEmployees] = useState<EmployeeRow[]>(() => scopedEmployeesCache?.employees ?? [])
@@ -383,9 +396,7 @@ export default function Employees() {
   }, [currentPage, totalPages])
 
   const fetchEmployeeAvatarUrls = useCallback(async (rows: EmployeeRow[]) => {
-    const authIds = Array.from(new Set(rows.map((row) => row.auth_id).filter(Boolean)))
-
-    if (authIds.length === 0) {
+    if (rows.length === 0) {
       setEmployeeAvatarUrls({})
       employeesTableCache = {
         ownerAuthId: profileCurrentUserAuthId,
@@ -395,40 +406,9 @@ export default function Employees() {
       return
     }
 
-    const existingMap = scopedEmployeesCache?.avatarUrls ?? {}
-    const missingAuthIds = authIds.filter((authId) => !(authId in existingMap))
-
-    const avatarEntries = await Promise.all(
-      missingAuthIds.map(async (authId) => {
-        const { data, error } = await supabase.storage.from(PROFILE_AVATAR_BUCKET).list(authId)
-
-        if (error || !data?.length) return [authId, ''] as const
-
-        const latestFile = [...data]
-          .sort((a, b) => {
-            const aTime = Date.parse(a.updated_at || a.created_at || '')
-            const bTime = Date.parse(b.updated_at || b.created_at || '')
-            return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime)
-          })[0]
-
-        if (!latestFile?.name) return [authId, ''] as const
-
-        const { data: publicUrlData } = supabase.storage
-          .from(PROFILE_AVATAR_BUCKET)
-          .getPublicUrl(`${authId}/${latestFile.name}`)
-
-        return [authId, publicUrlData.publicUrl] as const
-      })
-    )
-
-    const mergedMap: Record<string, string> = { ...existingMap }
-    for (const [authId, url] of avatarEntries) {
-      mergedMap[authId] = url
-    }
-
     const nextMap = Object.fromEntries(
-      authIds
-        .map((authId) => [authId, mergedMap[authId] || ''] as const)
+      rows
+        .map((employee) => [employee.auth_id, buildEmployeeAvatarUrl(employee)] as const)
         .filter((entry) => entry[1])
     )
     setEmployeeAvatarUrls((prev) => {
@@ -449,7 +429,7 @@ export default function Employees() {
     }
     const { data, error } = await supabase
       .from('employees')
-      .select('id, auth_id, employee_name, email, role, department, created_at')
+      .select('id, auth_id, employee_name, email, role, department, avatar_path, avatar_url, created_at')
       .neq('isdeleted', true)
       .order('created_at', { ascending: false })
 
@@ -515,7 +495,7 @@ export default function Employees() {
 
     const { data, error } = await supabase
       .from('employees')
-      .select('id, auth_id, employee_name, email, role, department, created_at')
+      .select('id, auth_id, employee_name, email, role, department, avatar_path, avatar_url, created_at')
       .eq('isdeleted', true)
       .order('created_at', { ascending: false })
 
@@ -539,35 +519,14 @@ export default function Employees() {
     return () => window.clearTimeout(timeoutId)
   }, [fetchArchivedEmployees, showArchivedModal])
 
-  async function getCurrentAuthToken() {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-
-    if (session?.access_token?.trim()) {
-      return session.access_token.trim()
-    }
-
-    const {
-      data: refreshedData,
-      error: refreshError,
-    } = await supabase.auth.refreshSession()
-
-    if (refreshError) {
-      return ''
-    }
-
-    return refreshedData.session?.access_token?.trim() || ''
-  }
-
   async function handleAddSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!isSuperAdmin) return
     setAddError(null)
     setAddLoading(true)
 
-    const token = await getCurrentAuthToken()
-    if (!token) {
+    const accessToken = token?.trim() || ''
+    if (!accessToken) {
       setAddLoading(false)
       setAddError('Authentication expired. Sign in again and try again.')
       setActionMessage({ type: 'error', text: 'Authentication expired. Sign in again and try again.' })
@@ -578,7 +537,7 @@ export default function Employees() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({
         email: addEmail,
@@ -628,9 +587,9 @@ export default function Employees() {
       return 'Password must be at least 8 characters long.'
     }
 
-    let token = await getCurrentAuthToken()
+    let accessToken = token?.trim() || ''
 
-    if (!token) {
+    if (!accessToken) {
       return 'Authentication expired. Sign in again and try again.'
     }
 
@@ -639,7 +598,7 @@ export default function Employees() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           authId,
@@ -660,8 +619,8 @@ export default function Employees() {
         return result?.error || 'Failed to update employee password.'
       }
 
-      token = await getCurrentAuthToken()
-      if (!token) {
+      accessToken = token?.trim() || ''
+      if (!accessToken) {
         return 'Authentication expired. Sign in again and try again.'
       }
     }
@@ -744,9 +703,9 @@ export default function Employees() {
     if (!deletingEmployee || !canDelete(deletingEmployee)) return
     setDeleteError(null)
     setDeleteLoading(true)
-    const token = await getCurrentAuthToken()
+    const accessToken = token?.trim() || ''
 
-    if (!token) {
+    if (!accessToken) {
       setDeleteLoading(false)
       setDeleteError('Authentication expired. Sign in again and try again.')
       setActionMessage({ type: 'error', text: 'Authentication expired. Sign in again and try again.' })
@@ -756,7 +715,7 @@ export default function Employees() {
     const response = await fetch(`/api/employees/${deletingEmployee.id}`, {
       method: 'DELETE',
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${accessToken}`,
       },
     })
     const result = (await response.json().catch(() => null)) as { error?: string } | null
@@ -780,8 +739,8 @@ export default function Employees() {
     setArchivedActionEmployeeId(employee.id)
     setArchivedError(null)
 
-    const token = await getCurrentAuthToken()
-    if (!token) {
+    const accessToken = token?.trim() || ''
+    if (!accessToken) {
       setArchivedActionEmployeeId(null)
       setArchivedError('Authentication expired. Sign in again and try again.')
       setActionMessage({ type: 'error', text: 'Authentication expired. Sign in again and try again.' })
@@ -792,7 +751,7 @@ export default function Employees() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({ action }),
     })

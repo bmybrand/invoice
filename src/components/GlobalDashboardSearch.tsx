@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { logFetchError } from '@/lib/fetch-error'
+import { useSessionContext } from '@/context/SessionContext'
 
 type GlobalDashboardSearchProps = {
   accountType: 'employee' | 'client' | null
@@ -68,11 +68,6 @@ function formatInvoiceCode(id: number) {
   return `INV-${id}`
 }
 
-function isLockAbortError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error ?? '')
-  return /lock broken by another request with the 'steal' option/i.test(message)
-}
-
 const DEBOUNCE_MS = 140
 const MAX_RESULTS = 12
 const SECTION_LIMIT = 3
@@ -86,6 +81,7 @@ export function GlobalDashboardSearch({
   currentClientId = null,
 }: GlobalDashboardSearchProps) {
   const router = useRouter()
+  const { token } = useSessionContext()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const requestVersionRef = useRef(0)
   const searchCacheRef = useRef(new Map<string, SearchResult[]>())
@@ -122,29 +118,15 @@ export function GlobalDashboardSearch({
     [accountType, currentClientId, currentEmployeeId, currentUserAuthId, normalizedDepartment, normalizedRole]
   )
 
-  const getAuthToken = useCallback(async () => {
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
-      return session?.access_token?.trim() || ''
-    } catch (error) {
-      if (!isLockAbortError(error)) {
-        logFetchError('global search auth token', error)
-      }
-      return ''
-    }
-  }, [])
-
   const getGatewayRows = useCallback(async () => {
     if (gatewayRowsRef.current) return gatewayRowsRef.current
 
-    const token = await getAuthToken()
-    if (!token) return []
+    const accessToken = token?.trim() || ''
+    if (!accessToken) return []
 
     const response = await fetch('/api/settings/payment-gateways', {
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${accessToken}`,
       },
     })
     if (!response.ok) return []
@@ -155,7 +137,7 @@ export function GlobalDashboardSearch({
 
     gatewayRowsRef.current = payload.gateways ?? []
     return gatewayRowsRef.current
-  }, [getAuthToken])
+  }, [token])
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {

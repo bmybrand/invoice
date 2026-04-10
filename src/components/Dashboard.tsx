@@ -65,6 +65,8 @@ type EmployeeMetricRow = {
   id: number
   auth_id: string | null
   employee_name: string | null
+  avatar_path?: string | null
+  avatar_url?: string | null
 }
 
 type DashboardMetric = {
@@ -173,7 +175,6 @@ const createEmptySnapshot = (): DashboardSnapshot => ({
 })
 
 let dashboardSnapshotCache: DashboardScopedCache | null = null
-const topOperativeAvatarUrlCache = new Map<string, string>()
 
 function isSuccessfulPaymentStatus(value: string | null | undefined): boolean {
   const normalized = (value || '').trim().toLowerCase()
@@ -185,37 +186,13 @@ function isSuccessfulPaymentStatus(value: string | null | undefined): boolean {
   )
 }
 
-async function resolveProfileAvatarUrl(authId: string): Promise<string> {
-  const normalizedAuthId = authId.trim()
-  if (!normalizedAuthId) return ''
-
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const { data, error } = await supabase.storage.from(PROFILE_AVATAR_BUCKET).list(normalizedAuthId)
-
-    if (!error && data?.length) {
-      const latestFile = [...data]
-        .sort((a, b) => {
-          const aTime = Date.parse(a.updated_at || a.created_at || '')
-          const bTime = Date.parse(b.updated_at || b.created_at || '')
-          return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime)
-        })[0]
-
-      if (!latestFile?.name) return ''
-
-      const { data: publicUrlData } = supabase.storage
-        .from(PROFILE_AVATAR_BUCKET)
-        .getPublicUrl(`${normalizedAuthId}/${latestFile.name}`)
-
-      const version = latestFile.updated_at || latestFile.created_at || latestFile.name
-      return publicUrlData.publicUrl ? `${publicUrlData.publicUrl}?v=${encodeURIComponent(version)}` : ''
-    }
-
-    if (attempt === 0) {
-      await new Promise((resolve) => window.setTimeout(resolve, 150))
-    }
+function buildEmployeeAvatarUrl(employee: { avatar_path?: string | null; avatar_url?: string | null }) {
+  const avatarPath = (employee.avatar_path || '').trim()
+  if (avatarPath) {
+    const { data } = supabase.storage.from(PROFILE_AVATAR_BUCKET).getPublicUrl(avatarPath)
+    return data.publicUrl || ''
   }
-
-  return ''
+  return (employee.avatar_url || '').trim()
 }
 
 function initials(name: string) {
@@ -437,7 +414,7 @@ export function Dashboard() {
       if (creatorIds.length > 0) {
         const { data: employeeData, error: employeeError } = await supabase
           .from('employees')
-          .select('id, auth_id, employee_name')
+          .select('id, auth_id, employee_name, avatar_path, avatar_url')
           .neq('isdeleted', true)
           .in('id', creatorIds)
 
@@ -472,7 +449,7 @@ export function Dashboard() {
         id: creator.id,
         authId: authId || null,
         name: creator.name,
-        avatarUrl: authId ? topOperativeAvatarUrlCache.get(authId) || '' : '',
+        avatarUrl: buildEmployeeAvatarUrl(employeeMap.get(creator.id) || {}),
         amount: `$${creator.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         rank: index + 1,
         color: topOperativeStyles[index]?.color ?? 'text-slate-400',
@@ -612,43 +589,6 @@ export function Dashboard() {
         },
       }
 
-      const missingAvatarOperatives = nextTopOperatives.filter((operative) => operative.authId && !operative.avatarUrl)
-      if (missingAvatarOperatives.length > 0) {
-        void (async () => {
-          const avatarEntries = await Promise.all(
-            missingAvatarOperatives.map(async (operative) => {
-              const authId = operative.authId?.trim() || ''
-              if (!authId) return [operative.id, ''] as const
-              const url = await resolveProfileAvatarUrl(authId)
-              if (url) {
-                topOperativeAvatarUrlCache.set(authId, url)
-              }
-              return [operative.id, url] as const
-            })
-          )
-
-          if (cancelled) return
-
-          const avatarUrlByOperativeId = new Map<number, string>(avatarEntries.filter((entry) => entry[1]))
-          if (avatarUrlByOperativeId.size === 0) return
-
-          const hydratedTopOperatives = nextTopOperatives.map((operative) => ({
-            ...operative,
-            avatarUrl: operative.avatarUrl || avatarUrlByOperativeId.get(operative.id) || '',
-          }))
-
-          setTopOperatives(hydratedTopOperatives)
-          if (dashboardSnapshotCache?.ownerAuthId === currentUserAuthId) {
-            dashboardSnapshotCache = {
-              ownerAuthId: currentUserAuthId,
-              snapshot: {
-                ...dashboardSnapshotCache.snapshot,
-                topOperatives: hydratedTopOperatives,
-              },
-            }
-          }
-        })()
-      }
     }
 
     loadDashboardData()
