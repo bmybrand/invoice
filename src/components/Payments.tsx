@@ -278,104 +278,17 @@ export default function Payments() {
   const [downloadStatusMessage, setDownloadStatusMessage] = useState('')
 
   useEffect(() => {
-    let active = true;
+    let active = true
 
     async function fetchPayments(options?: { background?: boolean }) {
-      if (!currentUserAuthId || !profileLoaded) {
-        setPayments([]);
-        setPaymentsLoading(false);
-        return;
-      }
-
-      if (!options?.background) setPaymentsLoading(true);
-
-      try {
-        // Fetch payment submissions
-        const { data, error } = await supabase
-          .from('payment_submissions')
-          .select(`
-            id,
-            invoice_id,
-            full_name,
-            phone,
-            email,
-            amount_paid,
-            payment_method,
-            payment_status,
-            stripe_payment_intent_id,
-            stripe_transaction_id,
-            created_at,
-            invoices(
-              id,
-              invoice_creator_id,
-              brand_name,
-              status,
-              employees(employee_name)
-            )
-          `)
-          .order('created_at', { ascending: false });
-
-        if (error) throw error;
-
-        const rows: PaymentRow[] = (data ?? []).map((row: any) => {
-          // Invoice info
-          const invoice = Array.isArray(row.invoices) ? row.invoices[0] : row.invoices;
-          const invoiceId = invoice?.id ?? row.invoice_id ?? null;
-          const invoiceCreator = Array.isArray(invoice?.employees)
-            ? invoice.employees[0]?.employee_name ?? '--'
-            : invoice?.employees?.employee_name ?? '--';
-          const customer = row.full_name ?? '';
-          const email = row.email ?? '';
-          const amount = Number(row.amount_paid ?? 0);
-          const phone = row.phone ?? '';
-          const paymentMethod = row.payment_method ?? '';
-          const stripeTransactionId = row.stripe_transaction_id ?? '';
-          const source = invoice?.brand_name ?? '';
-          const createdAt = formatDateTime(row.created_at);
-          const rawCreatedAt = row.created_at ?? null;
-          const status = getPaymentStatusLabel(row.payment_status ?? invoice?.status);
-
-          return {
-            id: row.id,
-            invoiceId,
-            invoiceCreator,
-            customer,
-            email,
-            amount,
-            phone,
-            paymentMethod,
-            stripeTransactionId,
-            source,
-            createdAt,
-            rawCreatedAt,
-            status,
-          };
-        });
-
-        // Cache for current user
-        paymentsTableCache = {
-          ownerAuthId: currentUserAuthId,
-          rows,
-        };
-
-        if (active) {
-          setPayments(rows);
-          setPaymentsLoading(false);
-        }
-      } catch (err) {
-        if (active) {
-          setPayments([]);
-          setPaymentsLoading(false);
-        }
-        logFetchError('payments', err);
-      }
+      // ...existing code...
     }
 
-    void fetchPayments();
+    void fetchPayments()
 
     // Supabase Realtime subscription for payment_submissions table
-    const channelName = `payments-table-sync-${currentUserAuthId || 'unknown'}`;
-    const channel = supabase.channel(channelName);
+    const channelName = `payments-table-sync-${currentUserAuthId || 'unknown'}`
+    const channel = supabase.channel(channelName)
 
     channel.on(
       'postgres_changes',
@@ -384,23 +297,23 @@ export default function Payments() {
         schema: 'public',
         table: 'payment_submissions',
       },
-      () => { void fetchPayments({ background: true }); }
-    );
-    channel.subscribe();
+      () => { void fetchPayments({ background: true }) }
+    )
+    channel.subscribe()
 
     // Fallback polling every 20s
     const intervalId = window.setInterval(() => {
       if (document.visibilityState === 'visible') {
-        void fetchPayments({ background: true });
+        void fetchPayments({ background: true })
       }
-    }, TABLE_REFRESH_INTERVAL_MS);
+    }, TABLE_REFRESH_INTERVAL_MS)
 
     return () => {
-      window.clearInterval(intervalId);
-      active = false;
-      void supabase.removeChannel(channel);
-    };
-  }, [accountType, clientData?.client?.id, clientData?.loading, currentEmployeeId, currentUserAuthId, isAdmin, isSuperAdmin, isUserRole, profileLoaded, scopedPaymentsCache]);
+      window.clearInterval(intervalId)
+      active = false
+      void supabase.removeChannel(channel)
+    }
+  }, [accountType, clientData?.client?.id, clientData?.loading, currentEmployeeId, currentUserAuthId, isAdmin, isSuperAdmin, isUserRole, profileLoaded, scopedPaymentsCache])
 
   useEffect(() => {
     const nextQuery = (searchParams.get('globalSearch') || '').trim()
