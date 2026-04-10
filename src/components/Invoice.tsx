@@ -1134,6 +1134,8 @@ export default function Invoice() {
       setActionMessage({ type: 'error', text: addValidation.message })
       return
     }
+    // Set loading immediately after passing initial validation
+    setAddLoading(true)
     const cleanServices = addServices.map((line) => ({
       description: line.description.trim(),
       qty: Number(line.qty) || 1,
@@ -1148,12 +1150,12 @@ export default function Invoice() {
       setAddGatewayLimits(gatewayValidation.gateways)
       setAddGatewayInfoOpen(false)
       setActionMessage({ type: 'error', text: gatewayValidation.error })
+      setAddLoading(false)
       return
     }
     setAddGatewayLimits([])
     setAddGatewayInfoOpen(false)
     setAddError(null)
-    setAddLoading(true)
 
     const resolvedBrand = addBrand.trim() || getDefaultInvoiceBrand()
 

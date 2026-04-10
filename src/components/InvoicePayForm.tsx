@@ -492,9 +492,19 @@ function PaymentFormInner({
     )
   }
 
+  // Prevent double submit
+  const [submitLocked, setSubmitLocked] = useState(false);
   return (
     <form
-      onSubmit={handleSubmit}
+      onSubmit={async (e) => {
+        if (submitLocked) return;
+        setSubmitLocked(true);
+        try {
+          await handleSubmit(e);
+        } finally {
+          setSubmitLocked(false);
+        }
+      }}
       onInvalidCapture={handleRequiredFieldInvalid}
       onInputCapture={clearRequiredFieldInvalid}
       onChangeCapture={clearRequiredFieldInvalid}
@@ -626,7 +636,7 @@ function PaymentFormInner({
         </p>
         <button
           type="submit"
-          disabled={paying || !stripe || !elements}
+          disabled={paying || !stripe || !elements || submitLocked}
           className="min-w-[124px] rounded-[12px] bg-[#ff5d00] px-8 py-3 text-sm font-semibold text-white transition hover:bg-[#ff7a1f] disabled:cursor-not-allowed disabled:opacity-50"
         >
           {paying ? 'Processing...' : 'Pay Now'}

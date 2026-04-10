@@ -1,4 +1,8 @@
+
 'use client'
+
+// Prevent double send
+// (the rest of the code follows)
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -2024,16 +2028,28 @@ export function ClientChatModal({
                 />
                 <button
                   type="button"
-                  onClick={() => void handleSendMessage()}
-                  disabled={!canSend}
+                  onClick={async () => {
+                    if (!canSend || sendLocked) return;
+                    setSendLocked(true);
+                    try {
+                      await handleSendMessage();
+                    } finally {
+                      setSendLocked(false);
+                    }
+                  }}
+                  disabled={!canSend || sendLocked}
                   className="inline-flex h-10 px-3 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-orange-500 text-xs font-semibold text-white transition hover:bg-orange-600 disabled:opacity-50"
                 >
                   <SendIcon className="h-4 w-4" />
-                  {sending || uploading ? 'Sending' : 'Send'}
+                  {sending || uploading || sendLocked ? 'Sending' : 'Send'}
                 </button>
               </div>
               {error ? (
-                <p className="mt-2 text-xs text-rose-300">{error}</p>
+                <p className="mt-2 text-xs text-rose-300">
+                  {typeof error === 'string' && (error.includes('502') || error.toLowerCase().includes('bad gateway'))
+                    ? 'Unable to send message due to a temporary server issue. Please try again.'
+                    : error}
+                </p>
               ) : null}
           </div>
         ) : null}

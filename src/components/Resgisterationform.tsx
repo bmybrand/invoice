@@ -52,6 +52,8 @@ export function RegisterForm() {
   const [agentAuthId, setAgentAuthId] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  // Prevent double submit
+  const [submitLocked, setSubmitLocked] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -188,7 +190,15 @@ export function RegisterForm() {
             </p>
 
             <form
-              onSubmit={handleSubmit}
+              onSubmit={async (e) => {
+                if (submitLocked) return;
+                setSubmitLocked(true);
+                try {
+                  await handleSubmit(e);
+                } finally {
+                  setSubmitLocked(false);
+                }
+              }}
               onInvalidCapture={handleRequiredFieldInvalid}
               onInputCapture={clearRequiredFieldInvalid}
               onChangeCapture={clearRequiredFieldInvalid}
@@ -333,7 +343,7 @@ export function RegisterForm() {
 
               <button
                 type="submit"
-                disabled={loading || agentsLoading || salesAgents.length === 0}
+                disabled={loading || agentsLoading || salesAgents.length === 0 || submitLocked}
                 className="mt-1 flex items-center justify-center gap-2 rounded-lg bg-orange-500 px-4 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-orange-600 disabled:opacity-50 sm:mt-2 sm:rounded-xl sm:px-5 sm:py-4 sm:text-base lg:px-6 lg:py-4 lg:text-base xl:py-5 xl:text-lg"
               >
                 {loading ? 'Creating Account...' : 'Create Account'}
