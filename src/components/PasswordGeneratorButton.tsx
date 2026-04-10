@@ -4,6 +4,7 @@ import React from 'react'
 interface PasswordGeneratorButtonProps {
   password: string
   setPassword: (val: string) => void
+  onGenerate?: (password: string) => void
   className?: string
 }
 
@@ -16,26 +17,40 @@ function generateStrongPassword(length = 12) {
   return password
 }
 
-export const PasswordGeneratorButton: React.FC<PasswordGeneratorButtonProps> = ({ password, setPassword, className }) => (
-  <div className={`flex gap-2 w-full mt-2 ${className || ''}`}>
+export const PasswordGeneratorButton: React.FC<PasswordGeneratorButtonProps> = ({ password, setPassword, onGenerate, className }) => (
+  <div className={`mt-2 w-full ${className || ''}`}>
+    <div className="flex w-full items-center rounded-xl bg-slate-700 p-1 transition-all duration-300 ease-out">
     <button
       type="button"
-      className="flex-1 rounded-xl h-12 py-0 font-semibold text-sm focus:outline-none transition-all duration-200 bg-slate-700 text-white hover:bg-orange-500 flex items-center justify-center"
+        className="flex h-12 flex-1 items-center justify-center rounded-[10px] px-4 py-0 text-sm font-semibold text-white transition-all duration-300 ease-out hover:bg-orange-500 focus:outline-none"
       style={{ minHeight: '3rem' }}
-      onClick={() => setPassword(generateStrongPassword())}
+      onClick={() => {
+        const nextPassword = generateStrongPassword()
+        if (onGenerate) {
+          onGenerate(nextPassword)
+          return
+        }
+        setPassword(nextPassword)
+      }}
     >
       {password ? 'Re-generate password' : 'Generate password'}
     </button>
-    {password && (
-      <button
-        type="button"
-        className="ml-1 px-3 h-12 flex items-center justify-center rounded-xl bg-slate-700 hover:bg-orange-500 text-white transition-all duration-200"
-        style={{ minHeight: '3rem' }}
-        title="Copy password"
-        onClick={() => { navigator.clipboard.writeText(password) }}
+      <div
+        className={`overflow-hidden transition-all duration-300 ease-out ${password ? 'ml-1 w-12 opacity-100' : 'ml-0 w-0 opacity-0'}`}
       >
-        <FiCopy size={18} />
-      </button>
-    )}
+        <button
+          type="button"
+          className="flex h-12 w-12 items-center justify-center rounded-[10px] text-white transition-all duration-300 ease-out hover:bg-orange-500 focus:outline-none disabled:pointer-events-none"
+          style={{ minHeight: '3rem' }}
+          title="Copy password"
+          disabled={!password}
+          tabIndex={password ? 0 : -1}
+          aria-hidden={!password}
+          onClick={() => { navigator.clipboard.writeText(password) }}
+        >
+          <FiCopy size={18} />
+        </button>
+      </div>
+    </div>
   </div>
 )

@@ -4,7 +4,9 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { FiEye, FiEyeOff } from 'react-icons/fi'
 import { supabase } from '@/lib/supabase'
+import { useSessionContext } from '@/context/SessionContext'
 import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
 
 function EnvelopeIcon() {
@@ -26,8 +28,10 @@ function LockIcon() {
 export function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { user: sessionUser, loading: sessionLoading } = useSessionContext()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const reason = searchParams.get('reason')
@@ -41,62 +45,9 @@ export function LoginForm() {
       : null
 
   useEffect(() => {
-    let active = true
-
-    const timeoutId = window.setTimeout(async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
-
-      if (!active || !session?.user) return
-
-      const authId = session.user.id
-      const normalizedEmail = (session.user.email ?? '').trim()
-
-      const [
-        { data: employeeData, error: employeeError },
-        { data: clientData, error: clientError },
-        { data: latestRequest, error: requestError },
-      ] = await Promise.all([
-        supabase.from('employees').select('id').eq('auth_id', authId).neq('isdeleted', true).maybeSingle(),
-        supabase
-          .from('clients')
-          .select('id')
-          .eq('status', 'approved')
-          .neq('isdeleted', true)
-          .or(`auth_id.eq.${authId},email.eq.${normalizedEmail}`)
-          .maybeSingle(),
-        supabase
-          .from('clients')
-          .select('status')
-          .neq('isdeleted', true)
-          .or(`auth_id.eq.${authId},email.eq.${normalizedEmail}`)
-          .order('created_date', { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-      ])
-
-      if (!active || employeeError || clientError || requestError) return
-
-      if (employeeData || clientData) {
-        router.replace('/dashboard')
-        router.refresh()
-        return
-      }
-
-      const requestStatus = (latestRequest as { status?: string } | null)?.status?.trim().toLowerCase()
-
-      if (requestStatus === 'pending') {
-        router.replace('/register/pending')
-        router.refresh()
-      }
-    }, 0)
-
-    return () => {
-      active = false
-      window.clearTimeout(timeoutId)
-    }
-  }, [router])
+    if (sessionLoading || !sessionUser) return
+    router.replace('/dashboard')
+  }, [router, sessionLoading, sessionUser])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -154,107 +105,8 @@ export function LoginForm() {
       return
     }
 
-    let sessionReady = false
-
-    for (let attempt = 0; attempt < 10; attempt += 1) {
-      const { data } = await supabase.auth.getSession()
-      if (data.session) {
-        sessionReady = true
-        break
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 150))
-    }
-
-    if (!sessionReady) {
-      setLoading(false)
-      setError('Sign-in completed, but the session is still syncing. Please try again.')
-      return
-    }
-
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
-
-    if (userError || !user) {
-      await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
-      setLoading(false)
-      setError('Unable to verify your account. Please try again.')
-      return
-    }
-
-    const authId = user.id
-    const normalizedEmail = (user.email ?? '').trim()
-
-    const [
-      { data: employeeData, error: employeeError },
-      { data: clientData, error: clientError },
-      { data: latestRequest, error: requestError },
-    ] = await Promise.all([
-      supabase.from('employees').select('id').eq('auth_id', authId).neq('isdeleted', true).maybeSingle(),
-        supabase
-          .from('clients')
-          .select('id')
-          .eq('status', 'approved')
-          .neq('isdeleted', true)
-          .or(`auth_id.eq.${authId},email.eq.${normalizedEmail}`)
-          .maybeSingle(),
-        supabase
-          .from('clients')
-          .select('status')
-          .neq('isdeleted', true)
-          .or(`auth_id.eq.${authId},email.eq.${normalizedEmail}`)
-          .order('created_date', { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-    ])
-
-    if (employeeError || clientError || requestError) {
-      await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
-      setLoading(false)
-      setError(
-        employeeError?.message ||
-          clientError?.message ||
-          requestError?.message ||
-          'Unable to verify your account.'
-      )
-      return
-    }
-
-    if (employeeData || clientData) {
-      router.replace('/dashboard')
-      return
-    }
-
-    const requestStatus = (latestRequest as { status?: string } | null)?.status?.trim().toLowerCase()
-
-    if (requestStatus === 'approved') {
-      await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
-      setLoading(false)
-      setError('Invalid credentials.')
-      return
-    }
-
-    if (requestStatus === 'pending') {
-      router.replace('/register/pending')
-      return
-    }
-
-    await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
-    setLoading(false)
-
-    if (requestStatus === 'rejected') {
-      setError('Your registration request was rejected. Contact an administrator or register again.')
-      return
-    }
-
-    if (!latestRequest) {
-      setError('Invalid credentials.')
-      return
-    }
-
-    setError(`Your account (${normalizedEmail}) is not approved for dashboard access.`)
+    router.replace('/dashboard')
+    router.refresh()
   }
 
   return (
@@ -302,7 +154,7 @@ export function LoginForm() {
                 <LockIcon />
                 <input
                   id="password"
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
@@ -310,6 +162,15 @@ export function LoginForm() {
                   autoComplete="current-password"
                   className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none sm:text-base lg:text-lg"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  className="shrink-0 text-slate-400 transition hover:text-white focus:outline-none"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  title={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <FiEyeOff size={18} /> : <FiEye size={18} />}
+                </button>
               </div>
             </div>
 

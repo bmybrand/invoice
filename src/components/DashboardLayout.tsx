@@ -1,16 +1,9 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback, createContext, useContext } from 'react'
-import { FiCopy } from 'react-icons/fi'
-
-function generateStrongPassword(length = 12) {
-  const charset = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*()_+-=~';
-  let password = '';
-  for (let i = 0; i < length; ++i) {
-    password += charset.charAt(Math.floor(Math.random() * charset.length));
-  }
-  return password;
-}
+import { PasswordGeneratorButton } from '@/components/PasswordGeneratorButton'
+import { PasswordInput } from '@/components/PasswordInput'
+import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
 import { Plus_Jakarta_Sans } from 'next/font/google'
@@ -21,13 +14,13 @@ import { MdGroups2 } from 'react-icons/md'
 import { RiSecurePaymentFill } from 'react-icons/ri'
 import { supabase } from '@/lib/supabase'
 import { ClientDashboardDataProvider, useClientDashboardData } from '@/context/ClientDashboardDataContext'
+import { useSessionContext } from '@/context/SessionContext'
 import { NotificationsBell } from '@/components/NotificationsBell'
 import { GlobalDashboardSearch } from '@/components/GlobalDashboardSearch'
 import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 const PROFILE_AVATAR_BUCKET = 'profile-images'
-const SESSION_GUARD_POLL_MS = 5000
 
 type DashboardProfile = {
   displayName: string
@@ -39,6 +32,24 @@ type DashboardProfile = {
   onlineAuthIds: string[]
   accountType: 'employee' | 'client' | null
   profileLoaded: boolean
+}
+
+type DashboardBootstrapResponse = {
+  state: 'employee' | 'client' | 'pending' | 'rejected' | 'deleted' | 'approved_stale' | 'none'
+  employee?: {
+    id: number
+    employeeName: string
+    role: string
+    department: string
+    avatarUrl: string
+  }
+  client?: {
+    id: number
+    name: string
+    email: string
+    handlerId: string
+  }
+  error?: string
 }
 
 const DashboardProfileContext = createContext<DashboardProfile>({
@@ -222,6 +233,8 @@ function ProfileAvatar({
       }
     >
       {showImage ? (
+        // Avatar URLs come from storage and may vary by environment, so keep a plain img here.
+        // eslint-disable-next-line @next/next/no-img-element
         <img
           src={imageUrl || ''}
           alt={name}
@@ -278,9 +291,10 @@ const allNavItems: Array<{ label: string; href: string }> = [
   { label: 'Settings', href: '/dashboard/settings' },
 ]
 
-export function DashboardLayout({ children, title }: { children: React.ReactNode; title?: string }) {
+export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
+  const { user: sessionUser, token, loading: sessionLoading } = useSessionContext()
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [displayName, setDisplayName] = useState('')
@@ -290,6 +304,7 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
   const [displayAvatarUrl, setDisplayAvatarUrl] = useState('')
   const [currentUserAuthId, setCurrentUserAuthId] = useState<string | null>(null)
   const [currentUserEmail, setCurrentUserEmail] = useState('')
+  const [currentClientId, setCurrentClientId] = useState<number | null>(null)
   const [profileModalOpen, setProfileModalOpen] = useState(false)
   const [profileName, setProfileName] = useState('')
   const [profileEmail, setProfileEmail] = useState('')
@@ -309,13 +324,10 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
   const profileLoadInFlightRef = useRef(false)
   const profileLoadQueuedRef = useRef(false)
 
-  const isLockAbortError = useCallback((message: string | undefined) => {
-    return /lock broken by another request with the 'steal' option/i.test(message || '')
-  }, [])
-
   const resetDashboardProfile = useCallback((nextProfileLoaded: boolean) => {
     setCurrentUserAuthId(null)
     setCurrentEmployeeId(null)
+    setCurrentClientId(null)
     setCurrentUserEmail('')
     setDisplayName('')
     setDisplayRole('')
@@ -356,165 +368,109 @@ export function DashboardLayout({ children, title }: { children: React.ReactNode
     profileLoadInFlightRef.current = true
 
     try {
-    const {
-      data: { user: serverUser },
-      error: userError,
-    } = await supabase.auth.getUser()
+      const user = sessionUser
+      const accessToken = token?.trim() || ''
 
-    if (userError || !serverUser?.id) {
-      if (isLockAbortError(userError?.message)) {
+      if (!user?.id) {
+        resetDashboardProfile(false)
+        redirectToLoginHard()
         return
       }
-      resetDashboardProfile(false)
-      await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
-      router.replace('/login')
-      return
-    }
 
-    const user = serverUser
+      if (!accessToken) {
+        return
+      }
 
-    const metadata = user.user_metadata as Record<string, unknown> | undefined
-    const metadataDisplayName =
-      typeof metadata?.display_name === 'string' ? metadata.display_name.trim() : ''
-    const metadataAvatarUrl =
-      typeof metadata?.avatar_url === 'string' ? metadata.avatar_url.trim() : ''
+      const metadata = user.user_metadata as Record<string, unknown> | undefined
+      const metadataDisplayName =
+        typeof metadata?.display_name === 'string' ? metadata.display_name.trim() : ''
+      const metadataAvatarUrl =
+        typeof metadata?.avatar_url === 'string' ? metadata.avatar_url.trim() : ''
 
-    setCurrentUserAuthId(user.id)
-    setCurrentUserEmail(user.email ?? '')
-    setDisplayAvatarUrl(metadataAvatarUrl)
+      setCurrentUserAuthId(user.id)
+      setCurrentUserEmail(user.email ?? '')
+      setDisplayAvatarUrl(metadataAvatarUrl)
 
-    let { data: employeeData, error: employeeError } = await supabase
-      .from('employees')
-      .select('id, employee_name, role, department, avatar_url')
-      .eq('auth_id', user.id)
-      .neq('isdeleted', true)
-      .maybeSingle()
+      const response = await fetch('/api/dashboard/bootstrap', {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      })
 
-    if (employeeError && isLockAbortError(employeeError.message)) {
-      await new Promise((resolve) => window.setTimeout(resolve, 180))
-      const retryResult = await supabase
-        .from('employees')
-        .select('id, employee_name, role, department, avatar_url')
-        .eq('auth_id', user.id)
-        .neq('isdeleted', true)
-        .maybeSingle()
-      employeeData = retryResult.data
-      employeeError = retryResult.error
-    }
+      const result = (await response.json().catch(() => null)) as DashboardBootstrapResponse | null
 
-    if (employeeData) {
-      const row = employeeData as { id?: number; employee_name?: string; role?: string; department?: string; avatar_url?: string | null } | null
+      if (!response.ok) {
+        if (response.status === 401) {
+          resetDashboardProfile(false)
+          redirectToLoginHard()
+          return
+        }
 
-      setDisplayName(row?.employee_name?.trim() || metadataDisplayName || user.email || 'User')
-      setCurrentEmployeeId(typeof row?.id === 'number' ? row.id : null)
-      setDisplayAvatarUrl((row?.avatar_url || '').trim() || metadataAvatarUrl)
-      setDisplayRole(
-        row?.role
-          ? String(row.role).charAt(0).toUpperCase() + String(row.role).slice(1).toLowerCase()
-          : ''
-      )
-      setDisplayDepartment(row?.department?.trim() || '')
-      setAccountType('employee')
-      setProfileLoaded(true)
-      return
-    }
+        console.error('Dashboard bootstrap error:', result?.error || 'Failed to load dashboard profile')
+        setDisplayName(metadataDisplayName || user.email || 'User')
+        setCurrentEmployeeId(null)
+        setCurrentClientId(null)
+        setDisplayRole('')
+        setDisplayDepartment('')
+        setAccountType(null)
+        setProfileLoaded(true)
+        return
+      }
 
-    if (employeeError && !isLockAbortError(employeeError.message)) {
-      console.error('Employee lookup error:', employeeError.message)
-    }
-
-    const { data: deletedEmployee } = await supabase
-      .from('employees')
-      .select('id')
-      .eq('auth_id', user.id)
-      .eq('isdeleted', true)
-      .maybeSingle()
-
-    if (deletedEmployee) {
-      resetDashboardProfile(false)
-      await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
-      router.replace('/login')
-      return
-    }
-
-  const { data: clientData, error: clientError } = await supabase
-  .from('clients')
-  .select('name, email, auth_id, handler_id')
-  .eq('status', 'approved')
-  .neq('isdeleted', true)
-  .or(`auth_id.eq.${user.id},email.eq.${user.email ?? ''}`)
-  .maybeSingle()
-
-if (clientData) {
-  const row = clientData as { name?: string; email?: string; auth_id?: string; handler_id?: string } | null
-  const clientName = row?.name?.trim() || metadataDisplayName || user.email || 'Client'
-
-  setDisplayName(clientName)
-  setCurrentEmployeeId(null)
-  setDisplayRole('Client')
-  setAccountType('client')
-  setProfileLoaded(true)
-  return
-}
-
-if (clientError) {
-  console.error('Client lookup error:', clientError.message)
-}
-
-    const { data: latestRequest } = await supabase
-      .from('clients')
-      .select('id, status')
-      .neq('isdeleted', true)
-      .or(`auth_id.eq.${user.id},email.eq.${user.email ?? ''}`)
-      .order('created_date', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    const requestStatus = (latestRequest as { id?: number; status?: string } | null)?.status
-      ?.trim()
-      .toLowerCase()
-
-    if (requestStatus === 'pending') {
-      setProfileLoaded(true)
-      router.replace('/register/pending')
-      return
-    }
-
-    if (requestStatus === 'approved') {
-      resetDashboardProfile(false)
-      await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
-      router.replace('/login')
-      return
-    }
-
-    if (requestStatus === 'rejected') {
-      resetDashboardProfile(false)
-      await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
-      router.replace('/login?reason=rejected')
-      return
-    }
-
-    const { data: deletedClient } = await supabase
-      .from('clients')
-      .select('id')
-      .eq('isdeleted', true)
-      .or(`auth_id.eq.${user.id},email.eq.${user.email ?? ''}`)
-      .order('created_date', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    if (deletedClient) {
-      resetDashboardProfile(false)
-      await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
-      router.replace('/login')
-      return
-    }
-
-    setDisplayName(metadataDisplayName || user.email || 'User')
-    setCurrentEmployeeId(null)
-    setDisplayRole('')
-    setAccountType(null)
-    setProfileLoaded(true)
+      switch (result?.state) {
+        case 'employee': {
+          const row = result.employee
+          setDisplayName(row?.employeeName || metadataDisplayName || user.email || 'User')
+          setCurrentEmployeeId(typeof row?.id === 'number' ? row.id : null)
+          setCurrentClientId(null)
+          setDisplayAvatarUrl((row?.avatarUrl || '').trim() || metadataAvatarUrl)
+          setDisplayRole(
+            row?.role
+              ? String(row.role).charAt(0).toUpperCase() + String(row.role).slice(1).toLowerCase()
+              : ''
+          )
+          setDisplayDepartment(row?.department?.trim() || '')
+          setAccountType('employee')
+          setProfileLoaded(true)
+          return
+        }
+        case 'client': {
+          const row = result.client
+          setDisplayName(row?.name || metadataDisplayName || user.email || 'Client')
+          setCurrentEmployeeId(null)
+          setCurrentClientId(typeof row?.id === 'number' ? row.id : null)
+          setDisplayRole('Client')
+          setDisplayDepartment('')
+          setAccountType('client')
+          setProfileLoaded(true)
+          return
+        }
+        case 'pending':
+          setProfileLoaded(true)
+          router.replace('/register/pending')
+          return
+        case 'approved_stale':
+        case 'deleted':
+          resetDashboardProfile(false)
+          await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+          redirectToLoginHard()
+          return
+        case 'rejected':
+          resetDashboardProfile(false)
+          await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+          router.replace('/login?reason=rejected')
+          return
+        case 'none':
+        default:
+          setDisplayName(metadataDisplayName || user.email || 'User')
+          setCurrentEmployeeId(null)
+          setCurrentClientId(null)
+          setDisplayRole('')
+          setDisplayDepartment('')
+          setAccountType(null)
+          setProfileLoaded(true)
+          return
+      }
     } finally {
       profileLoadInFlightRef.current = false
       if (profileLoadQueuedRef.current) {
@@ -522,31 +478,27 @@ if (clientError) {
         void loadProfile()
       }
     }
-  }, [isLockAbortError, resetDashboardProfile, router])
+  }, [redirectToLoginHard, resetDashboardProfile, router, sessionUser, token])
 
   useEffect(() => {
+    if (sessionLoading) return
+
+    if (!sessionUser) {
+      resetDashboardProfile(false)
+      redirectToLoginHard()
+      return
+    }
+
+    if (!token?.trim()) return
+
     const timeoutId = window.setTimeout(() => {
       void loadProfile()
     }, 0)
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT') {
-        resetDashboardProfile(false)
-        redirectToLoginHard()
-      } else if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session?.user) {
-        void loadProfile()
-      } else if (!session?.user) {
-        resetDashboardProfile(false)
-      }
-    })
-
     return () => {
       window.clearTimeout(timeoutId)
-      subscription.unsubscribe()
     }
-  }, [loadProfile, redirectToLoginHard, resetDashboardProfile])
+  }, [loadProfile, redirectToLoginHard, resetDashboardProfile, sessionLoading, sessionUser, token])
 
   useEffect(() => {
     if (!accountType) return
@@ -767,7 +719,8 @@ if (clientError) {
   }, [currentUserAuthId, accountType])
 
   useEffect(() => {
-    if (accountType !== 'client' || !currentUserAuthId) {
+    if (accountType !== 'client' || !currentUserAuthId || !currentClientId) {
+      setChatMessageCount(0)
       return
     }
 
@@ -775,29 +728,10 @@ if (clientError) {
     let channel: ReturnType<typeof supabase.channel> | null = null
 
     const loadChatCount = async () => {
-      const identifierFilters = [`auth_id.eq.${currentUserAuthId}`]
-      if (currentUserEmail.trim()) {
-        identifierFilters.push(`email.eq.${currentUserEmail.trim()}`)
-      }
-
-      const { data: clientRow } = await supabase
-        .from('clients')
-        .select('id')
-        .eq('status', 'approved')
-        .neq('isdeleted', true)
-        .or(identifierFilters.join(','))
-        .maybeSingle()
-
-      const clientId = Number((clientRow as { id?: number } | null)?.id ?? 0)
-      if (!Number.isFinite(clientId) || clientId < 1) {
-        if (!cancelled) setChatMessageCount(0)
-        return null
-      }
-
       const { count, error } = await supabase
         .from('client_chat_messages')
         .select('id', { count: 'exact', head: true })
-        .eq('client_id', clientId)
+        .eq('client_id', currentClientId)
         .eq('isdeleted', false)
         .eq('read_by_client', false)
         .neq('sender_auth_id', currentUserAuthId)
@@ -806,7 +740,7 @@ if (clientError) {
         setChatMessageCount(count ?? 0)
       }
 
-      return clientId
+      return currentClientId
     }
 
     const setup = async () => {
@@ -844,7 +778,7 @@ if (clientError) {
         void supabase.removeChannel(channel)
       }
     }
-  }, [accountType, currentUserAuthId, currentUserEmail])
+  }, [accountType, currentClientId, currentUserAuthId])
 
   async function handleLogout() {
     setProfileModalOpen(false)
@@ -1095,7 +1029,7 @@ if (clientError) {
             }`}
           >
             <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md sm:h-7 sm:w-7 md:h-8 md:w-8 md:rounded-lg xl:h-9 xl:w-9">
-              <img src="/bmybrand-B.svg" alt="Brand Logo" className="h-full w-full object-contain" />
+              <Image src="/bmybrand-B.svg" alt="Brand Logo" width={36} height={36} className="h-full w-full object-contain" />
             </div>
             <span
               className={`truncate text-lg font-extrabold leading-6 transition-[opacity,max-width] duration-200 md:text-xl md:leading-7 ${sidebarCollapsed ? 'w-0 max-w-0 opacity-0' : 'opacity-100 delay-200'}`}
@@ -1198,7 +1132,7 @@ if (clientError) {
               title={sidebarCollapsed ? 'Log Out' : undefined}
             >
               <span className="flex h-5 w-5 items-center justify-center">
-                <img src="/logout-svgrepo-com.svg" alt="" className="h-3.5 w-3.5 object-contain" />
+                <Image src="/logout-svgrepo-com.svg" alt="" width={14} height={14} className="h-3.5 w-3.5 object-contain" />
               </span>
               <span
                 className={`truncate transition-opacity duration-200 ${sidebarCollapsed ? 'max-w-0 opacity-0' : 'opacity-100 delay-200'}`}
@@ -1367,13 +1301,13 @@ if (clientError) {
                   <label htmlFor="profile-password" className="block text-sm font-medium text-slate-300">
                     New Password
                   </label>
-                  <input
+                  <PasswordInput
                     id="profile-password"
-                    type="password"
                     value={profilePassword}
                     onChange={(e) => setProfilePassword(e.target.value)}
                     placeholder="Leave blank if you do not want to change the password."
-                    className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                    wrapperClassName="mt-1 flex items-center gap-3 rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20"
+                    inputClassName="min-w-0 flex-1 bg-transparent text-white placeholder:text-slate-500 focus:outline-none"
                   />
                   <p className="mt-1 text-xs text-slate-500">
                     Leave blank if you do not want to change the password.
@@ -1384,43 +1318,26 @@ if (clientError) {
                   <label htmlFor="profile-confirm-password" className="block text-sm font-medium text-slate-300">
                     Confirm Password
                   </label>
-                  <input
+                  <PasswordInput
                     id="profile-confirm-password"
-                    type="password"
                     value={profileConfirmPassword}
                     onChange={(e) => setProfileConfirmPassword(e.target.value)}
                     placeholder="Repeat the new password"
-                    className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                    wrapperClassName="mt-1 flex items-center gap-3 rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20"
+                    inputClassName="min-w-0 flex-1 bg-transparent text-white placeholder:text-slate-500 focus:outline-none"
                   />
                 </div>
 
-                <div className="flex gap-2 w-full mt-2">
-                  <button
-                    type="button"
-                    className={`flex-1 rounded-xl h-12 py-0 font-semibold text-sm focus:outline-none transition-all duration-200 bg-slate-700 text-white hover:bg-orange-500 flex items-center justify-center`}
-                    style={{ minHeight: '3rem' }}
-                    onClick={() => {
-                      const pwd = generateStrongPassword();
-                      setProfilePassword(pwd);
-                      setProfileConfirmPassword(pwd);
-                    }}
-                  >
-                    {profilePassword ? 'Re-generate password' : 'Generate password'}
-                  </button>
-                  {profilePassword && (
-                    <button
-                      type="button"
-                      className="ml-1 px-3 h-12 flex items-center justify-center rounded-xl bg-slate-700 hover:bg-orange-500 text-white transition-all duration-200"
-                      style={{ minHeight: '3rem' }}
-                      title="Copy password"
-                      onClick={() => { navigator.clipboard.writeText(profilePassword) }}
-                    >
-                      <FiCopy size={18} />
-                    </button>
-                  )}
-                </div>
+                <PasswordGeneratorButton
+                  password={profilePassword}
+                  setPassword={setProfilePassword}
+                  onGenerate={(nextPassword) => {
+                    setProfilePassword(nextPassword)
+                    setProfileConfirmPassword(nextPassword)
+                  }}
+                />
                 {profilePassword && (
-                  <span className="text-xs text-orange-400 mt-1 block">alert: before you save plz copy the password</span>
+                  <span className="mt-0.5 block text-xs text-orange-400">alert: before you save plz copy the password</span>
                 )}
 
                 {profileError && (

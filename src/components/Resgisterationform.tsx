@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { PasswordGeneratorButton } from './PasswordGeneratorButton'
+import { PasswordInput } from './PasswordInput'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
@@ -299,44 +300,50 @@ export function RegisterForm() {
                   <label htmlFor="password" className="text-sm font-medium text-slate-300 sm:text-base lg:text-base xl:text-lg">
                     Password
                   </label>
-                  <div className="flex items-center gap-3 rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-3 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 sm:rounded-xl sm:px-5 sm:py-4 lg:px-6 lg:py-4 xl:py-[18px]">
-                    <LockIcon />
-                    <input
-                      id="password"
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="********"
-                      required
-                      minLength={8}
-                      autoComplete="new-password"
-                      className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none sm:text-base lg:text-base xl:text-lg"
-                    />
-                  </div>
-                  <PasswordGeneratorButton password={password} setPassword={setPassword} />
-                  {password && (
-                    <span className="text-xs text-orange-400 mt-1 block">alert: before you save plz copy the password</span>
-                  )}
+                  <PasswordInput
+                    id="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="********"
+                    required
+                    minLength={8}
+                    autoComplete="new-password"
+                    leadingIcon={<LockIcon />}
+                    wrapperClassName="flex items-center gap-3 rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-3 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 sm:rounded-xl sm:px-5 sm:py-4 lg:px-6 lg:py-4 xl:py-[18px]"
+                    inputClassName="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none sm:text-base lg:text-base xl:text-lg"
+                  />
                 </div>
 
                 <div className="flex flex-col gap-1">
                   <label htmlFor="confirm-password" className="text-sm font-medium text-slate-300 sm:text-base lg:text-base xl:text-lg">
                     Confirm Password
                   </label>
-                  <div className="flex items-center gap-3 rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-3 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 sm:rounded-xl sm:px-5 sm:py-4 lg:px-6 lg:py-4 xl:py-[18px]">
-                    <LockIcon />
-                    <input
-                      id="confirm-password"
-                      type="password"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      placeholder="********"
-                      required
-                      minLength={8}
-                      autoComplete="new-password"
-                      className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none sm:text-base lg:text-base xl:text-lg"
-                    />
-                  </div>
+                  <PasswordInput
+                    id="confirm-password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="********"
+                    required
+                    minLength={8}
+                    autoComplete="new-password"
+                    leadingIcon={<LockIcon />}
+                    wrapperClassName="flex items-center gap-3 rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-3 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 sm:rounded-xl sm:px-5 sm:py-4 lg:px-6 lg:py-4 xl:py-[18px]"
+                    inputClassName="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none sm:text-base lg:text-base xl:text-lg"
+                  />
+                </div>
+
+                <div className="lg:col-span-2">
+                  <PasswordGeneratorButton
+                    password={password}
+                    setPassword={setPassword}
+                    onGenerate={(nextPassword) => {
+                      setPassword(nextPassword)
+                      setConfirmPassword(nextPassword)
+                    }}
+                  />
+                  {password && (
+                    <span className="mt-0.5 block text-xs text-orange-400">alert: before you save plz copy the password</span>
+                  )}
                 </div>
               </div>
 
@@ -401,7 +408,4 @@ export function RegisterForm() {
     </main>
   )
 }
-
-
-
 

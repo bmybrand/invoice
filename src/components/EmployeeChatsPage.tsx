@@ -270,7 +270,7 @@ export function EmployeeChatsPage() {
     if (!currentUserAuthId) return
 
     setError(null)
-    setLoading((prev) => prev && clients.length === 0)
+    setLoading((prev) => prev && clientsRef.current.length === 0)
 
     const { data, error: summariesError } = await supabase.rpc('get_client_chat_conversation_summaries', {
       p_include_all: isAdmin || isSuperAdmin,
@@ -343,7 +343,7 @@ export function EmployeeChatsPage() {
     setLatestByClientState(nextLatest)
     setUnreadByClientState(nextUnread)
     setLoading(false)
-  }, [clients.length, currentUserAuthId, isAdmin, isSuperAdmin, loadConversationsLegacy, setClientsState, setLatestByClientState, setUnreadByClientState])
+  }, [currentUserAuthId, isAdmin, isSuperAdmin, loadConversationsLegacy, setClientsState, setLatestByClientState, setUnreadByClientState])
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {

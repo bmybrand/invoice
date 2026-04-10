@@ -160,6 +160,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
   const notifiedMessageIdsRef = useRef<Set<number>>(new Set())
   const pushSetupStartedRef = useRef(false)
   const messagesRef = useRef<MessageNotification[]>([])
+  const lastFetchedAtRef = useRef(0)
 
   const normalizedRole = useMemo(() => normalizeRole(displayRole || ''), [displayRole])
   const isAdminBell = accountType === 'employee' && (normalizedRole === 'admin' || normalizedRole === 'superadmin')
@@ -211,6 +212,9 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
     })
     return nextMessages
   }, [])
+
+  const applyMessageNotificationsRef = useRef(applyMessageNotifications)
+  const maybeNotifyDesktopRef = useRef(maybeNotifyDesktop)
 
   const fetchNotifications = useCallback(async (options?: { showLoading?: boolean }) => {
     if (!shouldShowBell) return
@@ -264,6 +268,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
       messagesRef.current = nextMessages
       maybeNotifyDesktop(nextMessages)
       hasLoadedRef.current = true
+      lastFetchedAtRef.current = Date.now()
     } catch {
       // Keep last good notifications visible during refresh failures.
     } finally {
@@ -279,6 +284,14 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
       }
     }
   }, [isAdminBell, maybeNotifyDesktop, shouldShowBell, token])
+
+  useEffect(() => {
+    applyMessageNotificationsRef.current = applyMessageNotifications
+  }, [applyMessageNotifications])
+
+  useEffect(() => {
+    maybeNotifyDesktopRef.current = maybeNotifyDesktop
+  }, [maybeNotifyDesktop])
 
   useEffect(() => {
     if (!isEmployeeBell || typeof window === 'undefined' || !('Notification' in window)) return
@@ -382,7 +395,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
       }
 
       if (payload.eventType === 'DELETE' || nextRow?.isdeleted === true) {
-        applyMessageNotifications((prev) => {
+        applyMessageNotificationsRef.current((prev) => {
           const target = prev.find((item) => item.clientId === clientId)
           if (!target) return prev
           if (target.latestMessageId === messageId) {
@@ -411,7 +424,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
 
       if (senderAuthId === messagesRef.current.find((item) => item.clientId === clientId)?.handlerId) {
         if (payload.eventType !== 'INSERT' && wasUnread !== isUnread) {
-          applyMessageNotifications((prev) => {
+          applyMessageNotificationsRef.current((prev) => {
             const target = prev.find((item) => item.clientId === clientId)
             if (!target) return prev
             const delta = (isUnread ? 1 : 0) - (wasUnread ? 1 : 0)
@@ -433,7 +446,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
       }
 
       if (!isUnread) {
-        applyMessageNotifications((prev) => {
+        applyMessageNotificationsRef.current((prev) => {
           const target = prev.find((item) => item.clientId === clientId)
           if (!target) return prev
           const delta = (isUnread ? 1 : 0) - (wasUnread ? 1 : 0)
@@ -460,7 +473,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
       const preview = buildMessagePreview(nextRow)
       const createdAt = nextRow?.created_at || previousRow?.created_at || new Date().toISOString()
 
-      const nextMessages = applyMessageNotifications((prev) => {
+      const nextMessages = applyMessageNotificationsRef.current((prev) => {
         const target = prev.find((item) => item.clientId === clientId)
         if (!target) {
           void fetchNotifications()
@@ -490,7 +503,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
       })
 
       if (payload.eventType === 'INSERT') {
-        maybeNotifyDesktop(nextMessages)
+        maybeNotifyDesktopRef.current(nextMessages)
       }
     }
 
@@ -524,7 +537,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
         }
       }
 
-      applyMessageNotifications((prev) =>
+      applyMessageNotificationsRef.current((prev) =>
         prev.map((item) =>
           item.clientId === clientId
             ? {
@@ -583,7 +596,10 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
 
   useEffect(() => {
     if (!open || !shouldShowBell) return
-    void fetchNotifications({ showLoading: !hasLoadedRef.current })
+    const isStale = Date.now() - lastFetchedAtRef.current > 60_000
+    if (!hasLoadedRef.current || isStale) {
+      void fetchNotifications({ showLoading: !hasLoadedRef.current })
+    }
   }, [fetchNotifications, open, shouldShowBell])
 
   useEffect(() => {
@@ -601,7 +617,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
     return () => {
       window.removeEventListener('client-chat:read', handleChatRead as EventListener)
     }
-  }, [fetchNotifications, shouldShowBell])
+  }, [applyMessageNotifications, shouldShowBell])
 
   useEffect(() => {
     if (!open) return

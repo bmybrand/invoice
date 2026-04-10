@@ -1,16 +1,9 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { FiCopy } from 'react-icons/fi'
-
-function generateStrongPassword(length = 12) {
-  const charset = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*()_+-=~';
-  let password = '';
-  for (let i = 0; i < length; ++i) {
-    password += charset.charAt(Math.floor(Math.random() * charset.length));
-  }
-  return password;
-}
+import { PasswordGeneratorButton } from '@/components/PasswordGeneratorButton'
+import { PasswordInput } from '@/components/PasswordInput'
+import { FiEye, FiEyeOff } from 'react-icons/fi'
 import { Plus_Jakarta_Sans } from 'next/font/google'
 import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -257,6 +250,7 @@ export default function Employees() {
   const [showArchivedModal, setShowArchivedModal] = useState(false)
   const [addEmail, setAddEmail] = useState('')
   const [addPassword, setAddPassword] = useState('')
+  const [showAddPassword, setShowAddPassword] = useState(false)
   const [addName, setAddName] = useState('')
   const [addRole, setAddRole] = useState<'user' | 'admin'>('user')
   const [addDepartment, setAddDepartment] = useState('')
@@ -1123,7 +1117,7 @@ export default function Employees() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
           <div className="flex max-h-[80vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-800 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-700 px-6 py-4">
-              <div>
+              <div className="relative">
                 <h2 className="text-lg font-bold text-white">Archived Employees</h2>
                 <p className="mt-1 text-sm text-slate-400">Restore archived employees or permanently delete them when no invoices are linked.</p>
               </div>
@@ -1232,7 +1226,7 @@ export default function Employees() {
               onChangeCapture={clearRequiredFieldInvalid}
               className="mt-4 flex flex-col gap-4"
             >
-              <div>
+              <div className="relative">
                 <label htmlFor="edit-name" className="block text-sm font-medium text-slate-300">Employee name</label>
                 <input
                   id="edit-name"
@@ -1241,7 +1235,7 @@ export default function Employees() {
                   onChange={(e) => setEditName(e.target.value)}
                   required
                   placeholder="Full name"
-                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 pr-12 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                 />
               </div>
               <div>
@@ -1324,37 +1318,17 @@ export default function Employees() {
               {isSuperAdmin && (
                 <div>
                   <label htmlFor="edit-password" className="block text-sm font-medium text-slate-300">New password</label>
-                  <input
+                  <PasswordInput
                     id="edit-password"
-                    type="password"
                     value={editPassword}
                     onChange={(e) => setEditPassword(e.target.value)}
                     placeholder="Leave blank to keep current password"
-                    className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                    wrapperClassName="mt-1 flex items-center gap-3 rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20"
+                    inputClassName="min-w-0 flex-1 bg-transparent text-white placeholder:text-slate-500 focus:outline-none"
                   />
-                  <div className="flex gap-2 w-full mt-2">
-                    <button
-                      type="button"
-                      className={`flex-1 rounded-xl h-12 py-0 font-semibold text-sm focus:outline-none transition-all duration-200 bg-slate-700 text-white hover:bg-orange-500 flex items-center justify-center`}
-                      style={{ minHeight: '3rem' }}
-                      onClick={() => setEditPassword(generateStrongPassword())}
-                    >
-                      {editPassword ? 'Re-generate password' : 'Generate password'}
-                    </button>
-                    {editPassword && (
-                      <button
-                        type="button"
-                        className="ml-1 px-3 h-12 flex items-center justify-center rounded-xl bg-slate-700 hover:bg-orange-500 text-white transition-all duration-200"
-                        style={{ minHeight: '3rem' }}
-                        title="Copy password"
-                        onClick={() => { navigator.clipboard.writeText(editPassword) }}
-                      >
-                        <FiCopy size={18} />
-                      </button>
-                    )}
-                  </div>
+                  <PasswordGeneratorButton password={editPassword} setPassword={setEditPassword} />
                   {editPassword && (
-                    <span className="text-xs text-orange-400 mt-1 block">alert: before you save plz copy the password</span>
+                    <span className="mt-0.5 block text-xs text-orange-400">alert: before you save plz copy the password</span>
                   )}
                   <p className="mt-0.5 text-xs text-slate-500">
                     Superadmin only. Leave this blank if you do not want to change the password.
@@ -1428,36 +1402,25 @@ export default function Employees() {
                 <label htmlFor="add-password" className="block text-sm font-medium text-slate-300">Password</label>
                 <input
                   id="add-password"
-                  type="password"
+                  type={showAddPassword ? 'text' : 'password'}
                   value={addPassword}
                   onChange={(e) => setAddPassword(e.target.value)}
                   required
                   placeholder="••••••••"
-                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 pr-12 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                 />
-                <div className="flex gap-2 w-full mt-2">
-                  <button
-                    type="button"
-                    className={`flex-1 rounded-xl h-12 py-0 font-semibold text-sm focus:outline-none transition-all duration-200 bg-slate-700 text-white hover:bg-orange-500 flex items-center justify-center`}
-                    style={{ minHeight: '3rem' }}
-                    onClick={() => setAddPassword(generateStrongPassword())}
-                  >
-                    {addPassword ? 'Re-generate password' : 'Generate password'}
-                  </button>
-                  {addPassword && (
-                    <button
-                      type="button"
-                      className="ml-1 px-3 h-12 flex items-center justify-center rounded-xl bg-slate-700 hover:bg-orange-500 text-white transition-all duration-200"
-                      style={{ minHeight: '3rem' }}
-                      title="Copy password"
-                      onClick={() => { navigator.clipboard.writeText(addPassword) }}
-                    >
-                      <FiCopy size={18} />
-                    </button>
-                  )}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAddPassword((prev) => !prev)}
+                  className="absolute right-4 top-[43px] text-slate-400 transition hover:text-white focus:outline-none"
+                  aria-label={showAddPassword ? 'Hide password' : 'Show password'}
+                  title={showAddPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showAddPassword ? <FiEyeOff size={18} /> : <FiEye size={18} />}
+                </button>
+                <PasswordGeneratorButton password={addPassword} setPassword={setAddPassword} />
                 {addPassword && (
-                  <span className="text-xs text-orange-400 mt-1 block">alert: before you save plz copy the password</span>
+                  <span className="mt-0.5 block text-xs text-orange-400">alert: before you save plz copy the password</span>
                 )}
               </div>
               <div>

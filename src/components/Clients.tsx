@@ -1,16 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { FiCopy } from 'react-icons/fi'
-
-function generateStrongPassword(length = 12) {
-  const charset = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*()_+-=~';
-  let password = '';
-  for (let i = 0; i < length; ++i) {
-    password += charset.charAt(Math.floor(Math.random() * charset.length));
-  }
-  return password;
-}
+import { PasswordGeneratorButton } from '@/components/PasswordGeneratorButton'
+import { PasswordInput } from '@/components/PasswordInput'
 import { flushSync } from 'react-dom'
 import { Plus_Jakarta_Sans } from 'next/font/google'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -1506,53 +1498,36 @@ export default function Clients() {
                 </div>
                 <div>
                   <label htmlFor="edit-password" className="block text-sm font-medium text-slate-300 mb-1">New password</label>
-                  <input
+                  <PasswordInput
                     id="edit-password"
-                    type="password"
                     value={editPassword}
                     onChange={(e) => setEditPassword(e.target.value)}
                     placeholder="Leave blank to keep current password"
-                    className="w-full rounded-xl border border-slate-600 bg-slate-900/50 px-4 py-3 text-white text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    wrapperClassName="flex items-center gap-3 rounded-xl border border-slate-600 bg-slate-900/50 px-4 py-3 focus-within:ring-2 focus-within:ring-orange-500"
+                    inputClassName="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none"
                   />
                 </div>
                 <div>
                   <label htmlFor="edit-confirm-password" className="block text-sm font-medium text-slate-300 mb-1">Confirm Password</label>
-                  <input
+                  <PasswordInput
                     id="edit-confirm-password"
-                    type="password"
                     value={editConfirmPassword}
                     onChange={(e) => setEditConfirmPassword(e.target.value)}
                     placeholder="Repeat the new password"
-                    className="w-full rounded-xl border border-slate-600 bg-slate-900/50 px-4 py-3 text-white text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    wrapperClassName="flex items-center gap-3 rounded-xl border border-slate-600 bg-slate-900/50 px-4 py-3 focus-within:ring-2 focus-within:ring-orange-500"
+                    inputClassName="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none"
                   />
                 </div>
-                <div className="flex gap-2 w-full mt-2">
-                  <button
-                    type="button"
-                    className={`flex-1 rounded-xl h-12 py-0 font-semibold text-sm focus:outline-none transition-all duration-200 bg-slate-700 text-white hover:bg-orange-500 flex items-center justify-center`}
-                    style={{ minHeight: '3rem' }}
-                    onClick={() => {
-                      const pwd = generateStrongPassword();
-                      setEditPassword(pwd);
-                      setEditConfirmPassword(pwd);
-                    }}
-                  >
-                    {editPassword ? 'Re-generate password' : 'Generate password'}
-                  </button>
-                  {editPassword && (
-                    <button
-                      type="button"
-                      className="ml-1 px-3 h-12 flex items-center justify-center rounded-xl bg-slate-700 hover:bg-orange-500 text-white transition-all duration-200"
-                      style={{ minHeight: '3rem' }}
-                      title="Copy password"
-                      onClick={() => { navigator.clipboard.writeText(editPassword) }}
-                    >
-                      <FiCopy size={18} />
-                    </button>
-                  )}
-                </div>
+                <PasswordGeneratorButton
+                  password={editPassword}
+                  setPassword={setEditPassword}
+                  onGenerate={(nextPassword) => {
+                    setEditPassword(nextPassword)
+                    setEditConfirmPassword(nextPassword)
+                  }}
+                />
                 {editPassword && (
-                  <span className="text-xs text-orange-400 mt-1 block">alert: before you save plz copy the password</span>
+                  <span className="mt-0.5 block text-xs text-orange-400">alert: before you save plz copy the password</span>
                 )}
                 <p className="mt-0.5 text-xs text-slate-500">Leave blank if you do not want to change the password.</p>
 
@@ -1842,39 +1817,19 @@ export default function Clients() {
                 </div>
                 <div>
                   <label htmlFor="add-password" className="block text-sm font-medium text-slate-300 mb-1">Password</label>
-                    <input
+                    <PasswordInput
                       id="add-password"
-                      type="password"
                       value={addPassword}
                       onChange={(e) => setAddPassword(e.target.value)}
                       placeholder="Min 8 characters"
                       required
                       minLength={8}
-                      className="w-full rounded-xl border border-slate-600 bg-slate-900/50 px-4 py-3 text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      wrapperClassName="flex items-center gap-3 rounded-xl border border-slate-600 bg-slate-900/50 px-4 py-3 focus-within:ring-2 focus-within:ring-orange-500"
+                      inputClassName="min-w-0 flex-1 bg-transparent text-sm text-white focus:outline-none"
                     />
-                    <div className="flex gap-2 w-full mt-2">
-                      <button
-                        type="button"
-                        className={`flex-1 rounded-xl h-12 py-0 font-semibold text-sm focus:outline-none transition-all duration-200 bg-slate-700 text-white hover:bg-orange-500 flex items-center justify-center`}
-                        style={{ minHeight: '3rem' }}
-                        onClick={() => setAddPassword(generateStrongPassword())}
-                      >
-                        {addPassword ? 'Re-generate password' : 'Generate password'}
-                      </button>
-                      {addPassword && (
-                        <button
-                          type="button"
-                          className="ml-1 px-3 h-12 flex items-center justify-center rounded-xl bg-slate-700 hover:bg-orange-500 text-white transition-all duration-200"
-                          style={{ minHeight: '3rem' }}
-                          title="Copy password"
-                          onClick={() => { navigator.clipboard.writeText(addPassword) }}
-                        >
-                          <FiCopy size={18} />
-                        </button>
-                      )}
-                    </div>
+                    <PasswordGeneratorButton password={addPassword} setPassword={setAddPassword} />
                     {addPassword && (
-                      <span className="text-xs text-orange-400 mt-1 block">alert: before you save plz copy the password</span>
+                      <span className="mt-0.5 block text-xs text-orange-400">alert: before you save plz copy the password</span>
                     )}
                 </div>
                 {addError && (

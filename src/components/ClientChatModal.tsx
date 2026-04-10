@@ -8,16 +8,17 @@ import { useRouter } from 'next/navigation'
 import { Plus_Jakarta_Sans } from 'next/font/google'
 import { supabase } from '@/lib/supabase'
 import { logFetchError } from '@/lib/fetch-error'
+import { getInvoiceLink } from '@/lib/invoice-token'
 import { useDashboardProfile } from '@/components/DashboardLayout'
 import { useSessionContext } from '@/context/SessionContext'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
-const CHAT_REFRESH_MS = 20000 // 20 seconds fallback polling
 const TYPING_STOP_DELAY_MS = 1800
 const OLDER_LOAD_TRIGGER_PX = 140
 const CHAT_BUCKET = 'client-chat-files'
 const MAX_CHAT_ATTACHMENT_BYTES = 20 * 1024 * 1024
+const MAX_CHAT_ATTACHMENTS_PER_MESSAGE = 10
 
 type ChatCacheEntry = {
   messages: ChatMessage[]
@@ -186,6 +187,10 @@ function getAttachmentTooLargeMessage(sizeBytes: number, fileName?: string) {
   return `${label} exceeds the per-file limit of ${formatAttachmentSize(MAX_CHAT_ATTACHMENT_BYTES)}. Selected size: ${formatAttachmentSize(sizeBytes)}.`
 }
 
+function getAttachmentLimitMessage(limit: number) {
+  return `You can send up to ${limit} attachments in one message.`
+}
+
 function initials(name: string) {
   const tokens = name.trim().split(/\s+/).filter(Boolean)
   return (tokens[0]?.[0] || '') + (tokens[1]?.[0] || tokens[0]?.[1] || '')
@@ -341,8 +346,10 @@ export function ClientChatModal({
   const { token } = useSessionContext()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [loading, setLoading] = useState(false)
+  const [initialLoadResolved, setInitialLoadResolved] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [permissionError, setPermissionError] = useState<string | null>(null)
+  const [permissionResolved, setPermissionResolved] = useState(false)
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -371,8 +378,6 @@ export function ClientChatModal({
   const messagesRef = useRef<HTMLDivElement | null>(null)
   const fetchVersionRef = useRef(0)
   const mutationVersionRef = useRef(0)
-  const suppressRefreshRef = useRef(false)
-  const suppressRefreshTimeoutRef = useRef<number | null>(null)
   const optimisticMessagesRef = useRef<ChatMessage[]>([])
   const loadedMessagesRef = useRef<ChatMessage[]>([])
   const pendingDeletedIdsRef = useRef<Set<number>>(new Set())
@@ -389,6 +394,17 @@ export function ClientChatModal({
   const loadInFlightRef = useRef(false)
   const queuedOlderLoadRef = useRef(false)
   const hasOlderMessagesRef = useRef(false)
+
+  useEffect(() => {
+    if (!open || !clientId) {
+      setPermissionResolved(false)
+      setPermissionError(null)
+      return
+    }
+
+    setPermissionResolved(accountType !== 'employee')
+    setPermissionError(null)
+  }, [accountType, clientId, open])
 
   useEffect(() => {
     const handleDocumentClick = (event: MouseEvent) => {
@@ -525,6 +541,7 @@ export function ClientChatModal({
         const token = await getCurrentAuthToken()
         if (!token) {
           setLoading(false)
+          setInitialLoadResolved(true)
           stopOlderLoading()
           setError('Authentication expired. Sign in again and try again.')
           return
@@ -558,6 +575,7 @@ export function ClientChatModal({
 
         if (!response.ok) {
           setLoading(false)
+          setInitialLoadResolved(true)
           stopOlderLoading()
           setError(result?.error || 'Failed to load chat')
           return
@@ -565,6 +583,7 @@ export function ClientChatModal({
 
         const canMessage = result.canMessage !== false
         setPermissionError(canMessage ? null : 'Only the assigned handler can message this client')
+        setPermissionResolved(true)
 
         const serverMessages = (result.messages || []).filter((message) => !pendingDeletedIdsRef.current.has(message.id))
         if (isOlder && serverMessages.length === 0) {
@@ -625,6 +644,7 @@ export function ClientChatModal({
           }
         }
         setLoading(false)
+        setInitialLoadResolved(true)
         stopOlderLoading()
         if (!result.hasMore) {
           topAutoLoadArmedRef.current = false
@@ -653,6 +673,7 @@ export function ClientChatModal({
         }
       } catch {
         setLoading(false)
+        setInitialLoadResolved(true)
         stopOlderLoading()
         setError('Failed to load chat')
       } finally {
@@ -668,17 +689,6 @@ export function ClientChatModal({
     },
     [accountType, clientId, getCurrentAuthToken, mergeChatMessages, open]
   )
-
-  const suppressPolling = useCallback((delayMs = CHAT_REFRESH_MS) => {
-    suppressRefreshRef.current = true
-    if (suppressRefreshTimeoutRef.current !== null) {
-      window.clearTimeout(suppressRefreshTimeoutRef.current)
-    }
-    suppressRefreshTimeoutRef.current = window.setTimeout(() => {
-      suppressRefreshRef.current = false
-      suppressRefreshTimeoutRef.current = null
-    }, delayMs)
-  }, [])
 
   const typingChannelName = useMemo(
     () => (clientId ? `client-chat-typing-${clientId}` : null),
@@ -720,6 +730,7 @@ export function ClientChatModal({
     pendingDeletedIdsRef.current = new Set()
     setMessages([])
     setLoading(true)
+    setInitialLoadResolved(false)
     setError(null)
     setPermissionError(null)
     setHasOlderMessages(false)
@@ -743,7 +754,10 @@ export function ClientChatModal({
       setHeaderSubtitle(cached.headerSubtitle)
       setHasOlderMessages(cached.hasOlderMessages)
       hasOlderMessagesRef.current = cached.hasOlderMessages
-      setLoading(false)
+      if (cached.messages.length > 0) {
+        setLoading(false)
+        setInitialLoadResolved(true)
+      }
     }
 
     const timeoutId = window.setTimeout(() => {
@@ -752,9 +766,6 @@ export function ClientChatModal({
 
     return () => {
       window.clearTimeout(timeoutId)
-      if (suppressRefreshTimeoutRef.current !== null) {
-        window.clearTimeout(suppressRefreshTimeoutRef.current)
-      }
     }
   }, [cacheKey, clientId, loadMessages, open, subtitle, title])
 
@@ -991,7 +1002,7 @@ export function ClientChatModal({
       return
     }
 
-    if (loading || permissionError || accountType !== 'employee') {
+    if (loading || !permissionResolved || permissionError || accountType !== 'employee') {
       setComposerVisible(false)
       return
     }
@@ -1004,7 +1015,7 @@ export function ClientChatModal({
     return () => {
       window.cancelAnimationFrame(frameId)
     }
-  }, [accountType, clientId, loading, open, permissionError])
+  }, [accountType, clientId, loading, open, permissionError, permissionResolved])
 
   useEffect(() => {
     if (!open || !clientId) return
@@ -1215,7 +1226,6 @@ export function ClientChatModal({
       return
     }
     void broadcastTyping(false)
-    suppressPolling()
   }
 
   async function handleSaveEdit(messageId: number) {
@@ -1244,7 +1254,6 @@ export function ClientChatModal({
 
     setEditingId(null)
     setEditingDraft('')
-    suppressPolling()
   }
 
   async function handleDelete(messageId: number) {
@@ -1282,7 +1291,6 @@ export function ClientChatModal({
       return
     }
 
-    suppressPolling()
   }
 
   async function handleCopyMessage(message: ChatMessage) {
@@ -1342,6 +1350,15 @@ export function ClientChatModal({
       URL.revokeObjectURL(downloadUrl)
     } catch {
       window.open(attachment.url, '_blank', 'noopener,noreferrer')
+    }
+  }
+
+  async function handleDownloadAllMessageAttachments(message: ChatMessage) {
+    const attachments = getMessageAttachments(message).filter((attachment) => Boolean(attachment.url))
+    if (attachments.length <= 1) return
+
+    for (const attachment of attachments) {
+      await handleDownloadMessageAttachment(attachment)
     }
   }
 
@@ -1516,15 +1533,24 @@ export function ClientChatModal({
       fileInputRef.current.value = ''
     }
     setUploading(false)
-    suppressPolling()
   }
 
   function handleSelectAttachment(files: FileList | null) {
     if (!files?.length) return
     setError(null)
+    const remainingSlots = Math.max(0, MAX_CHAT_ATTACHMENTS_PER_MESSAGE - pendingAttachments.length)
+
+    if (remainingSlots <= 0) {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+      setError(getAttachmentLimitMessage(MAX_CHAT_ATTACHMENTS_PER_MESSAGE))
+      return
+    }
+
     const nextAttachments: PendingAttachmentPreview[] = []
 
-    Array.from(files).forEach((file) => {
+    Array.from(files).slice(0, remainingSlots).forEach((file) => {
       if (file.size > MAX_CHAT_ATTACHMENT_BYTES) {
         setError(getAttachmentTooLargeMessage(file.size, file.name))
         return
@@ -1541,6 +1567,10 @@ export function ClientChatModal({
 
     if (nextAttachments.length > 0) {
       setPendingAttachments((prev) => [...prev, ...nextAttachments])
+    }
+
+    if (files.length > remainingSlots) {
+      setError(getAttachmentLimitMessage(MAX_CHAT_ATTACHMENTS_PER_MESSAGE))
     }
 
     if (fileInputRef.current) {
@@ -1606,7 +1636,7 @@ export function ClientChatModal({
             scrollbarColor: 'rgba(71,85,105,0.7) transparent',
           }}
         >
-          {loading ? (
+          {loading || (!initialLoadResolved && messages.length === 0) ? (
             <div className="mx-auto flex w-full max-w-3xl animate-pulse flex-col gap-6 py-4">
               <div className="w-40 rounded-full bg-slate-800/80 px-4 py-2 text-sm text-slate-400">
                 Loading chat...
@@ -1637,14 +1667,18 @@ export function ClientChatModal({
               {loadingOlderMessages ? (
                 <div className="text-center text-xs font-medium text-slate-400">Loading older messages...</div>
               ) : null}
-              {messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`flex items-start gap-4 ${message.isOwnMessage ? 'flex-row-reverse' : ''}`}
-                >
-                  <MessageAvatar name={message.senderName} imageUrl={message.senderAvatarUrl} />
-                  <div className={`min-w-0 flex-1 ${message.isOwnMessage ? 'flex justify-end' : ''}`}>
-                    <div className={`min-w-0 w-fit max-w-[72%] ${message.isOwnMessage ? 'flex flex-col items-end' : ''}`}>
+              {messages.map((message) => {
+                const messageAttachments = getMessageAttachments(message)
+                const hasMultipleAttachments = messageAttachments.length > 1
+
+                return (
+                  <div
+                    key={message.id}
+                    className={`flex items-start gap-4 ${message.isOwnMessage ? 'flex-row-reverse' : ''}`}
+                  >
+                    <MessageAvatar name={message.senderName} imageUrl={message.senderAvatarUrl} />
+                    <div className={`min-w-0 flex-1 ${message.isOwnMessage ? 'flex justify-end' : ''}`}>
+                      <div className={`min-w-0 w-fit max-w-[72%] ${message.isOwnMessage ? 'flex flex-col items-end' : ''}`}>
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-lg font-bold text-white">{message.senderName}</span>
                       <span className="text-xs text-sky-300">{formatStamp(message.createdAt)}</span>
@@ -1703,7 +1737,7 @@ export function ClientChatModal({
                               >
                                 Copy
                               </button>
-                              {message.attachmentUrl ? (
+                              {message.attachmentUrl && !hasMultipleAttachments ? (
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -1715,7 +1749,7 @@ export function ClientChatModal({
                                   View
                                 </button>
                               ) : null}
-                              {message.attachmentUrl ? (
+                              {message.attachmentUrl && !hasMultipleAttachments ? (
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -1725,6 +1759,18 @@ export function ClientChatModal({
                                   className="block w-full px-3 py-2 text-left text-xs text-slate-200 transition hover:bg-slate-800"
                                 >
                                   Download
+                                </button>
+                              ) : null}
+                              {hasMultipleAttachments ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveMenuMessageId(null)
+                                    void handleDownloadAllMessageAttachments(message)
+                                  }}
+                                  className="block w-full px-3 py-2 text-left text-xs text-slate-200 transition hover:bg-slate-800"
+                                >
+                                  Download all
                                 </button>
                               ) : null}
                             </div>
@@ -1740,10 +1786,21 @@ export function ClientChatModal({
                           />
                         ) : (
                           <>
-                            {getMessageAttachments(message).length > 0 ? (
+                            {messageAttachments.length > 0 ? (
                               <div className="space-y-3">
-                                {getMessageAttachments(message).map((attachment, attachmentIndex) => {
-                                  const attachmentCount = getMessageAttachments(message).length
+                                {hasMultipleAttachments ? (
+                                  <div className="flex justify-end">
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleDownloadAllMessageAttachments(message)}
+                                      className="text-xs font-semibold text-orange-300 transition hover:text-orange-200"
+                                    >
+                                      Download all
+                                    </button>
+                                  </div>
+                                ) : null}
+                                {messageAttachments.map((attachment, attachmentIndex) => {
+                                  const attachmentCount = messageAttachments.length
 
                                   return (
                                   <div key={`${message.id}-${attachment.name}-${attachmentIndex}`}>
@@ -1823,7 +1880,7 @@ export function ClientChatModal({
                             ) : null}
 
                             {message.message ? (
-                              <div className={`${getMessageAttachments(message).length > 0 ? 'mt-3' : 'mt-0'} space-y-2`}>
+                              <div className={`${messageAttachments.length > 0 ? 'mt-3' : 'mt-0'} space-y-2`}>
                                 <p
                                   ref={setMessageContentRef(message.id)}
                                   className="whitespace-pre-wrap break-all text-sm text-white"
@@ -1850,7 +1907,7 @@ export function ClientChatModal({
                                   </button>
                                 ) : null}
                               </div>
-                            ) : getMessageAttachments(message).length === 0 ? (
+                            ) : messageAttachments.length === 0 ? (
                               <p className="mt-0 text-xs italic text-slate-400">Shared an attachment</p>
                             ) : null}
                           </>
@@ -1881,7 +1938,8 @@ export function ClientChatModal({
                     </div>
                   </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>
@@ -1899,7 +1957,7 @@ export function ClientChatModal({
           </button>
         ) : null}
 
-        {!permissionError && !loading ? (
+        {permissionResolved && !permissionError && !loading ? (
           <div
             ref={composerRef}
             className={`absolute bottom-0 left-0 right-0 z-10 border-t border-slate-800 bg-slate-950/95 backdrop-blur-sm px-5 py-4 transition-all duration-500 ease-out motion-reduce:transition-none ${
@@ -1920,7 +1978,7 @@ export function ClientChatModal({
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-white">{pendingAttachments.length} files selected</p>
-                      <p className="text-xs text-slate-400">Multiple files use a compact list instead of previews.</p>
+                      <p className="text-xs text-slate-400">Multiple files use a compact list instead of previews. Limit {MAX_CHAT_ATTACHMENTS_PER_MESSAGE} per message.</p>
                     </div>
                   </div>
                   <div className="max-h-40 space-y-2 overflow-y-auto pr-1">
@@ -2011,7 +2069,7 @@ export function ClientChatModal({
                   disabled={uploading || sending || Boolean(permissionError)}
                   className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-orange-500/30 bg-orange-500/10 text-orange-400 transition hover:border-orange-500/50 hover:bg-orange-500/20 disabled:opacity-50"
                   aria-label="Share file"
-                  title="Attach file"
+                  title={`Attach up to ${MAX_CHAT_ATTACHMENTS_PER_MESSAGE} files`}
                 >
                   <AttachmentIcon className="h-4 w-4" />
                 </button>
@@ -2084,11 +2142,7 @@ export function ClientChatModal({
                   type="button"
                   onClick={() => {
                     onClose()
-                    router.push(
-                      accountType === 'client'
-                        ? '/dashboard/invoices'
-                        : `/dashboard/invoices?clientId=${clientId}`
-                    )
+                    router.push(getInvoiceLink(invoice.id))
                   }}
                   className="w-full rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-3 text-left transition hover:border-slate-700 hover:bg-slate-900"
                 >

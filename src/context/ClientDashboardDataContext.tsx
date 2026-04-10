@@ -264,11 +264,7 @@ export function ClientDashboardDataProvider({ children }: { children: React.Reac
       )
     }
 
-    channel.subscribe((status) => {
-      if (status === 'SUBSCRIBED') {
-        refresh()
-      }
-    })
+    channel.subscribe()
 
     return () => {
       void supabase.removeChannel(channel)
