@@ -41,7 +41,10 @@ export default function InvoiceRouteShell({ invoiceId, invoiceToken }: { invoice
 
   if (isEmployee) {
     return (
-      <DashboardLayout title="Invoice">
+      <DashboardLayout>
+        <div className="border-b border-slate-700 px-4 py-4 sm:px-6">
+          <h1 className="text-xl font-bold text-white mb-2">Invoice</h1>
+        </div>
         <Suspense fallback={<div className="p-6 text-sm text-slate-400">Loading invoice...</div>}>
           <InvoiceView invoiceId={invoiceId} invoiceToken={invoiceToken} publicView={false} />
         </Suspense>

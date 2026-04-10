@@ -111,9 +111,10 @@ export default function InvoicePayRouteShell({ invoiceId, invoiceToken }: { invo
 
   if (isEmployee) {
     return (
-      <DashboardLayout title="Pay Invoice">
+      <DashboardLayout>
         <div className="min-h-screen bg-gray-900">
           <div className="border-b border-slate-700 px-4 py-4 sm:px-6">
+            <h1 className="text-xl font-bold text-white mb-2">Pay Invoice</h1>
             <button
               type="button"
               onClick={() => router.push(invoiceToken ? `/invoice?token=${encodeURIComponent(invoiceToken)}` : `/invoice?id=${invoiceId}`)}
