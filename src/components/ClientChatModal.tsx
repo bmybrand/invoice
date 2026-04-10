@@ -793,14 +793,16 @@ export function ClientChatModal({
               void loadMessages({ background: true })
               return
             }
-
             applyMessages((current) => current.filter((message) => message.id !== messageId))
             pendingDeletedIdsRef.current.add(messageId)
+            // Only fetch if you want to guarantee full sync after delete (optional)
+            // void loadMessages({ background: true })
             return
           }
 
           if (!nextRow || !Number.isFinite(Number(nextRow.id)) || nextRow.id < 1) {
-            void loadMessages({ background: true })
+            // Only fetch if you suspect a data mismatch
+            // void loadMessages({ background: true })
             return
           }
 
@@ -812,7 +814,7 @@ export function ClientChatModal({
                       ...message,
                       message: nextRow.message || '',
                       attachmentName: (nextRow.attachment_name || '').trim() || message.attachmentName,
-                      updatedAt: nextRow.updated_at,
+                      updatedAt: nextRow.updatedAt,
                       seenByRecipient: message.isOwnMessage
                         ? accountType === 'client'
                           ? Boolean(nextRow.read_by_employee)
@@ -822,11 +824,16 @@ export function ClientChatModal({
                   : message
               )
             )
+            // Only fetch if you want to guarantee full sync after edit (optional)
+            // void loadMessages({ background: true })
             return
           }
 
           if (payload.eventType === 'INSERT') {
             const realtimeMessage = buildRealtimeMessage(nextRow)
+            const isOwnOptimistic = optimisticMessagesRef.current.some((optimisticMessage) =>
+              matchesOptimisticMessage(realtimeMessage.message, optimisticMessage)
+            )
             optimisticMessagesRef.current = optimisticMessagesRef.current.filter(
               (optimisticMessage) => !matchesOptimisticMessage(realtimeMessage.message, optimisticMessage)
             )
@@ -845,13 +852,15 @@ export function ClientChatModal({
               node.scrollTop = node.scrollHeight
             })
 
-            if (realtimeMessage.needsHydration || realtimeMessage.incomingFromOtherSender) {
+            // Only fetch if the insert is from another user or needs hydration
+            if ((realtimeMessage.needsHydration || realtimeMessage.incomingFromOtherSender) && !isOwnOptimistic) {
               void loadMessages({ background: true })
             }
             return
           }
 
-          void loadMessages({ background: true })
+          // Only fetch for truly unexpected events
+          // void loadMessages({ background: true })
         }
       )
       .subscribe()
