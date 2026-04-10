@@ -730,7 +730,7 @@ export function Dashboard() {
                           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
                             <div className="relative shrink-0">
                               <TopOperativeAvatar name={op.name} imageUrl={op.avatarUrl} />
-                              <span className={`absolute -left-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full border border-slate-900 text-[9px] font-black leading-4 text-white sm:-left-1 sm:-top-1 sm:h-5 sm:w-5 sm:text-[10px] ${op.rank === 1 ? 'bg-orange-500' : 'bg-slate-600'}`}>{op.rank}</span>
+                              {/* Removed leaderboard number badge */}
                             </div>
                             <p className="truncate text-xs font-bold leading-4 text-white sm:text-sm sm:leading-5">{op.name}</p>
                           </div>

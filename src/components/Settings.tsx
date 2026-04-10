@@ -740,8 +740,14 @@ export default function Settings() {
 
           <div className="w-full overflow-hidden rounded-xl border border-slate-700 bg-slate-800/80">
             <div className="w-full overflow-x-auto scrollbar-thin">
-              <div className="min-w-[1660px]">
-                <div className="grid grid-cols-[1fr_190px_190px_1.65fr_1.65fr_1.65fr_1.65fr_110px_190px] border-b border-slate-700 bg-slate-900/50">
+              <div className={canManageGateways ? 'min-w-[1660px]' : 'min-w-[1470px]'}>
+                <div
+                  className={
+                    canManageGateways
+                      ? 'grid grid-cols-[1fr_190px_190px_1.65fr_1.65fr_1.65fr_1.65fr_110px_190px] border-b border-slate-700 bg-slate-900/50'
+                      : 'grid grid-cols-[1fr_190px_190px_1.65fr_1.65fr_1.65fr_1.65fr_110px] border-b border-slate-700 bg-slate-900/50'
+                  }
+                >
                   {[
                     'Name',
                     'Minimum Deposit Amount',
@@ -751,14 +757,15 @@ export default function Settings() {
                     'Gateway Live Key Publishable key',
                     'Gateway Live Key Secret key',
                     'Status',
-                    'Action',
-                  ].map((label) => (
-                    <div key={label} className="flex min-w-0 items-center px-4 py-4 sm:px-6">
-                      <span className="block truncate whitespace-nowrap text-xs font-bold uppercase tracking-wide text-slate-400">
-                        {label}
-                      </span>
-                    </div>
-                  ))}
+                  ]
+                    .concat(canManageGateways ? ['Action'] : [])
+                    .map((label) => (
+                      <div key={label} className="flex min-w-0 items-center px-4 py-4 sm:px-6">
+                        <span className="block truncate whitespace-nowrap text-xs font-bold uppercase tracking-wide text-slate-400">
+                          {label}
+                        </span>
+                      </div>
+                    ))}
                 </div>
 
                 {gatewaysLoading ? (
@@ -771,7 +778,9 @@ export default function Settings() {
                   filteredGateways.map((gateway) => (
                     <div
                       key={gateway.id}
-                      className="grid grid-cols-[1fr_190px_190px_1.65fr_1.65fr_1.65fr_1.65fr_110px_190px] items-center border-t border-slate-700"
+                      className={`grid items-center border-t border-slate-700 ${canManageGateways
+                        ? 'grid-cols-[1fr_190px_190px_1.65fr_1.65fr_1.65fr_1.65fr_110px_190px]'
+                        : 'grid-cols-[1fr_190px_190px_1.65fr_1.65fr_1.65fr_1.65fr_110px]'}`}
                     >
                       <div className="min-w-0 px-4 py-4 sm:px-6">
                         <span className="block truncate whitespace-nowrap text-sm font-semibold text-white" title={gateway.name}>
@@ -824,48 +833,50 @@ export default function Settings() {
                           {normalizeGatewayStatus(gateway.status)}
                         </span>
                       </div>
-                      <div className="flex justify-end gap-1 px-4 py-4 sm:px-6">
-                        <button
-                          type="button"
-                          onClick={() => void handleToggleGatewayMode(gateway)}
-                          disabled={!canManageGateways}
-                          className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-amber-400"
-                          aria-label={`Switch ${gateway.name} mode`}
-                          title={`Switch ${gateway.name} between live and testing`}
-                        >
-                          <ArrowsRightLeftIcon />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleToggleGatewayEnabled(gateway)}
-                          disabled={!canManageGateways}
-                          className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-emerald-400"
-                          aria-label={`${normalizeGatewayStatus(gateway.status) === 'Inactive' ? 'Enable' : 'Disable'} ${gateway.name}`}
-                          title={`${normalizeGatewayStatus(gateway.status) === 'Inactive' ? 'Enable' : 'Disable'} ${gateway.name}`}
-                        >
-                          <PowerIcon />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => openEditModal(gateway)}
-                          disabled={!canManageGateways}
-                          className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-blue-400"
-                          aria-label={`Edit ${gateway.name}`}
-                          title={`Edit ${gateway.name}`}
-                        >
-                          <PencilIcon />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleDeleteGateway(gateway)}
-                          disabled={!canManageGateways}
-                          className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-rose-400"
-                          aria-label={`Delete ${gateway.name}`}
-                          title={`Delete ${gateway.name}`}
-                        >
-                          <TrashIcon />
-                        </button>
-                      </div>
+                      {canManageGateways && (
+                        <div className="flex justify-end gap-1 px-4 py-4 sm:px-6">
+                          <button
+                            type="button"
+                            onClick={() => void handleToggleGatewayMode(gateway)}
+                            disabled={!canManageGateways}
+                            className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-amber-400"
+                            aria-label={`Switch ${gateway.name} mode`}
+                            title={`Switch ${gateway.name} between live and testing`}
+                          >
+                            <ArrowsRightLeftIcon />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleToggleGatewayEnabled(gateway)}
+                            disabled={!canManageGateways}
+                            className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-emerald-400"
+                            aria-label={`${normalizeGatewayStatus(gateway.status) === 'Inactive' ? 'Enable' : 'Disable'} ${gateway.name}`}
+                            title={`${normalizeGatewayStatus(gateway.status) === 'Inactive' ? 'Enable' : 'Disable'} ${gateway.name}`}
+                          >
+                            <PowerIcon />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(gateway)}
+                            disabled={!canManageGateways}
+                            className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-blue-400"
+                            aria-label={`Edit ${gateway.name}`}
+                            title={`Edit ${gateway.name}`}
+                          >
+                            <PencilIcon />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteGateway(gateway)}
+                            disabled={!canManageGateways}
+                            className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-rose-400"
+                            aria-label={`Delete ${gateway.name}`}
+                            title={`Delete ${gateway.name}`}
+                          >
+                            <TrashIcon />
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ))
                 )}

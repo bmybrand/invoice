@@ -249,6 +249,7 @@ export default function Payments() {
   const normalizedDepartment = (displayDepartment || '').trim().toLowerCase()
   const isFinanceDepartment = normalizedDepartment.includes('finance')
   const isUserRole = normalizedRole === 'user'
+  const isSuperAdmin = normalizedRole === 'superadmin'
   const clientData = useClientDashboardData()
   const scopedPaymentsCache = paymentsTableCache?.ownerAuthId === currentUserAuthId ? paymentsTableCache.rows : null
   const [payments, setPayments] = useState<PaymentRow[]>(() => scopedPaymentsCache ?? [])
@@ -1076,9 +1077,11 @@ export default function Payments() {
                   ) : null}
                 </div>
               ))}
-              <div className="flex items-center justify-end px-4 py-4 text-right sm:px-6">
-                <span className="text-xs font-bold uppercase tracking-wide text-slate-400">Action</span>
-              </div>
+              {isSuperAdmin && (
+                <div className="flex items-center justify-end px-4 py-4 text-right sm:px-6">
+                  <span className="text-xs font-bold uppercase tracking-wide text-slate-400">Action</span>
+                </div>
+              )}
             </div>
 
             {paymentsLoading ? (
@@ -1173,21 +1176,23 @@ export default function Payments() {
                       {payment.status}
                     </span>
                   </div>
-                  <div className="flex justify-end px-4 py-4 sm:px-6">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        openPaymentInvoice(payment.invoiceId)
-                      }}
-                      disabled={payment.invoiceId == null}
-                      className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
-                      aria-label="View invoice"
-                      title={payment.invoiceId == null ? 'Invoice unavailable' : 'View invoice'}
-                    >
-                      <InfoIcon />
-                    </button>
-                  </div>
+                  {isSuperAdmin && (
+                    <div className="flex justify-end px-4 py-4 sm:px-6">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          openPaymentInvoice(payment.invoiceId)
+                        }}
+                        disabled={payment.invoiceId == null}
+                        className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-700/50 hover:text-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
+                        aria-label="View invoice"
+                        title={payment.invoiceId == null ? 'Invoice unavailable' : 'View invoice'}
+                      >
+                        <InfoIcon />
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))
             )}
