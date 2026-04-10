@@ -15,7 +15,6 @@ import { logFetchError } from '@/lib/fetch-error'
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
 const PAGE_SIZE = 4
-const TABLE_REFRESH_INTERVAL_MS = 20000 // 20 seconds fallback polling
 const MODAL_PREVIEW_INITIAL = 1
 const MODAL_PREVIEW_STEP = 50
 const BULK_PRINT_ROOT_ID = 'bulk-invoice-print-root'
@@ -250,8 +249,6 @@ export default function Payments() {
   const normalizedDepartment = (displayDepartment || '').trim().toLowerCase()
   const isFinanceDepartment = normalizedDepartment.includes('finance')
   const isUserRole = normalizedRole === 'user'
-  const isAdmin = normalizedRole === 'admin'
-  const isSuperAdmin = normalizedRole === 'superadmin'
   const clientData = useClientDashboardData()
   const scopedPaymentsCache = paymentsTableCache?.ownerAuthId === currentUserAuthId ? paymentsTableCache.rows : null
   const [payments, setPayments] = useState<PaymentRow[]>(() => scopedPaymentsCache ?? [])
@@ -281,7 +278,157 @@ export default function Payments() {
     let active = true
 
     async function fetchPayments(options?: { background?: boolean }) {
-      // ...existing code...
+      const isBackground = options?.background ?? false
+
+      if (!profileLoaded || !accountType) {
+        if (!isBackground && active) {
+          setPaymentsLoading(true)
+        }
+        return
+      }
+
+      if (!isBackground && !scopedPaymentsCache && active) {
+        setPaymentsLoading(true)
+      }
+
+      if (accountType === 'client') {
+        if (clientData?.loading) {
+          if (!isBackground && active) {
+            setPaymentsLoading(true)
+          }
+          return
+        }
+
+        const invoiceIds = (clientData?.invoices ?? [])
+          .map((invoice) => Number(invoice.id))
+          .filter((id) => Number.isFinite(id) && id > 0)
+
+        let paymentsQuery = supabase
+          .from('payment_submissions')
+          .select('id, invoice_id, full_name, phone, email, amount_paid, payment_method, payment_status, stripe_payment_intent_id, stripe_transaction_id, created_at')
+          .order('created_at', { ascending: false })
+
+        if (invoiceIds.length > 0) {
+          paymentsQuery = paymentsQuery.in('invoice_id', invoiceIds)
+        } else if (clientData?.clientEmail?.trim()) {
+          paymentsQuery = paymentsQuery.ilike('email', clientData.clientEmail.trim())
+        } else {
+          if (active) {
+            setPayments([])
+            setPaymentsLoading(false)
+          }
+          return
+        }
+
+        const { data, error } = await paymentsQuery
+
+        if (error) {
+          logFetchError('Failed to fetch client payments', error)
+          if (active) {
+            setPayments([])
+            setPaymentsLoading(false)
+          }
+          return
+        }
+
+        const nextRows = (((data as PaymentSubmissionRow[] | null) ?? []).map((row) => ({
+          id: Number(row.id),
+          invoiceId: row.invoice_id == null ? null : Number(row.invoice_id),
+          invoiceCreator: '--',
+          customer: (row.full_name || '').trim() || 'Customer',
+          email: (row.email || '').trim() || '--',
+          amount: Number(row.amount_paid ?? 0) || 0,
+          phone: (row.phone || '').trim() || '--',
+          paymentMethod: (row.payment_method || '').trim() || '--',
+          stripeTransactionId: (row.stripe_transaction_id || row.stripe_payment_intent_id || '').trim() || '--',
+          source: 'Client portal',
+          createdAt: formatDateTime(row.created_at),
+          rawCreatedAt: row.created_at ?? null,
+          status: getPaymentStatusLabel(row.payment_status),
+        })) as PaymentRow[])
+
+        if (active) {
+          setPayments(nextRows)
+          setPaymentsLoading(false)
+        }
+        return
+      }
+
+      let query = supabase
+        .from('payment_submissions')
+        .select(`
+          id,
+          invoice_id,
+          full_name,
+          phone,
+          email,
+          amount_paid,
+          payment_method,
+          payment_status,
+          stripe_payment_intent_id,
+          stripe_transaction_id,
+          created_at,
+          invoices (
+            id,
+            invoice_creator_id,
+            brand_name,
+            status,
+            employees (
+              employee_name
+            )
+          )
+        `)
+        .order('created_at', { ascending: false })
+
+      const { data, error } = await query
+
+      if (error) {
+        logFetchError('Failed to fetch payments', error)
+        if (active) {
+          setPayments([])
+          setPaymentsLoading(false)
+        }
+        return
+      }
+
+      let rows = ((data as PaymentSubmissionRow[] | null) ?? []).map((row) => {
+        const invoiceMeta = Array.isArray(row.invoices) ? row.invoices[0] ?? null : row.invoices ?? null
+        const employeeMeta = Array.isArray(invoiceMeta?.employees)
+          ? invoiceMeta?.employees[0] ?? null
+          : invoiceMeta?.employees ?? null
+
+        return {
+          id: Number(row.id),
+          invoiceId: row.invoice_id == null ? null : Number(row.invoice_id),
+          invoiceCreator: (employeeMeta?.employee_name || '').trim() || '--',
+          customer: (row.full_name || '').trim() || 'Customer',
+          email: (row.email || '').trim() || '--',
+          amount: Number(row.amount_paid ?? 0) || 0,
+          phone: (row.phone || '').trim() || '--',
+          paymentMethod: (row.payment_method || '').trim() || '--',
+          stripeTransactionId: (row.stripe_transaction_id || row.stripe_payment_intent_id || '').trim() || '--',
+          source: (invoiceMeta?.brand_name || '').trim() || '--',
+          createdAt: formatDateTime(row.created_at),
+          rawCreatedAt: row.created_at ?? null,
+          status: getPaymentStatusLabel(row.payment_status),
+          invoiceCreatorId: Number(invoiceMeta?.invoice_creator_id ?? 0) || null,
+        }
+      })
+
+      if (isUserRole) {
+        rows = rows.filter((row) => row.invoiceCreatorId === currentEmployeeId)
+      }
+
+      const nextRows: PaymentRow[] = rows.map(({ invoiceCreatorId: _invoiceCreatorId, ...row }) => row)
+
+      if (active) {
+        paymentsTableCache = {
+          ownerAuthId: currentUserAuthId,
+          rows: nextRows,
+        }
+        setPayments(nextRows)
+        setPaymentsLoading(false)
+      }
     }
 
     void fetchPayments()
@@ -301,19 +448,11 @@ export default function Payments() {
     )
     channel.subscribe()
 
-    // Fallback polling every 20s
-    const intervalId = window.setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        void fetchPayments({ background: true })
-      }
-    }, TABLE_REFRESH_INTERVAL_MS)
-
     return () => {
-      window.clearInterval(intervalId)
       active = false
       void supabase.removeChannel(channel)
     }
-  }, [accountType, clientData?.client?.id, clientData?.loading, currentEmployeeId, currentUserAuthId, isAdmin, isSuperAdmin, isUserRole, profileLoaded, scopedPaymentsCache])
+  }, [accountType, clientData?.client?.id, clientData?.loading, currentEmployeeId, currentUserAuthId, isUserRole, profileLoaded, scopedPaymentsCache])
 
   useEffect(() => {
     const nextQuery = (searchParams.get('globalSearch') || '').trim()

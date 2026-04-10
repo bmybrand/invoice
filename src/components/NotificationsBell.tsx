@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { useSessionContext } from '@/context/SessionContext'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
 type NotificationsBellProps = {
@@ -103,6 +104,7 @@ function ChatBubbleIcon({ className = 'h-4 w-4' }: { className?: string }) {
 
 export function NotificationsBell({ accountType, displayRole }: NotificationsBellProps) {
   const router = useRouter()
+  const { token } = useSessionContext()
   const [open, setOpen] = useState(false)
   const [requests, setRequests] = useState<PendingRequest[]>([])
   const [messages, setMessages] = useState<MessageNotification[]>([])
@@ -160,14 +162,6 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
     }
   }, [isEmployeeBell, notificationPermission, router])
 
-  const getAccessToken = useCallback(async () => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-
-    return session?.access_token?.trim() || ''
-  }, [])
-
   const fetchNotifications = useCallback(async (options?: { showLoading?: boolean; forceDesktopNotify?: boolean }) => {
     if (!shouldShowBell) return
 
@@ -176,9 +170,9 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
       return
     }
 
-    const token = await getAccessToken()
+    const accessToken = token?.trim() || ''
 
-    if (!token) {
+    if (!accessToken) {
       setRequests([])
       setMessages([])
       hasLoadedRef.current = false
@@ -196,7 +190,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
     try {
       if (isAdminBell) {
         const requestsRes = await fetch('/api/clients/registration-requests', {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${accessToken}` },
         })
 
         if (requestsRes.ok) {
@@ -208,7 +202,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
       }
 
       const res = await fetch('/api/client-chat/notifications', {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${accessToken}` },
       })
 
       if (!res.ok) return
@@ -232,7 +226,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
         void fetchNotifications()
       }
     }
-  }, [getAccessToken, isAdminBell, maybeNotifyDesktop, shouldShowBell])
+  }, [isAdminBell, maybeNotifyDesktop, shouldShowBell, token])
 
   useEffect(() => {
     if (!isEmployeeBell || typeof window === 'undefined' || !('Notification' in window)) return
@@ -267,8 +261,8 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
 
     const setupPush = async () => {
       try {
-        const token = await getAccessToken()
-        if (!token || notificationPermission !== 'granted') return
+        const accessToken = token?.trim() || ''
+        if (!accessToken || notificationPermission !== 'granted') return
 
         // Ensure the browser fetches the newest service worker script instead of a cached copy.
         const registration = await navigator.serviceWorker.register('/sw.js', {
@@ -289,7 +283,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
         await fetch('/api/push/subscriptions', {
           method: 'POST',
           headers: {
-            Authorization: `Bearer ${token}`,
+            Authorization: `Bearer ${accessToken}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
@@ -313,18 +307,12 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
     return () => {
       cancelled = true
     }
-  }, [getAccessToken, isEmployeeBell, notificationPermission])
+  }, [isEmployeeBell, notificationPermission, token])
 
   useEffect(() => {
     if (!shouldShowBell) return
 
     void fetchNotifications({ showLoading: true })
-
-    const intervalId = window.setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        void fetchNotifications()
-      }
-    }, 20000) // 20 seconds fallback polling
 
     const channels: RealtimeChannel[] = []
 
@@ -375,7 +363,6 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
     })
 
     return () => {
-      window.clearInterval(intervalId)
       channels.forEach((channel) => {
         void supabase.removeChannel(channel)
       })
@@ -417,14 +404,14 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
   }, [open])
 
   async function handleApprove(id: number) {
-    const token = await getAccessToken()
-    if (!token) return
+    const accessToken = token?.trim() || ''
+    if (!accessToken) return
 
     setProcessingId(id)
     try {
       const res = await fetch(`/api/clients/registration-requests/${id}/approve`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${accessToken}` },
       })
       if (res.ok) {
         setRequests((prev) => prev.filter((r) => r.id !== id))
@@ -436,14 +423,14 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
   }
 
   async function handleReject(id: number) {
-    const token = await getAccessToken()
-    if (!token) return
+    const accessToken = token?.trim() || ''
+    if (!accessToken) return
 
     setProcessingId(id)
     try {
       const res = await fetch(`/api/clients/registration-requests/${id}/reject`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${accessToken}` },
       })
       if (res.ok) {
         setRequests((prev) => prev.filter((r) => r.id !== id))

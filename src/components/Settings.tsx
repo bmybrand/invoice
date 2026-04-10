@@ -5,6 +5,7 @@ import { Plus_Jakarta_Sans } from 'next/font/google'
 import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useDashboardProfile } from '@/components/DashboardLayout'
+import { useSessionContext } from '@/context/SessionContext'
 import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
@@ -209,12 +210,11 @@ function normalizeGatewayMode(value: string): 'Testing' | 'Live' {
   return value.trim().toLowerCase() === 'live' ? 'Live' : 'Testing'
 }
 
-async function fetchWithSession(url: string, init?: RequestInit) {
-  const { data } = await supabase.auth.getSession()
+async function fetchWithSession(url: string, token: string, init?: RequestInit) {
   const headers = new Headers(init?.headers)
 
-  if (data.session?.access_token) {
-    headers.set('Authorization', `Bearer ${data.session.access_token}`)
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`)
   }
 
   if (init?.body && !headers.has('Content-Type')) {
@@ -230,6 +230,7 @@ async function fetchWithSession(url: string, init?: RequestInit) {
 export default function Settings() {
   const searchParams = useSearchParams()
   const { currentUserAuthId, displayRole } = useDashboardProfile()
+  const { token } = useSessionContext()
   const normalizedRole = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '')
   const canViewGateways = normalizedRole === 'superadmin' || normalizedRole === 'admin'
   const canManageGateways = normalizedRole === 'superadmin'
@@ -274,7 +275,16 @@ export default function Settings() {
       setPageError(null)
     }
 
-    const res = await fetchWithSession('/api/settings/payment-gateways')
+    const accessToken = token?.trim() || ''
+    if (!accessToken) {
+      if (!isBackgroundRefresh) {
+        setPageError('Authentication expired. Sign in again and try again.')
+        setGatewaysLoading(false)
+      }
+      return
+    }
+
+    const res = await fetchWithSession('/api/settings/payment-gateways', accessToken)
     const payload = (await res.json().catch(() => ({}))) as { gateways?: PaymentGatewayApiRow[]; error?: string }
 
     if (fetchVersion !== fetchVersionRef.current || mutationVersionAtStart !== mutationVersionRef.current) {
@@ -303,27 +313,43 @@ export default function Settings() {
     if (!isBackgroundRefresh) {
       setGatewaysLoading(false)
     }
-  }, [canViewGateways, currentUserAuthId, hasScopedGatewaysCache])
+  }, [canViewGateways, currentUserAuthId, hasScopedGatewaysCache, token])
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       void loadGateways({ background: hasScopedGatewaysCache })
     }, 0)
 
-    const intervalId = window.setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        void loadGateways({ background: true })
-      }
-    }, 5000)
-
     return () => {
       window.clearTimeout(timeoutId)
-      window.clearInterval(intervalId)
       if (refreshTimeoutRef.current !== null) {
         window.clearTimeout(refreshTimeoutRef.current)
       }
     }
   }, [hasScopedGatewaysCache, loadGateways])
+
+  useEffect(() => {
+    if (!canViewGateways || !currentUserAuthId) return
+
+    const channel = supabase
+      .channel(`payment-gateways-sync-${currentUserAuthId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'payment_gateways',
+        },
+        () => {
+          void loadGateways({ background: true })
+        }
+      )
+      .subscribe()
+
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [canViewGateways, currentUserAuthId, loadGateways])
 
   useEffect(() => {
     const nextQuery = (searchParams.get('globalSearch') || '').trim()
@@ -399,7 +425,15 @@ export default function Settings() {
     setGateways(optimisticGateways)
     setGlobalGatewayMode((previousMode) => resolveGlobalGatewayMode(optimisticGateways, previousMode))
 
-    const res = await fetchWithSession(`/api/settings/payment-gateways/${gateway.id}`, {
+    const accessToken = token?.trim() || ''
+    if (!accessToken) {
+      setGateways(previousGateways)
+      setGlobalGatewayMode((previousMode) => resolveGlobalGatewayMode(previousGateways, previousMode))
+      setPageError('Authentication expired. Sign in again and try again.')
+      return
+    }
+
+    const res = await fetchWithSession(`/api/settings/payment-gateways/${gateway.id}`, accessToken, {
       method: 'PATCH',
       body: JSON.stringify({
         name: gateway.name,
@@ -442,7 +476,13 @@ export default function Settings() {
     if (!window.confirm(`Delete ${gateway.name}?`)) return
 
     setPageError(null)
-    const res = await fetchWithSession(`/api/settings/payment-gateways/${gateway.id}`, {
+    const accessToken = token?.trim() || ''
+    if (!accessToken) {
+      setPageError('Authentication expired. Sign in again and try again.')
+      return
+    }
+
+    const res = await fetchWithSession(`/api/settings/payment-gateways/${gateway.id}`, accessToken, {
       method: 'DELETE',
     })
     const payload = (await res.json().catch(() => ({}))) as { error?: string }
@@ -487,9 +527,19 @@ export default function Settings() {
 
     setGateways(optimisticGateways)
 
+    const accessToken = token?.trim() || ''
+    if (!accessToken) {
+      suppressBackgroundRefreshRef.current = false
+      setGateways(previousGateways)
+      setGlobalGatewayMode((previousMode) => resolveGlobalGatewayMode(previousGateways, previousMode))
+      setPageError('Authentication expired. Sign in again and try again.')
+      setGlobalModeLoading(false)
+      return
+    }
+
     const results = await Promise.all(
       targetGateways.map(async (gateway) => {
-        const res = await fetchWithSession(`/api/settings/payment-gateways/${gateway.id}`, {
+        const res = await fetchWithSession(`/api/settings/payment-gateways/${gateway.id}`, accessToken, {
           method: 'PATCH',
           body: JSON.stringify({
             name: gateway.name,
@@ -607,7 +657,14 @@ export default function Settings() {
       : '/api/settings/payment-gateways'
     const method = editingGateway ? 'PATCH' : 'POST'
 
-    const res = await fetchWithSession(endpoint, {
+    const accessToken = token?.trim() || ''
+    if (!accessToken) {
+      setFormError('Authentication expired. Sign in again and try again.')
+      setSubmitting(false)
+      return
+    }
+
+    const res = await fetchWithSession(endpoint, accessToken, {
       method,
       body: JSON.stringify(payload),
     })

@@ -574,7 +574,8 @@ if (clientError) {
         },
         async (payload) => {
           const nextRow = (payload.new ?? null) as { isdeleted?: boolean | null } | null
-          if (nextRow?.isdeleted === true) {
+          const previousRow = (payload.old ?? null) as { isdeleted?: boolean | null } | null
+          if (payload.eventType === 'DELETE' || nextRow?.isdeleted === true || previousRow?.isdeleted === true) {
             resetDashboardProfile(false)
             await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
             redirectToLoginHard()
@@ -603,8 +604,16 @@ if (clientError) {
         },
         async (payload) => {
           const nextRow = (payload.new ?? null) as { isdeleted?: boolean | null; status?: string | null } | null
-          const status = (nextRow?.status || '').trim().toLowerCase()
-          if (nextRow?.isdeleted === true || status === 'rejected') {
+          const previousRow = (payload.old ?? null) as { isdeleted?: boolean | null; status?: string | null } | null
+          const nextStatus = (nextRow?.status || '').trim().toLowerCase()
+          const previousStatus = (previousRow?.status || '').trim().toLowerCase()
+          if (
+            payload.eventType === 'DELETE' ||
+            nextRow?.isdeleted === true ||
+            previousRow?.isdeleted === true ||
+            nextStatus === 'rejected' ||
+            previousStatus === 'rejected'
+          ) {
             resetDashboardProfile(false)
             await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
             redirectToLoginHard()
@@ -752,7 +761,6 @@ if (clientError) {
     }
 
     let cancelled = false
-    let intervalId: number | null = null
     let channel: ReturnType<typeof supabase.channel> | null = null
 
     const loadChatCount = async () => {
@@ -794,12 +802,6 @@ if (clientError) {
       const clientId = await loadChatCount()
       if (!clientId || cancelled) return
 
-      intervalId = window.setInterval(() => {
-        if (document.visibilityState === 'visible') {
-          void loadChatCount()
-        }
-      }, 5000)
-
       channel = supabase
         .channel(`client-chat-nav-count-${clientId}`)
         .on(
@@ -827,9 +829,6 @@ if (clientError) {
 
     return () => {
       cancelled = true
-      if (intervalId !== null) {
-        window.clearInterval(intervalId)
-      }
       if (channel) {
         void supabase.removeChannel(channel)
       }

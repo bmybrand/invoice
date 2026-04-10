@@ -6,6 +6,7 @@ import { Plus_Jakarta_Sans } from 'next/font/google'
 import { supabase } from '@/lib/supabase'
 import { logFetchError } from '@/lib/fetch-error'
 import { useDashboardProfile } from '@/components/DashboardLayout'
+import { useSessionContext } from '@/context/SessionContext'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
@@ -312,6 +313,7 @@ export function ClientChatModal({
 }) {
   const router = useRouter()
   const { accountType, currentUserAuthId, displayName } = useDashboardProfile()
+  const { token } = useSessionContext()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -402,14 +404,8 @@ export function ClientChatModal({
   )
 
   const getCurrentAuthToken = useCallback(async () => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-    if (session?.access_token?.trim()) return session.access_token.trim()
-    const { data, error } = await supabase.auth.refreshSession()
-    if (error) return ''
-    return data.session?.access_token?.trim() || ''
-  }, [])
+    return token?.trim() || ''
+  }, [token])
 
   const loadMessages = useCallback(
     async (options?: { background?: boolean; older?: boolean }) => {
@@ -673,19 +669,8 @@ export function ClientChatModal({
       void loadMessages(cached ? { background: true } : undefined)
     }, 0)
 
-    const intervalId = window.setInterval(() => {
-      if (
-        document.visibilityState === 'visible' &&
-        !suppressRefreshRef.current &&
-        !loadingOlderMessagesRef.current
-      ) {
-        void loadMessages({ background: true })
-      }
-    }, CHAT_REFRESH_MS)
-
     return () => {
       window.clearTimeout(timeoutId)
-      window.clearInterval(intervalId)
       if (suppressRefreshTimeoutRef.current !== null) {
         window.clearTimeout(suppressRefreshTimeoutRef.current)
       }

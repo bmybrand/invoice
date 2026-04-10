@@ -11,7 +11,6 @@ import { logFetchError } from '@/lib/fetch-error'
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
 const PAGE_SIZE = 4
-const TABLE_REFRESH_INTERVAL_MS = 20000 // 20 seconds fallback polling
 const PROFILE_AVATAR_BUCKET = 'profile-images'
 
 type EmployeeRow = {
@@ -499,16 +498,8 @@ export default function Employees() {
     )
     channel.subscribe()
 
-    // Fallback polling every 20s
-    const intervalId = window.setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        void fetchEmployees({ background: true })
-      }
-    }, TABLE_REFRESH_INTERVAL_MS)
-
     return () => {
       window.clearTimeout(timeoutId)
-      window.clearInterval(intervalId)
       void supabase.removeChannel(channel)
     }
   }, [fetchEmployees, profileCurrentUserAuthId])

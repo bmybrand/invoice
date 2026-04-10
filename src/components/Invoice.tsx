@@ -864,22 +864,52 @@ export default function Invoice() {
   }, [])
 
   const PAGE_SIZE = 4
-  const TABLE_REFRESH_INTERVAL_MS = 5000
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       void fetchInvoices()
     }, 0)
 
-    const intervalId = window.setInterval(() => {
-      void fetchInvoices({ background: true })
-    }, TABLE_REFRESH_INTERVAL_MS)
+    const channels = [
+      supabase
+        .channel(`invoices-table-sync-${currentUserAuthId || 'unknown'}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'invoices',
+          },
+          () => {
+            void fetchInvoices({ background: true })
+          }
+        ),
+      supabase
+        .channel(`invoice-payments-sync-${currentUserAuthId || 'unknown'}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'payment_submissions',
+          },
+          () => {
+            void fetchInvoices({ background: true })
+          }
+        ),
+    ]
+
+    channels.forEach((channel) => {
+      channel.subscribe()
+    })
 
     return () => {
       window.clearTimeout(timeoutId)
-      window.clearInterval(intervalId)
+      channels.forEach((channel) => {
+        void supabase.removeChannel(channel)
+      })
     }
-  }, [fetchInvoices])
+  }, [currentUserAuthId, fetchInvoices])
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {

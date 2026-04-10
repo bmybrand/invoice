@@ -29,7 +29,6 @@ type BrandScopedCache = {
 let brandTableCache: BrandScopedCache | null = null
 
 const PAGE_SIZE = 4
-const TABLE_REFRESH_INTERVAL_MS = 5000
 const BRAND_GRID = 'minmax(68px,0.75fr) minmax(108px,1.15fr) minmax(148px,2.1fr) 128px 96px 100px'
 
 function SearchIcon({ className = 'h-4 w-4' }: { className?: string }) {
@@ -220,17 +219,26 @@ export default function Brand() {
       void fetchBrands()
     }, 0)
 
-    const intervalId = window.setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        void fetchBrands({ background: true })
-      }
-    }, TABLE_REFRESH_INTERVAL_MS)
+    const channel = supabase
+      .channel(`brands-table-sync-${currentUserAuthId || 'unknown'}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'brands',
+        },
+        () => {
+          void fetchBrands({ background: true })
+        }
+      )
+      .subscribe()
 
     return () => {
       window.clearTimeout(timeoutId)
-      window.clearInterval(intervalId)
+      void supabase.removeChannel(channel)
     }
-  }, [fetchBrands])
+  }, [currentUserAuthId, fetchBrands])
 
   useEffect(() => {
     const nextQuery = (searchParams.get('globalSearch') || '').trim()
