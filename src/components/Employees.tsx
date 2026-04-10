@@ -447,13 +447,22 @@ export default function Employees() {
     }
     const rows = (data as EmployeeRow[]) ?? []
     setEmployees((prev) => {
-      const next = areEmployeeRowsEqual(prev, rows) ? prev : rows
+      if (prev.length !== rows.length || !areEmployeeRowsEqual(prev, rows)) {
+        const next = rows
+        employeesTableCache = {
+          ownerAuthId: profileCurrentUserAuthId,
+          employees: next,
+          avatarUrls: scopedEmployeesCache?.avatarUrls ?? {},
+        }
+        return next
+      }
+      // Force update to trigger UI refresh on delete/add
       employeesTableCache = {
         ownerAuthId: profileCurrentUserAuthId,
-        employees: next,
+        employees: [...rows],
         avatarUrls: scopedEmployeesCache?.avatarUrls ?? {},
       }
-      return next
+      return [...rows]
     })
     void fetchEmployeeAvatarUrls(rows)
   }, [fetchEmployeeAvatarUrls, profileCurrentUserAuthId, scopedEmployeesCache])

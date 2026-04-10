@@ -405,8 +405,19 @@ export default function Clients() {
         return status === 'pending' || status === 'rejected'
       })
 
-    setClients((prev) => (areClientRowsEqual(prev, visibleClientRows) ? prev : visibleClientRows))
-    setRegistrationRequests((prev) => (areRequestRowsEqual(prev, requestRows) ? prev : requestRows))
+    setClients((prev) => {
+      if (prev.length !== visibleClientRows.length || !areClientRowsEqual(prev, visibleClientRows)) {
+        return visibleClientRows
+      }
+      // Force update to trigger UI refresh on delete/add
+      return [...visibleClientRows]
+    })
+    setRegistrationRequests((prev) => {
+      if (prev.length !== requestRows.length || !areRequestRowsEqual(prev, requestRows)) {
+        return requestRows
+      }
+      return [...requestRows]
+    })
     clientsTableCache = {
       ownerAuthId: currentUserAuthId,
       clients: visibleClientRows,
@@ -473,17 +484,30 @@ export default function Clients() {
     const channelName = `clients-table-sync-${currentUserAuthId || 'unknown'}`
     const channel = supabase.channel(channelName)
 
+    // Listen for all changes to clients for admins/superadmins, or only handler_id for regular users
     if (currentUserAuthId) {
-      channel.on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'clients',
-          filter: `handler_id=eq.${currentUserAuthId}`,
-        },
-        () => { void fetchClients({ background: true }) }
-      )
+      if (isAdmin || isSuperAdmin) {
+        channel.on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'clients',
+          },
+          () => { void fetchClients({ background: true }) }
+        )
+      } else {
+        channel.on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'clients',
+            filter: `handler_id=eq.${currentUserAuthId}`,
+          },
+          () => { void fetchClients({ background: true }) }
+        )
+      }
       channel.on(
         'postgres_changes',
         {
@@ -497,8 +521,6 @@ export default function Clients() {
 
     channel.subscribe()
 
-
-
     return () => {
       window.clearTimeout(timeoutId)
       void supabase.removeChannel(channel)
@@ -506,7 +528,7 @@ export default function Clients() {
         window.clearTimeout(refreshTimeoutRef.current)
       }
     }
-  }, [chatTarget, fetchClients, currentUserAuthId])
+  }, [chatTarget, fetchClients, currentUserAuthId, isAdmin, isSuperAdmin])
 
   useEffect(() => {
     const nextQuery = (searchParams.get('globalSearch') || '').trim()

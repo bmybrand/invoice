@@ -1,4 +1,3 @@
-
 'use client'
 
 // Prevent double send
@@ -1573,6 +1572,8 @@ export function ClientChatModal({
     }
   }, [])
 
+  const [sendLocked, setSendLocked] = useState(false)
+
   if (!open || !clientId) return null
 
   const isPageVariant = variant === 'page'
@@ -1669,7 +1670,7 @@ export function ClientChatModal({
                           </button>
 
                           {activeMenuMessageId === message.id ? (
-                            <div className={`absolute top-8 z-[90] w-40 overflow-hidden rounded-xl border border-slate-700 bg-slate-900 shadow-2xl ${message.isOwnMessage ? 'right-full mr-2' : 'left-full ml-2'}`}>
+                            <div className={`absolute top-8 z-90 w-40 overflow-hidden rounded-xl border border-slate-700 bg-slate-900 shadow-2xl ${message.isOwnMessage ? 'right-full mr-2' : 'left-full ml-2'}`}>
                               {message.senderAuthId === currentUserAuthId && editingId !== message.id ? (
                                 <button
                                   type="button"
