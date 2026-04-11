@@ -713,7 +713,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       if (retryTimeoutId !== null) {
         window.clearTimeout(retryTimeoutId)
       }
-      void channel.untrack()
+      void channel.unsubscribe()
       void supabase.removeChannel(channel)
     }
   }, [currentUserAuthId, accountType])
@@ -996,6 +996,18 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
+  // Prevent background scroll when profile modal is open
+  useEffect(() => {
+    if (profileModalOpen) {
+      document.body.classList.add('overflow-hidden')
+    } else {
+      document.body.classList.remove('overflow-hidden')
+    }
+    return () => {
+      document.body.classList.remove('overflow-hidden')
+    }
+  }, [profileModalOpen])
+
   return (
     <DashboardProfileContext.Provider
       value={{
@@ -1203,7 +1215,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         {profileModalOpen && (
           <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4">
             <div
-              className="relative w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl"
+              className="relative w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl max-h-screen overflow-y-auto scrollbar-thin scrollbar-track-transparent"
               onClick={(e) => e.stopPropagation()}
             >
               <button
@@ -1370,6 +1382,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     </DashboardProfileContext.Provider>
   )
 }
+
 
 
 
