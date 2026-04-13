@@ -143,7 +143,7 @@ function ChatBubbleIcon({ className = 'h-4 w-4' }: { className?: string }) {
 
 export function NotificationsBell({ accountType, displayRole }: NotificationsBellProps) {
   const router = useRouter()
-  const { token } = useSessionContext()
+  const { token, user } = useSessionContext()
   const [open, setOpen] = useState(false)
   const [requests, setRequests] = useState<PendingRequest[]>([])
   const [messages, setMessages] = useState<MessageNotification[]>([])
@@ -166,6 +166,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
   const isAdminBell = accountType === 'employee' && (normalizedRole === 'admin' || normalizedRole === 'superadmin')
   const isEmployeeBell = accountType === 'employee'
   const shouldShowBell = isEmployeeBell
+  const currentUserAuthId = (user?.id || '').trim()
 
   const maybeNotifyDesktop = useCallback((nextMessages: MessageNotification[]) => {
     if (!isEmployeeBell || typeof window === 'undefined' || !('Notification' in window)) {
@@ -577,6 +578,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
               event: '*',
               schema: 'public',
               table: 'clients',
+              ...(isAdminBell || !currentUserAuthId ? {} : { filter: `handler_id=eq.${currentUserAuthId}` }),
             },
             handleClientChange
           )
@@ -592,7 +594,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
         void supabase.removeChannel(channel)
       })
     }
-  }, [fetchNotifications, isAdminBell, isEmployeeBell, shouldShowBell])
+  }, [currentUserAuthId, fetchNotifications, isAdminBell, isEmployeeBell, shouldShowBell])
 
   useEffect(() => {
     if (!open || !shouldShowBell) return

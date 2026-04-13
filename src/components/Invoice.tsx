@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react'
 import { Plus_Jakarta_Sans } from 'next/font/google'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -10,6 +10,7 @@ import { getInvoiceLink } from '@/lib/invoice-token'
 import { formatInvoiceCode } from '@/lib/invoice-code'
 import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
 import { logFetchError } from '@/lib/fetch-error'
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
@@ -614,6 +615,9 @@ export default function Invoice() {
   const [deletingInvoice, setDeletingInvoice] = useState<InvoiceRow | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const realtimeRefreshTimeoutRef = useRef<number | null>(null)
+
+  useBodyScrollLock(Boolean(showAddModal || editingInvoice || deletingInvoice))
 
   async function validateGatewayAmountForInvoice(amount: number): Promise<{
     error: string | null
@@ -719,9 +723,12 @@ export default function Invoice() {
     }
     let query = supabase
       .from('invoices')
-      .select(
-        'id, invoice_date, invoice_creator_id, client_id, client_name, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, created_at, employees!invoice_creator_id(employee_name), clients!client_id(name)'
-      )
+      .select(`
+        id, invoice_date, invoice_creator_id, client_id, client_name, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, created_at,
+        employees!invoice_creator_id(employee_name),
+        clients!client_id(name),
+        invoice_payment_summary!left(paid_amount)
+      `)
       .order('created_at', { ascending: false })
 
     if (isClient && clientId) {
@@ -745,32 +752,7 @@ export default function Invoice() {
       return
     }
 
-    const invoiceIds = ((data ?? []) as Array<Record<string, unknown>>)
-      .map((row) => Number(row.id))
-      .filter((id) => Number.isFinite(id) && id > 0)
 
-    let paidAmountByInvoiceId = new Map<number, number>()
-    if (invoiceIds.length > 0) {
-      const { data: paymentData, error: paymentError } = await supabase
-        .from('payment_submissions')
-        .select('invoice_id, amount_paid, payment_status')
-        .in('invoice_id', invoiceIds)
-
-      if (paymentError) {
-        logFetchError('Failed to fetch invoice payment summaries', paymentError)
-      } else {
-        paidAmountByInvoiceId = ((paymentData as PaymentSubmissionRow[] | null) ?? []).reduce((map, row) => {
-          const invoiceId = Number(row.invoice_id ?? 0)
-          if (!Number.isFinite(invoiceId) || invoiceId <= 0 || !isSuccessfulPaymentStatus(row.payment_status)) {
-            return map
-          }
-
-          const amount = parseAmountValue(String(row.amount_paid ?? '0'))
-          map.set(invoiceId, (map.get(invoiceId) ?? 0) + amount)
-          return map
-        }, new Map<number, number>())
-      }
-    }
 
     const rows = (data ?? []).map((row: Record<string, unknown>) => {
       const emp = row.employees as { employee_name?: string } | { employee_name?: string }[] | null
@@ -796,7 +778,7 @@ export default function Invoice() {
         amount: ((row.amount as string) ?? '').trim() || subtotal.toFixed(2),
         status: (row.status as string) ?? 'Pending',
         payable_amount: row.payable_amount == null ? null : Number(row.payable_amount),
-        paid_amount: Number((paidAmountByInvoiceId.get(invoiceId) ?? 0).toFixed(2)),
+        paid_amount: Number((row.invoice_payment_summary?.paid_amount ?? 0).toFixed(2)),
         invoice_type: (row.invoice_type as string) ?? INVOICE_TYPE_OPTIONS[0],
       }
     })
@@ -863,6 +845,16 @@ export default function Invoice() {
     setBrands((data as BrandOption[]) ?? [])
   }, [])
 
+  const scheduleInvoicesRefresh = useCallback(() => {
+    if (realtimeRefreshTimeoutRef.current !== null) {
+      window.clearTimeout(realtimeRefreshTimeoutRef.current)
+    }
+    realtimeRefreshTimeoutRef.current = window.setTimeout(() => {
+      realtimeRefreshTimeoutRef.current = null
+      void fetchInvoices({ background: true })
+    }, 180)
+  }, [fetchInvoices])
+
   const PAGE_SIZE = 4
 
   useEffect(() => {
@@ -880,9 +872,7 @@ export default function Invoice() {
             schema: 'public',
             table: 'invoices',
           },
-          () => {
-            void fetchInvoices({ background: true })
-          }
+          scheduleInvoicesRefresh
         ),
       supabase
         .channel(`invoice-payments-sync-${currentUserAuthId || 'unknown'}`)
@@ -893,9 +883,7 @@ export default function Invoice() {
             schema: 'public',
             table: 'payment_submissions',
           },
-          () => {
-            void fetchInvoices({ background: true })
-          }
+          scheduleInvoicesRefresh
         ),
     ]
 
@@ -905,11 +893,15 @@ export default function Invoice() {
 
     return () => {
       window.clearTimeout(timeoutId)
+      if (realtimeRefreshTimeoutRef.current !== null) {
+        window.clearTimeout(realtimeRefreshTimeoutRef.current)
+        realtimeRefreshTimeoutRef.current = null
+      }
       channels.forEach((channel) => {
         void supabase.removeChannel(channel)
       })
     }
-  }, [currentUserAuthId, fetchInvoices])
+  }, [currentUserAuthId, scheduleInvoicesRefresh])
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -1812,8 +1804,8 @@ export default function Invoice() {
 
       {/* Delete confirm modal */}
       {deletingInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
-          <div className="relative w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4">
+          <div className="relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
               onClick={() => !deleteLoading && setDeletingInvoice(null)}
@@ -1843,8 +1835,8 @@ export default function Invoice() {
 
       {/* Add invoice modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
-          <div className="relative w-full max-w-5xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4">
+          <div className="relative max-h-[calc(100dvh-2rem)] w-full max-w-5xl" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
               onClick={closeAddModal}
@@ -1854,7 +1846,7 @@ export default function Invoice() {
             >
               <CloseIcon />
             </button>
-            <div className="max-h-[92vh] overflow-y-auto scrollbar-thin rounded-2xl bg-neutral-100 p-6 shadow-2xl text-slate-800">
+            <div className="max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-neutral-100 p-6 text-slate-800 shadow-2xl scrollbar-thin">
               {(() => {
                 return (
                   <form
@@ -2176,8 +2168,8 @@ export default function Invoice() {
 
       {/* Edit invoice modal */}
       {editingInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
-          <div className="relative w-full max-w-5xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4">
+          <div className="relative max-h-[calc(100dvh-2rem)] w-full max-w-5xl" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
               onClick={closeEditModal}
@@ -2187,7 +2179,7 @@ export default function Invoice() {
             >
               <CloseIcon />
             </button>
-            <div className="max-h-[92vh] overflow-y-auto scrollbar-thin rounded-2xl bg-neutral-100 p-6 shadow-2xl text-slate-800">
+            <div className="max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-neutral-100 p-6 text-slate-800 shadow-2xl scrollbar-thin">
               {(() => {
                 return (
                   <form

@@ -11,6 +11,7 @@ import { logFetchError } from '@/lib/fetch-error'
 import { getInvoiceLink } from '@/lib/invoice-token'
 import { useDashboardProfile } from '@/components/DashboardLayout'
 import { useSessionContext } from '@/context/SessionContext'
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
@@ -19,6 +20,8 @@ const OLDER_LOAD_TRIGGER_PX = 140
 const CHAT_BUCKET = 'client-chat-files'
 const MAX_CHAT_ATTACHMENT_BYTES = 20 * 1024 * 1024
 const MAX_CHAT_ATTACHMENTS_PER_MESSAGE = 10
+const DEFAULT_MESSAGE_LINE_CLAMP = 8
+const MESSAGE_LINE_CLAMP_STEP = 8
 
 type ChatCacheEntry = {
   messages: ChatMessage[]
@@ -1085,15 +1088,23 @@ export function ClientChatModal({
     []
   )
 
-  const increaseMessageLineLimit = useCallback((messageId: number) => {
+  const toggleExpandedMessage = useCallback((messageId: number) => {
     setMessageLineLimits((prev) => {
-      const currentLimit = prev[messageId] ?? 4
+      const currentLimit = prev[messageId] ?? DEFAULT_MESSAGE_LINE_CLAMP
+      const isFullyExpanded = currentLimit > DEFAULT_MESSAGE_LINE_CLAMP && !messageOverflowMap[messageId]
+
+      if (isFullyExpanded) {
+        const next = { ...prev }
+        delete next[messageId]
+        return next
+      }
+
       return {
         ...prev,
-        [messageId]: currentLimit + 4,
+        [messageId]: currentLimit + MESSAGE_LINE_CLAMP_STEP,
       }
     })
-  }, [])
+  }, [messageOverflowMap])
 
   const scrollToBottom = useCallback((smooth = true) => {
     const node = messagesRef.current
@@ -1168,7 +1179,7 @@ export function ClientChatModal({
     return () => {
       window.cancelAnimationFrame(frameId)
     }
-  }, [messages, messageLineLimits])
+  }, [messageLineLimits, messages])
 
   async function handleSendMessage() {
     if (!clientId || !canSend) return
@@ -1604,11 +1615,13 @@ export function ClientChatModal({
     }
   }, [])
 
+  const isPageVariant = variant === 'page'
   const [sendLocked, setSendLocked] = useState(false)
+
+  useBodyScrollLock(open && !isPageVariant)
 
   if (!open || !clientId) return null
 
-  const isPageVariant = variant === 'page'
   const shell = (
     <div className={`flex min-w-0 ${isPageVariant ? `flex-1 ${pageHeightClass}` : 'h-[min(82vh,720px)] max-w-5xl'} w-full overflow-hidden rounded-r-2xl rounded-l-none border border-slate-700 bg-slate-900 shadow-2xl`}>
       <div className="flex min-w-0 flex-1 flex-col relative">
@@ -1883,15 +1896,27 @@ export function ClientChatModal({
 
                             {message.message ? (
                               <div className={`${messageAttachments.length > 0 ? 'mt-3' : 'mt-0'} space-y-2`}>
+                                {(() => {
+                                  const lineLimit = messageLineLimits[message.id] ?? DEFAULT_MESSAGE_LINE_CLAMP
+                                  const hasExpanded = messageLineLimits[message.id] != null
+                                  const isFullyExpanded = hasExpanded && !messageOverflowMap[message.id]
+                                  const canToggle =
+                                    messageOverflowMap[message.id] ||
+                                    hasExpanded ||
+                                    message.message.length > 180 ||
+                                    message.message.includes('\n')
+
+                                  return (
+                                    <>
                                 <p
                                   ref={setMessageContentRef(message.id)}
                                   className="whitespace-pre-wrap break-all text-sm text-white"
                                   style={
-                                    messageLineLimits[message.id] || messageOverflowMap[message.id] || message.message.length > 180 || message.message.includes('\n')
+                                    canToggle && !isFullyExpanded
                                       ? {
                                           display: '-webkit-box',
                                           WebkitBoxOrient: 'vertical',
-                                          WebkitLineClamp: messageLineLimits[message.id] ?? 4,
+                                          WebkitLineClamp: lineLimit,
                                           overflow: 'hidden',
                                         }
                                       : undefined
@@ -1899,15 +1924,18 @@ export function ClientChatModal({
                                 >
                                   {message.message}
                                 </p>
-                                {messageOverflowMap[message.id] || message.message.length > 180 || message.message.includes('\n') ? (
+                                {canToggle ? (
                                   <button
                                     type="button"
-                                    onClick={() => increaseMessageLineLimit(message.id)}
+                                    onClick={() => toggleExpandedMessage(message.id)}
                                     className="text-xs font-semibold text-orange-300 transition hover:text-orange-200"
                                   >
-                                    Show more
+                                    {isFullyExpanded ? 'See less' : 'See more'}
                                   </button>
                                 ) : null}
+                                    </>
+                                  )
+                                })()}
                               </div>
                             ) : messageAttachments.length === 0 ? (
                               <p className="mt-0 text-xs italic text-slate-400">Shared an attachment</p>
@@ -2246,7 +2274,7 @@ export function ClientChatModal({
   return (
     <>
       <div className="fixed inset-0 z-40 bg-black/60" onClick={onClose} />
-      <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 ${plusJakarta.className}`}>
+      <div className={`fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4 ${plusJakarta.className}`}>
         {shell}
       </div>
       {attachmentLightbox}

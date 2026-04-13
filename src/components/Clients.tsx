@@ -12,6 +12,7 @@ import { useSessionContext } from '@/context/SessionContext'
 import { ClientChatModal } from '@/components/ClientChatModal'
 import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
 import { logFetchError } from '@/lib/fetch-error'
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
@@ -39,6 +40,16 @@ type RegistrationRequestRow = {
   email: string
   status: string
   created_at?: string | null
+}
+
+type RealtimeClientRow = {
+  id: number
+  name?: string | null
+  email?: string | null
+  handler_id?: string | null
+  status?: string | null
+  created_date?: string | null
+  isdeleted?: boolean | null
 }
 
 type SalesAgentOption = {
@@ -90,6 +101,22 @@ function areClientRowsEqual(a: ClientRow[], b: ClientRow[]) {
 
 function areRequestRowsEqual(a: RegistrationRequestRow[], b: RegistrationRequestRow[]) {
   return JSON.stringify(a) === JSON.stringify(b)
+}
+
+function sortClientRows(rows: ClientRow[]) {
+  return [...rows].sort((a, b) => {
+    const aTime = Date.parse(a.created_at || '')
+    const bTime = Date.parse(b.created_at || '')
+    return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0)
+  })
+}
+
+function sortRequestRows(rows: RegistrationRequestRow[]) {
+  return [...rows].sort((a, b) => {
+    const aTime = Date.parse(a.created_at || '')
+    const bTime = Date.parse(b.created_at || '')
+    return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0)
+  })
 }
 
 function SearchIcon({ className = 'h-4 w-4' }: { className?: string }) {
@@ -221,6 +248,7 @@ export default function Clients() {
   const [requestActionError, setRequestActionError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [requestActionConfirm, setRequestActionConfirm] = useState<RequestActionConfirmState | null>(null)
+  useBodyScrollLock(Boolean(showAddModal || showArchivedModal || editingClient || deletingClient || requestActionConfirm))
   const [chatTarget, setChatTarget] = useState<ChatTarget | null>(() => {
     const chatClientId = Number.parseInt(searchParams.get('chatClientId') || '', 10)
     if (!Number.isFinite(chatClientId) || chatClientId < 1) return null
@@ -243,10 +271,25 @@ export default function Clients() {
   const isFetchingRef = useRef(false)
   const queuedRefreshRef = useRef(false)
   const fetchClientsRef = useRef<((options?: { background?: boolean }) => Promise<void>) | null>(null)
+  const clientsRef = useRef<ClientRow[]>(scopedClientsCache?.clients ?? [])
+  const registrationRequestsRef = useRef<RegistrationRequestRow[]>(scopedClientsCache?.registrationRequests ?? [])
+  const salesAgentsRef = useRef<SalesAgentOption[]>([])
 
   useEffect(() => {
     requestActionLoadingIdRef.current = requestActionLoadingId
   }, [requestActionLoadingId])
+
+  useEffect(() => {
+    clientsRef.current = clients
+  }, [clients])
+
+  useEffect(() => {
+    registrationRequestsRef.current = registrationRequests
+  }, [registrationRequests])
+
+  useEffect(() => {
+    salesAgentsRef.current = salesAgents
+  }, [salesAgents])
 
   const fetchSalesAgents = useCallback(async () => {
     setAgentsLoading(true)
@@ -436,9 +479,86 @@ export default function Clients() {
     }
   }, [currentUserAuthId, isAdmin, isSuperAdmin, scopedClientsCache])
 
+  const scheduleClientsRefresh = useCallback(() => {
+    suppressBackgroundRefreshRef.current = true
+    if (refreshTimeoutRef.current !== null) {
+      window.clearTimeout(refreshTimeoutRef.current)
+    }
+    refreshTimeoutRef.current = window.setTimeout(() => {
+      suppressBackgroundRefreshRef.current = false
+      refreshTimeoutRef.current = null
+      void fetchClients({ background: true })
+    }, 1250)
+  }, [fetchClients])
+
   useEffect(() => {
     fetchClientsRef.current = fetchClients
   }, [fetchClients])
+
+  const applyRealtimeClientChange = useCallback((row: RealtimeClientRow | null, previousRow: RealtimeClientRow | null) => {
+    const targetId = Number(row?.id ?? previousRow?.id ?? 0)
+    if (!Number.isFinite(targetId) || targetId <= 0) return
+
+    const isDeleted = row?.isdeleted === true || !row
+    const nextHandlerId = (row?.handler_id || '').trim()
+    const isVisibleToCurrentUser = isAdmin || isSuperAdmin || nextHandlerId === currentUserAuthId
+    const nextStatus = (row?.status || '').trim().toLowerCase()
+
+    const resolveHandlerName = () => {
+      if (!nextHandlerId) return 'Unassigned'
+      const knownAgent = salesAgentsRef.current.find((agent) => agent.auth_id === nextHandlerId)
+      if (knownAgent?.employee_name?.trim()) return knownAgent.employee_name.trim()
+      const existingClient = clientsRef.current.find((client) => (client.handler_id || '').trim() === nextHandlerId)
+      if (existingClient?.handler_name?.trim()) return existingClient.handler_name.trim()
+      return 'Unassigned'
+    }
+
+    let nextClients = clientsRef.current.filter((client) => client.id !== targetId)
+    let nextRequests = registrationRequestsRef.current.filter((request) => request.id !== targetId)
+
+    if (!isDeleted && isVisibleToCurrentUser && row) {
+      if (nextStatus === 'approved') {
+        nextClients = sortClientRows([
+          ...nextClients,
+          {
+            id: targetId,
+            name: row.name || '',
+            email: row.email || '',
+            handler_id: row.handler_id ?? null,
+            handler_name: resolveHandlerName(),
+            created_at: row.created_date ?? null,
+          },
+        ]).filter((client) => !pendingClientDeleteIdsRef.current.has(client.id))
+      } else if (nextStatus === 'pending' || nextStatus === 'rejected') {
+        const dedupedRequests = new Map<string, RegistrationRequestRow>()
+        sortRequestRows([
+          ...nextRequests,
+          {
+            id: targetId,
+            name: row.name || '',
+            email: row.email || '',
+            status: nextStatus,
+            created_at: row.created_date ?? null,
+          },
+        ]).forEach((request) => {
+          const emailKey = (request.email || '').trim().toLowerCase()
+          if (!emailKey || dedupedRequests.has(emailKey)) return
+          dedupedRequests.set(emailKey, request)
+        })
+        nextRequests = Array.from(dedupedRequests.values())
+      }
+    }
+
+    clientsRef.current = nextClients
+    registrationRequestsRef.current = nextRequests
+    clientsTableCache = {
+      ownerAuthId: currentUserAuthId,
+      clients: nextClients,
+      registrationRequests: nextRequests,
+    }
+    setClients(nextClients)
+    setRegistrationRequests(nextRequests)
+  }, [currentUserAuthId, isAdmin, isSuperAdmin])
 
   const fetchArchivedClients = useCallback(async () => {
     setArchivedLoading(true)
@@ -497,7 +617,12 @@ export default function Clients() {
             schema: 'public',
             table: 'clients',
           },
-          () => { void fetchClients({ background: true }) }
+          (payload) => {
+            applyRealtimeClientChange(
+              (payload.new ?? null) as RealtimeClientRow | null,
+              (payload.old ?? null) as RealtimeClientRow | null
+            )
+          }
         )
       } else {
         channel.on(
@@ -508,18 +633,14 @@ export default function Clients() {
             table: 'clients',
             filter: `handler_id=eq.${currentUserAuthId}`,
           },
-          () => { void fetchClients({ background: true }) }
+          (payload) => {
+            applyRealtimeClientChange(
+              (payload.new ?? null) as RealtimeClientRow | null,
+              (payload.old ?? null) as RealtimeClientRow | null
+            )
+          }
         )
       }
-      channel.on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'registration_requests',
-        },
-        () => { void fetchClients({ background: true }) }
-      )
     }
 
     channel.subscribe()
@@ -531,7 +652,7 @@ export default function Clients() {
         window.clearTimeout(refreshTimeoutRef.current)
       }
     }
-  }, [chatTarget, fetchClients, currentUserAuthId, isAdmin, isSuperAdmin])
+  }, [applyRealtimeClientChange, chatTarget, currentUserAuthId, fetchClients, isAdmin, isSuperAdmin])
 
   useEffect(() => {
     const nextQuery = (searchParams.get('globalSearch') || '').trim()
@@ -589,18 +710,6 @@ export default function Clients() {
   const start = (effectivePage - 1) * PAGE_SIZE
   const end = start + PAGE_SIZE
   const paginatedClients = filteredClients.slice(start, end)
-
-  function scheduleClientsRefresh() {
-    suppressBackgroundRefreshRef.current = true
-    if (refreshTimeoutRef.current !== null) {
-      window.clearTimeout(refreshTimeoutRef.current)
-    }
-    refreshTimeoutRef.current = window.setTimeout(() => {
-      suppressBackgroundRefreshRef.current = false
-      refreshTimeoutRef.current = null
-      void fetchClients({ background: true })
-    }, 1250)
-  }
 
   async function handleAddSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -1451,8 +1560,8 @@ export default function Clients() {
       {editingClient && (
         <>
           <div className="fixed inset-0 z-40 bg-black/60" onClick={() => !editLoading && setEditingClient(null)} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl">
+          <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4">
+            <div className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-bold text-white">Edit Client</h2>
                 <button
@@ -1561,8 +1670,8 @@ export default function Clients() {
       {deletingClient && (
         <>
           <div className="fixed inset-0 z-40 bg-black/60" onClick={() => !deleteLoading && setDeletingClient(null)} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl">
+          <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4">
+            <div className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl">
               <h2 className="text-lg font-bold text-white">Delete Client</h2>
               <p className="mt-2 text-slate-400 text-sm">
                 Are you sure you want to delete <span className="font-medium text-white">{deletingClient.name}</span> ({deletingClient.email})? This will hide the client by marking it deleted.
@@ -1596,8 +1705,8 @@ export default function Clients() {
       {requestActionConfirm && (
         <>
           <div className="fixed inset-0 z-40 bg-black/60" onClick={() => requestActionLoadingId === null && setRequestActionConfirm(null)} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl">
+          <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4">
+            <div className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl">
               <h2 className="text-lg font-bold text-white">
                 {requestActionConfirm.mode === 'approve'
                   ? 'Approve Request'
@@ -1648,8 +1757,8 @@ export default function Clients() {
       {showArchivedModal && (
         <>
           <div className="fixed inset-0 z-40 bg-black/60" onClick={() => archivedActionClientId === null && setShowArchivedModal(false)} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="flex max-h-[80vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-800 shadow-xl">
+          <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4">
+            <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-800 shadow-xl">
               <div className="flex items-center justify-between border-b border-slate-700 px-6 py-4">
                 <div>
                   <h2 className="text-lg font-bold text-white">Archived Clients</h2>
@@ -1740,8 +1849,8 @@ export default function Clients() {
       {showAddModal && (
         <>
           <div className="fixed inset-0 z-40 bg-black/60" onClick={() => !addLoading && setShowAddModal(false)} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl">
+          <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4">
+            <div className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-bold text-white">Add New Client</h2>
                 <button

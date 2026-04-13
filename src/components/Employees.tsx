@@ -1,9 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { PasswordGeneratorButton } from '@/components/PasswordGeneratorButton'
 import { PasswordInput } from '@/components/PasswordInput'
-import { FiEye, FiEyeOff } from 'react-icons/fi'
 import { Plus_Jakarta_Sans } from 'next/font/google'
 import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -11,6 +10,7 @@ import { useDashboardProfile } from '@/components/DashboardLayout'
 import { useSessionContext } from '@/context/SessionContext'
 import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
 import { logFetchError } from '@/lib/fetch-error'
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
@@ -30,6 +30,7 @@ type EmployeeRow = {
 }
 
 type ArchivedEmployeeRow = EmployeeRow
+type RealtimeEmployeeRow = EmployeeRow & { isdeleted?: boolean | null }
 
 type EmployeesTableCache = {
   ownerAuthId: string | null
@@ -250,7 +251,6 @@ export default function Employees() {
   const [showArchivedModal, setShowArchivedModal] = useState(false)
   const [addEmail, setAddEmail] = useState('')
   const [addPassword, setAddPassword] = useState('')
-  const [showAddPassword, setShowAddPassword] = useState(false)
   const [addName, setAddName] = useState('')
   const [addRole, setAddRole] = useState<'user' | 'admin'>('user')
   const [addDepartment, setAddDepartment] = useState('')
@@ -278,6 +278,7 @@ export default function Employees() {
   const [archivedError, setArchivedError] = useState<string | null>(null)
   const [archivedActionEmployeeId, setArchivedActionEmployeeId] = useState<number | null>(null)
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  useBodyScrollLock(Boolean(showAddModal || showArchivedModal || editingEmployee || deletingEmployee))
 
   const roleOptions = [
     { value: '', label: 'All Roles' },
@@ -471,6 +472,68 @@ export default function Employees() {
     void fetchEmployeeAvatarUrls(rows)
   }, [fetchEmployeeAvatarUrls, profileCurrentUserAuthId, scopedEmployeesCache])
 
+  const applyRealtimeEmployeeChange = useCallback((row: RealtimeEmployeeRow | null, previousRow: RealtimeEmployeeRow | null) => {
+    const targetId = Number(row?.id ?? previousRow?.id ?? 0)
+    if (!Number.isFinite(targetId) || targetId <= 0) return
+
+    const isDeleted = row?.isdeleted === true || !row
+    const nextAvatarUrl = row ? buildEmployeeAvatarUrl(row) : ''
+
+    setEmployees((prev) => {
+      let next = prev.filter((employee) => employee.id !== targetId)
+      if (!isDeleted && row) {
+        next = [
+          ...next,
+          {
+            id: Number(row.id),
+            auth_id: row.auth_id || '',
+            employee_name: row.employee_name || '',
+            email: row.email || '',
+            role: row.role || '',
+            department: row.department || '',
+            avatar_path: row.avatar_path ?? null,
+            avatar_url: row.avatar_url ?? null,
+            created_at: row.created_at,
+          },
+        ].sort((a, b) => {
+          const aTime = Date.parse(a.created_at || '')
+          const bTime = Date.parse(b.created_at || '')
+          return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0)
+        })
+      }
+
+      employeesTableCache = {
+        ownerAuthId: profileCurrentUserAuthId,
+        employees: next,
+        avatarUrls: employeesTableCache?.ownerAuthId === profileCurrentUserAuthId
+          ? employeesTableCache.avatarUrls
+          : employeeAvatarUrls,
+      }
+      return next
+    })
+
+    setEmployeeAvatarUrls((prev) => {
+      const next = { ...prev }
+      const authId = (row?.auth_id ?? previousRow?.auth_id ?? '').trim()
+      if (authId) {
+        if (isDeleted || !nextAvatarUrl) {
+          delete next[authId]
+        } else {
+          next[authId] = nextAvatarUrl
+        }
+      }
+
+      employeesTableCache = {
+        ownerAuthId: profileCurrentUserAuthId,
+        employees: employeesTableCache?.ownerAuthId === profileCurrentUserAuthId
+          ? employeesTableCache.employees
+          : [],
+        avatarUrls: next,
+      }
+      return next
+    })
+  }, [employeeAvatarUrls, profileCurrentUserAuthId])
+
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       void fetchEmployees()
@@ -487,7 +550,12 @@ export default function Employees() {
         schema: 'public',
         table: 'employees',
       },
-      () => { void fetchEmployees({ background: true }) }
+      (payload) => {
+        applyRealtimeEmployeeChange(
+          (payload.new ?? null) as RealtimeEmployeeRow | null,
+          (payload.old ?? null) as RealtimeEmployeeRow | null
+        )
+      }
     )
     channel.subscribe()
 
@@ -495,7 +563,7 @@ export default function Employees() {
       window.clearTimeout(timeoutId)
       void supabase.removeChannel(channel)
     }
-  }, [fetchEmployees, profileCurrentUserAuthId])
+  }, [applyRealtimeEmployeeChange, fetchEmployees, profileCurrentUserAuthId])
 
   useEffect(() => {
     const nextQuery = (searchParams.get('globalSearch') || '').trim()
@@ -1076,8 +1144,8 @@ export default function Employees() {
 
       {/* Delete confirm modal */}
       {deletingEmployee && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
-          <div className="relative w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4">
+          <div className="relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
               onClick={() => {
@@ -1114,8 +1182,8 @@ export default function Employees() {
       )}
 
       {showArchivedModal && canManageArchivedEmployees && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
-          <div className="flex max-h-[80vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-800 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4">
+          <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-800 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-700 px-6 py-4">
               <div className="relative">
                 <h2 className="text-lg font-bold text-white">Archived Employees</h2>
@@ -1206,8 +1274,8 @@ export default function Employees() {
 
       {/* Edit employee modal */}
       {editingEmployee && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
-          <div className="relative w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4">
+          <div className="relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
               onClick={() => !editLoading && setEditingEmployee(null)}
@@ -1238,7 +1306,7 @@ export default function Employees() {
                   className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 pr-12 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                 />
               </div>
-              <div>
+              <div className="relative">
                 <label htmlFor="edit-email" className="block text-sm font-medium text-slate-300">Email</label>
                 <input
                   id="edit-email"
@@ -1354,8 +1422,8 @@ export default function Employees() {
 
       {/* Add user modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
-          <div className="relative w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4">
+          <div className="relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
               onClick={() => !addLoading && setShowAddModal(false)}
@@ -1400,24 +1468,15 @@ export default function Employees() {
               </div>
               <div>
                 <label htmlFor="add-password" className="block text-sm font-medium text-slate-300">Password</label>
-                <input
+                <PasswordInput
                   id="add-password"
-                  type={showAddPassword ? 'text' : 'password'}
                   value={addPassword}
                   onChange={(e) => setAddPassword(e.target.value)}
                   required
                   placeholder="••••••••"
-                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 pr-12 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                  wrapperClassName="mt-1 flex items-center gap-3 rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20"
+                  inputClassName="min-w-0 flex-1 bg-transparent text-white placeholder:text-slate-500 focus:outline-none"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowAddPassword((prev) => !prev)}
-                  className="absolute right-4 top-[43px] text-slate-400 transition hover:text-white focus:outline-none"
-                  aria-label={showAddPassword ? 'Hide password' : 'Show password'}
-                  title={showAddPassword ? 'Hide password' : 'Show password'}
-                >
-                  {showAddPassword ? <FiEyeOff size={18} /> : <FiEye size={18} />}
-                </button>
                 <PasswordGeneratorButton password={addPassword} setPassword={setAddPassword} />
                 {addPassword && (
                   <span className="mt-0.5 block text-xs text-orange-400">alert: before you save plz copy the password</span>
@@ -1468,3 +1527,5 @@ export default function Employees() {
     </div>
   )
 }
+
+

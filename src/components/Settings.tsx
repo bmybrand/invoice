@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { useDashboardProfile } from '@/components/DashboardLayout'
 import { useSessionContext } from '@/context/SessionContext'
 import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
@@ -244,6 +245,7 @@ export default function Settings() {
   const [searchQuery, setSearchQuery] = useState(() => (searchParams.get('globalSearch') || '').trim())
   const [modalOpen, setModalOpen] = useState(false)
   const [editingGateway, setEditingGateway] = useState<PaymentGatewayRow | null>(null)
+  useBodyScrollLock(modalOpen)
   const [formState, setFormState] = useState<GatewayFormState>(EMPTY_FORM)
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -328,6 +330,37 @@ export default function Settings() {
     }
   }, [hasScopedGatewaysCache, loadGateways])
 
+  const scheduleGatewayRefresh = useCallback(() => {
+    suppressBackgroundRefreshRef.current = true
+    if (refreshTimeoutRef.current !== null) {
+      window.clearTimeout(refreshTimeoutRef.current)
+    }
+    refreshTimeoutRef.current = window.setTimeout(() => {
+      suppressBackgroundRefreshRef.current = false
+      refreshTimeoutRef.current = null
+      void loadGateways({ background: true })
+    }, 1250)
+  }, [loadGateways])
+
+  const applyRealtimeGatewayChange = useCallback((row: PaymentGatewayApiRow | null, previousRow: PaymentGatewayApiRow | null) => {
+    const targetId = Number(row?.id ?? previousRow?.id ?? 0)
+    if (!Number.isFinite(targetId) || targetId <= 0) return
+
+    const isDeleted = !row
+    setGateways((prev) => {
+      let next = prev.filter((gateway) => gateway.id !== targetId)
+      if (!isDeleted && row) {
+        next = [mapGatewayRow(row), ...next].sort((a, b) => a.name.localeCompare(b.name))
+      }
+      settingsGatewaysCache = {
+        ownerAuthId: currentUserAuthId,
+        gateways: next,
+      }
+      setGlobalGatewayMode((previousMode) => resolveGlobalGatewayMode(next, previousMode))
+      return next
+    })
+  }, [currentUserAuthId])
+
   useEffect(() => {
     if (!canViewGateways || !currentUserAuthId) return
 
@@ -340,8 +373,11 @@ export default function Settings() {
           schema: 'public',
           table: 'payment_gateways',
         },
-        () => {
-          void loadGateways({ background: true })
+        (payload) => {
+          applyRealtimeGatewayChange(
+            (payload.new ?? null) as PaymentGatewayApiRow | null,
+            (payload.old ?? null) as PaymentGatewayApiRow | null
+          )
         }
       )
       .subscribe()
@@ -349,7 +385,7 @@ export default function Settings() {
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [canViewGateways, currentUserAuthId, loadGateways])
+  }, [applyRealtimeGatewayChange, canViewGateways, currentUserAuthId])
 
   useEffect(() => {
     const nextQuery = (searchParams.get('globalSearch') || '').trim()
@@ -385,18 +421,6 @@ export default function Settings() {
     if (normalized === 'live') return 'Live'
     if (normalized === 'inactive') return 'Inactive'
     return 'Testing'
-  }
-
-  function scheduleGatewayRefresh() {
-    suppressBackgroundRefreshRef.current = true
-    if (refreshTimeoutRef.current !== null) {
-      window.clearTimeout(refreshTimeoutRef.current)
-    }
-    refreshTimeoutRef.current = window.setTimeout(() => {
-      suppressBackgroundRefreshRef.current = false
-      refreshTimeoutRef.current = null
-      void loadGateways({ background: true })
-    }, 1250)
   }
 
   async function updateGatewayStatus(gateway: PaymentGatewayRow, nextStatus: 'Testing' | 'Live' | 'Inactive') {
@@ -940,8 +964,8 @@ export default function Settings() {
       )}
 
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
-          <div className="relative w-full max-w-[640px]" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/45 p-4">
+          <div className="relative max-h-[calc(100dvh-2rem)] w-full max-w-[640px] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="rounded-[26px] border border-slate-700 bg-[#0f172b] p-6 shadow-[0_30px_80px_rgba(2,6,23,0.72)] sm:p-7">
               <div className="flex items-start justify-between gap-4">
                 <h2 className="text-[18px] font-semibold text-white sm:text-[20px]">{formTitle}</h2>

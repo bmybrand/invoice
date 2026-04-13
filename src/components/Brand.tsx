@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Plus_Jakarta_Sans } from 'next/font/google'
 import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -8,6 +8,7 @@ import { useDashboardProfile } from '@/components/DashboardLayout'
 import { useSessionContext } from '@/context/SessionContext'
 import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
 import { logFetchError } from '@/lib/fetch-error'
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
@@ -21,6 +22,7 @@ type BrandRow = {
 }
 
 type ArchivedBrandRow = BrandRow
+type RealtimeBrandRow = BrandRow & { isdeleted?: boolean | null }
 
 type BrandScopedCache = {
   ownerAuthId: string | null
@@ -108,6 +110,14 @@ function areBrandRowsEqual(a: BrandRow[], b: BrandRow[]) {
   return JSON.stringify(a) === JSON.stringify(b)
 }
 
+function sortBrands(rows: BrandRow[]) {
+  return [...rows].sort((a, b) => {
+    const aTime = Date.parse(a.created_at || '')
+    const bTime = Date.parse(b.created_at || '')
+    return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0)
+  })
+}
+
 export default function Brand() {
   const searchParams = useSearchParams()
   const { currentUserAuthId, displayRole } = useDashboardProfile()
@@ -140,6 +150,9 @@ export default function Brand() {
   const [archivedError, setArchivedError] = useState<string | null>(null)
   const [archivedActionBrandId, setArchivedActionBrandId] = useState<number | null>(null)
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const realtimeRefreshTimeoutRef = useRef<number | null>(null)
+
+  useBodyScrollLock(Boolean(expandedImageUrl || showAddModal || showArchivedModal || editingBrand || deletingBrand))
 
   const isSuperAdmin = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '') === 'superadmin'
 
@@ -195,6 +208,34 @@ export default function Brand() {
     setArchivedBrands((data as ArchivedBrandRow[]) ?? [])
   }, [])
 
+  const applyRealtimeBrandChange = useCallback((row: RealtimeBrandRow | null, previousRow: RealtimeBrandRow | null) => {
+    const targetId = Number(row?.id ?? previousRow?.id ?? 0)
+    if (!Number.isFinite(targetId) || targetId <= 0) return
+
+    const isDeleted = row?.isdeleted === true || !row
+    setBrands((prev) => {
+      let next = prev.filter((brand) => brand.id !== targetId)
+      if (!isDeleted && row) {
+        next = sortBrands([
+          ...next,
+          {
+            id: Number(row.id),
+            brand_name: row.brand_name || '',
+            brand_url: row.brand_url || '',
+            logo_url: row.logo_url || '',
+            favicon_url: row.favicon_url || '',
+            created_at: row.created_at,
+          },
+        ])
+      }
+      brandTableCache = {
+        ownerAuthId: currentUserAuthId,
+        rows: next,
+      }
+      return next
+    })
+  }, [currentUserAuthId])
+
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       void fetchBrands()
@@ -209,8 +250,11 @@ export default function Brand() {
           schema: 'public',
           table: 'brands',
         },
-        () => {
-          void fetchBrands({ background: true })
+        (payload) => {
+          applyRealtimeBrandChange(
+            (payload.new ?? null) as RealtimeBrandRow | null,
+            (payload.old ?? null) as RealtimeBrandRow | null
+          )
         }
       )
       .subscribe()
@@ -219,7 +263,7 @@ export default function Brand() {
       window.clearTimeout(timeoutId)
       void supabase.removeChannel(channel)
     }
-  }, [currentUserAuthId, fetchBrands])
+  }, [applyRealtimeBrandChange, currentUserAuthId, fetchBrands])
 
   useEffect(() => {
     const nextQuery = (searchParams.get('globalSearch') || '').trim()
@@ -673,7 +717,7 @@ export default function Brand() {
       {/* Expanded image modal */}
       {expandedImageUrl && (
         <div
-          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80"
+          className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-black/80 p-4"
         >
           <div className="relative" onClick={(e) => e.stopPropagation()}>
             <button
@@ -696,8 +740,8 @@ export default function Brand() {
 
       {/* Add brand modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
-          <div className="relative w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4">
+          <div className="relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
               onClick={() => !addLoading && setShowAddModal(false)}
@@ -780,8 +824,8 @@ export default function Brand() {
 
       {/* Delete confirm modal */}
       {deletingBrand && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
-          <div className="relative w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4">
+          <div className="relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
               onClick={() => !deleteLoading && setDeletingBrand(null)}
@@ -810,8 +854,8 @@ export default function Brand() {
       )}
 
       {showArchivedModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
-          <div className="flex max-h-[80vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-800 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4">
+          <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-800 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-700 px-6 py-4">
               <div>
                 <h2 className="text-lg font-bold text-white">Archived Brands</h2>
@@ -898,8 +942,8 @@ export default function Brand() {
 
       {/* Edit brand modal */}
       {editingBrand && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
-          <div className="relative w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4">
+          <div className="relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
               onClick={() => !editLoading && setEditingBrand(null)}

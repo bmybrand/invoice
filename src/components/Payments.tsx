@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Plus_Jakarta_Sans } from 'next/font/google'
 import { useRouter, useSearchParams } from 'next/navigation'
 import JSZip from 'jszip'
@@ -11,6 +11,7 @@ import { useClientDashboardData } from '@/context/ClientDashboardDataContext'
 import { formatInvoiceCode } from '@/lib/invoice-code'
 import { getInvoiceLink } from '@/lib/invoice-token'
 import { logFetchError } from '@/lib/fetch-error'
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
@@ -101,6 +102,13 @@ type BulkInvoiceRow = {
 type BulkRenderPayload = {
   invoice: BulkInvoiceRow
   brandMeta: BulkBrandOption | null
+}
+
+type UserInvoiceMetaRow = {
+  id: number
+  invoice_creator_id: number | null
+  brand_name: string | null
+  employees?: { employee_name?: string | null } | Array<{ employee_name?: string | null }> | null
 }
 
 let paymentsTableCache: PaymentsScopedCache | null = null
@@ -274,6 +282,9 @@ export default function Payments() {
   const [bulkRenderPayload, setBulkRenderPayload] = useState<BulkRenderPayload | null>(null)
   const [downloadProgress, setDownloadProgress] = useState(0)
   const [downloadStatusMessage, setDownloadStatusMessage] = useState('')
+  const paymentsRefreshTimeoutRef = useRef<number | null>(null)
+
+  useBodyScrollLock(showBulkDownloadModal && isFinanceDepartment)
 
   useEffect(() => {
     let active = true
@@ -355,33 +366,101 @@ export default function Payments() {
         return
       }
 
-      let query = supabase
-        .from('payment_submissions')
-        .select(`
-          id,
-          invoice_id,
-          full_name,
-          phone,
-          email,
-          amount_paid,
-          payment_method,
-          payment_status,
-          stripe_payment_intent_id,
-          stripe_transaction_id,
-          created_at,
-          invoices (
+      let data: PaymentSubmissionRow[] | null = null
+      let error: { message?: string } | null = null
+
+      if (isUserRole && currentEmployeeId != null) {
+        const { data: invoiceMetaRows, error: invoiceMetaError } = await supabase
+          .from('invoices')
+          .select(`
             id,
             invoice_creator_id,
             brand_name,
-            status,
             employees (
               employee_name
             )
-          )
-        `)
-        .order('created_at', { ascending: false })
+          `)
+          .eq('invoice_creator_id', currentEmployeeId)
 
-      const { data, error } = await query
+        if (invoiceMetaError) {
+          error = invoiceMetaError
+        } else {
+          const invoiceMetaList = (invoiceMetaRows as UserInvoiceMetaRow[] | null) ?? []
+          const invoiceIds = invoiceMetaList
+            .map((row) => Number(row.id))
+            .filter((id) => Number.isFinite(id) && id > 0)
+
+          if (invoiceIds.length === 0) {
+            data = []
+          } else {
+            const invoiceMetaById = new Map<number, PaymentSubmissionRow['invoices']>()
+            invoiceMetaList.forEach((row) => {
+              invoiceMetaById.set(Number(row.id), {
+                id: row.id,
+                invoice_creator_id: row.invoice_creator_id,
+                brand_name: row.brand_name,
+                employees: row.employees ?? null,
+              })
+            })
+
+            const { data: paymentRows, error: paymentError } = await supabase
+              .from('payment_submissions')
+              .select(`
+                id,
+                invoice_id,
+                full_name,
+                phone,
+                email,
+                amount_paid,
+                payment_method,
+                payment_status,
+                stripe_payment_intent_id,
+                stripe_transaction_id,
+                created_at
+              `)
+              .in('invoice_id', invoiceIds)
+              .order('created_at', { ascending: false })
+
+            if (paymentError) {
+              error = paymentError
+            } else {
+              data = (((paymentRows as Omit<PaymentSubmissionRow, 'invoices'>[] | null) ?? []).map((row) => ({
+                ...row,
+                invoices: row.invoice_id == null ? null : invoiceMetaById.get(Number(row.invoice_id)) ?? null,
+              }))) as PaymentSubmissionRow[]
+            }
+          }
+        }
+      } else {
+        const result = await supabase
+          .from('payment_submissions')
+          .select(`
+            id,
+            invoice_id,
+            full_name,
+            phone,
+            email,
+            amount_paid,
+            payment_method,
+            payment_status,
+            stripe_payment_intent_id,
+            stripe_transaction_id,
+            created_at,
+            invoices (
+              id,
+              invoice_creator_id,
+              brand_name,
+              status,
+              employees (
+                employee_name
+              )
+            )
+          `)
+          .order('created_at', { ascending: false })
+
+        data = (result.data as PaymentSubmissionRow[] | null) ?? null
+        error = result.error
+      }
 
       if (error) {
         logFetchError('Failed to fetch payments', error)
@@ -392,7 +471,7 @@ export default function Payments() {
         return
       }
 
-      let rows = ((data as PaymentSubmissionRow[] | null) ?? []).map((row) => {
+      const rows = ((data as PaymentSubmissionRow[] | null) ?? []).map((row) => {
         const invoiceMeta = Array.isArray(row.invoices) ? row.invoices[0] ?? null : row.invoices ?? null
         const employeeMeta = Array.isArray(invoiceMeta?.employees)
           ? invoiceMeta?.employees[0] ?? null
@@ -415,10 +494,6 @@ export default function Payments() {
           invoiceCreatorId: Number(invoiceMeta?.invoice_creator_id ?? 0) || null,
         }
       })
-
-      if (isUserRole) {
-        rows = rows.filter((row) => row.invoiceCreatorId === currentEmployeeId)
-      }
 
       const nextRows: PaymentRow[] = rows.map(({ invoiceCreatorId: _invoiceCreatorId, ...row }) => row)
 
@@ -445,12 +520,24 @@ export default function Payments() {
         schema: 'public',
         table: 'payment_submissions',
       },
-      () => { void fetchPayments({ background: true }) }
+      () => {
+        if (paymentsRefreshTimeoutRef.current !== null) {
+          window.clearTimeout(paymentsRefreshTimeoutRef.current)
+        }
+        paymentsRefreshTimeoutRef.current = window.setTimeout(() => {
+          paymentsRefreshTimeoutRef.current = null
+          void fetchPayments({ background: true })
+        }, 180)
+      }
     )
     channel.subscribe()
 
     return () => {
       active = false
+      if (paymentsRefreshTimeoutRef.current !== null) {
+        window.clearTimeout(paymentsRefreshTimeoutRef.current)
+        paymentsRefreshTimeoutRef.current = null
+      }
       void supabase.removeChannel(channel)
     }
   }, [accountType, clientData?.client?.id, clientData?.loading, currentEmployeeId, currentUserAuthId, isUserRole, profileLoaded, scopedPaymentsCache])
@@ -1258,8 +1345,8 @@ export default function Payments() {
       {showBulkDownloadModal && isFinanceDepartment ? (
         <>
           <div className="fixed inset-0 z-40 bg-black/60" onClick={() => !bulkDownloading && setShowBulkDownloadModal(false)} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="w-full max-w-2xl rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl">
+          <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4">
+            <div className="max-h-[calc(100dvh-2rem)] w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl">
               <div className="flex items-start justify-between border-b border-slate-700 px-5 py-4">
                 <div>
                   <h2 className="text-lg font-bold text-white">Bulk Download Paid Invoices</h2>

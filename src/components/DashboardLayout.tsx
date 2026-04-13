@@ -18,6 +18,7 @@ import { useSessionContext } from '@/context/SessionContext'
 import { NotificationsBell } from '@/components/NotificationsBell'
 import { GlobalDashboardSearch } from '@/components/GlobalDashboardSearch'
 import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 const PROFILE_AVATAR_BUCKET = 'profile-images'
@@ -50,6 +51,13 @@ type DashboardBootstrapResponse = {
     handlerId: string
   }
   error?: string
+}
+
+type RealtimeClientChatMessageRow = {
+  client_id?: number | null
+  isdeleted?: boolean | null
+  read_by_client?: boolean | null
+  sender_auth_id?: string | null
 }
 
 const DashboardProfileContext = createContext<DashboardProfile>({
@@ -727,6 +735,15 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     let cancelled = false
     let channel: ReturnType<typeof supabase.channel> | null = null
 
+    const matchesUnreadBadge = (row: RealtimeClientChatMessageRow | null | undefined) =>
+      Boolean(
+        row &&
+          row.client_id === currentClientId &&
+          row.isdeleted !== true &&
+          row.read_by_client !== true &&
+          (row.sender_auth_id || '') !== currentUserAuthId
+      )
+
     const loadChatCount = async () => {
       const { count, error } = await supabase
         .from('client_chat_messages')
@@ -757,8 +774,13 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             table: 'client_chat_messages',
             filter: `client_id=eq.${clientId}`,
           },
-          () => {
-            void loadChatCount()
+          (payload) => {
+            const nextRow = (payload.new ?? null) as RealtimeClientChatMessageRow | null
+            const previousRow = (payload.old ?? null) as RealtimeClientChatMessageRow | null
+            const delta = Number(matchesUnreadBadge(nextRow)) - Number(matchesUnreadBadge(previousRow))
+            if (delta !== 0) {
+              setChatMessageCount((prev) => Math.max(0, prev + delta))
+            }
           }
         )
         .subscribe()
@@ -996,17 +1018,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  // Prevent background scroll when profile modal is open
-  useEffect(() => {
-    if (profileModalOpen) {
-      document.body.classList.add('overflow-hidden')
-    } else {
-      document.body.classList.remove('overflow-hidden')
-    }
-    return () => {
-      document.body.classList.remove('overflow-hidden')
-    }
-  }, [profileModalOpen])
+  useBodyScrollLock(profileModalOpen)
 
   return (
     <DashboardProfileContext.Provider
@@ -1208,14 +1220,16 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             id="dashboard-main-content"
             className="flex-1 overflow-auto p-4 pt-24 sm:p-6 sm:pt-28 md:p-8 md:pt-28"
           >
-            {children}
+            <div key={pathname} className="page-fade-in">
+              {children}
+            </div>
           </main>
         </div>
 
         {profileModalOpen && (
-          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4">
+          <div className="fixed inset-0 z-40 flex items-center justify-center overflow-y-auto bg-black/60 p-4">
             <div
-              className="relative w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl max-h-screen overflow-y-auto scrollbar-thin scrollbar-track-transparent"
+              className="relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl scrollbar-thin scrollbar-track-transparent"
               onClick={(e) => e.stopPropagation()}
             >
               <button

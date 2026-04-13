@@ -1,10 +1,11 @@
 "use client";
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase';
 
 export type SessionContextType = {
-  session: any;
-  user: any;
+  session: Session | null;
+  user: User | null;
   token: string | null;
   refreshSession: () => Promise<void>;
   loading: boolean;
@@ -13,9 +14,17 @@ export type SessionContextType = {
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
 
+function isInvalidRefreshTokenError(message: string | undefined) {
+  const normalized = (message || '').trim().toLowerCase()
+  return (
+    normalized.includes('invalid refresh token') ||
+    normalized.includes('refresh token not found')
+  )
+}
+
 export const SessionProvider = ({ children }: { children: React.ReactNode }) => {
-  const [session, setSession] = useState<any>(null);
-  const [user, setUser] = useState<any>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -29,11 +38,17 @@ export const SessionProvider = ({ children }: { children: React.ReactNode }) => 
       setSession(session);
       setToken(session?.access_token || null);
       setUser(session?.user || null);
-    } catch (err: any) {
-      setError(err.message || 'Failed to fetch session');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to fetch session'
       setSession(null);
       setUser(null);
       setToken(null);
+      if (isInvalidRefreshTokenError(message)) {
+        await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+        setError(null);
+      } else {
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }
