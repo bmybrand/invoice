@@ -754,6 +754,21 @@ export default function Clients() {
       return
     }
 
+    // Send email to client after successful add
+    try {
+      await fetch('/api/send-client-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: addEmail,
+          name: addName,
+          status: 'approved',
+          password: addPassword,
+        }),
+      })
+    } catch (e) {
+      // Ignore email errors for now
+    }
     setShowAddModal(false)
     setAddName('')
     setAddEmail('')
@@ -931,6 +946,20 @@ export default function Clients() {
       ])
     })
     setActionMessage({ type: 'success', text: `Client ${targetClient.name} rejected successfully.` })
+    // Send email to client after rejection
+    try {
+      await fetch('/api/send-client-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: targetClient.email,
+          name: targetClient.name,
+          status: 'rejected',
+        }),
+      })
+    } catch (e) {
+      // Ignore email errors for now
+    }
     const previousClients = clients
     const previousRequests = registrationRequests
 
@@ -1012,6 +1041,23 @@ export default function Clients() {
       type: 'success',
       text: decision === 'approve' ? 'Request approved successfully.' : 'Request rejected successfully.',
     })
+    // Send email to client after approval/rejection
+    try {
+      const targetRequest = registrationRequests.find((row) => row.id === requestId)
+      if (targetRequest) {
+        await fetch('/api/send-client-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: targetRequest.email,
+            name: targetRequest.name,
+            status: decision === 'approve' ? 'approved' : 'rejected',
+          }),
+        })
+      }
+    } catch (e) {
+      // Ignore email errors for now
+    }
 
     const accessToken = token?.trim() || ''
     if (!accessToken) {

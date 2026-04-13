@@ -778,7 +778,9 @@ export default function Invoice() {
         amount: ((row.amount as string) ?? '').trim() || subtotal.toFixed(2),
         status: (row.status as string) ?? 'Pending',
         payable_amount: row.payable_amount == null ? null : Number(row.payable_amount),
-        paid_amount: Number((row.invoice_payment_summary?.paid_amount ?? 0).toFixed(2)),
+        paid_amount: Number((row.invoice_payment_summary && typeof row.invoice_payment_summary === 'object' && 'paid_amount' in row.invoice_payment_summary
+          ? (row.invoice_payment_summary as { paid_amount: number }).paid_amount
+          : 0).toFixed(2)),
         invoice_type: (row.invoice_type as string) ?? INVOICE_TYPE_OPTIONS[0],
       }
     })
@@ -1911,6 +1913,9 @@ export default function Invoice() {
                                   required
                                   className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                                 >
+                                  {!brands.some((brand) => brand.brand_name === addBrand) && addBrand && (
+                                    <option value={addBrand}>{addBrand}</option>
+                                  )}
                                   <option value="" disabled>Select brand</option>
                                   {brands.map((brand) => (
                                     <option key={brand.id} value={brand.brand_name}>{brand.brand_name}</option>
