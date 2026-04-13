@@ -1,6 +1,55 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback, createContext, useContext } from 'react'
+// ...existing code...
+
+// Confirm dialog for logout
+
+
+function ConfirmLogoutDialog({ open, onConfirm, onCancel }: { open: boolean; onConfirm: () => void; onCancel: () => void }) {
+  const [show, setShow] = useState(open)
+  useEffect(() => {
+    if (open) setShow(true)
+    else setTimeout(() => setShow(false), 250)
+  }, [open])
+  if (!show && !open) return null
+  return (
+    <div className={`fixed inset-0 z-50 flex items-center justify-center bg-black/40 transition-opacity duration-200 ${open ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+      <div
+        className={`relative w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-8 shadow-2xl flex flex-col items-center scale-100 transition-all duration-300 ${open ? 'animate-popin' : 'scale-95 opacity-0'}`}
+        style={{ minWidth: 340 }}
+      >
+        <div className="text-2xl font-bold mb-3 text-white">Are you sure?</div>
+        <div className="text-base text-slate-300 mb-7 text-center">Do you really want to log out?</div>
+        <div className="flex gap-4 w-full justify-center">
+          <button
+            className="px-6 py-2.5 rounded-lg bg-orange-500 text-white font-bold text-base shadow hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400"
+            onClick={onConfirm}
+            autoFocus
+          >
+            Log Out
+          </button>
+          <button
+            className="px-6 py-2.5 rounded-lg bg-slate-200 text-slate-800 font-semibold text-base shadow hover:bg-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-400"
+            onClick={onCancel}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+      <style jsx global>{`
+        @keyframes popin {
+          0% { transform: scale(0.85); opacity: 0; }
+          80% { transform: scale(1.04); opacity: 1; }
+          100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-popin {
+          animation: popin 0.28s cubic-bezier(.42,1.52,.58,1) both;
+        }
+      `}</style>
+    </div>
+  )
+}
 import { PasswordGeneratorButton } from '@/components/PasswordGeneratorButton'
 import { PasswordInput } from '@/components/PasswordInput'
 import Image from 'next/image'
@@ -802,20 +851,37 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     }
   }, [accountType, currentClientId, currentUserAuthId])
 
-  async function handleLogout() {
+  // Logout confirmation state
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
+  const logoutPendingRef = useRef(false)
+
+  async function doLogout() {
     setProfileModalOpen(false)
     setProfileLoaded(false)
-
+    logoutPendingRef.current = true
     const { error } = await supabase.auth.signOut({ scope: 'local' })
-
+    logoutPendingRef.current = false
     if (error) {
       console.error('Failed to sign out', error)
       setProfileLoaded(true)
       return
     }
-
     resetDashboardProfile(false)
     redirectToLoginHard()
+  }
+
+  function handleLogout() {
+    if (logoutPendingRef.current) return
+    setShowLogoutConfirm(true)
+  }
+
+  function handleLogoutConfirm() {
+    setShowLogoutConfirm(false)
+    doLogout()
+  }
+
+  function handleLogoutCancel() {
+    setShowLogoutConfirm(false)
   }
 
   function resetProfileImageState(nextPreviewUrl: string) {
@@ -1165,6 +1231,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               </span>
             </button>
           </div>
+
         </aside>
 
         <div
@@ -1225,6 +1292,13 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             </div>
           </main>
         </div>
+
+        {/* Render ConfirmLogoutDialog at the root so it overlays the whole app */}
+        <ConfirmLogoutDialog
+          open={showLogoutConfirm}
+          onConfirm={handleLogoutConfirm}
+          onCancel={handleLogoutCancel}
+        />
 
         {profileModalOpen && (
           <div className="fixed inset-0 z-40 flex items-center justify-center overflow-y-auto bg-black/60 p-4">
