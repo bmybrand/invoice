@@ -726,8 +726,7 @@ export default function Invoice() {
       .select(`
         id, invoice_date, invoice_creator_id, client_id, client_name, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, created_at,
         employees!invoice_creator_id(employee_name),
-        clients!client_id(name),
-        invoice_payment_summary!left(paid_amount)
+        clients!client_id(name)
       `)
       .order('created_at', { ascending: false })
 
@@ -754,7 +753,34 @@ export default function Invoice() {
 
 
 
-    const rows = (data ?? []).map((row: Record<string, unknown>) => {
+    const invoiceRows = (data ?? []) as Record<string, unknown>[]
+    const invoiceIds = invoiceRows
+      .map((row) => Number(row.id))
+      .filter((id) => Number.isFinite(id) && id > 0)
+
+    const paidAmountByInvoiceId = new Map<number, number>()
+    if (invoiceIds.length > 0) {
+      const { data: paymentData, error: paymentError } = await supabase
+        .from('payment_submissions')
+        .select('invoice_id, amount_paid, payment_status')
+        .in('invoice_id', invoiceIds)
+
+      if (paymentError) {
+        logFetchError('Failed to fetch invoice payment totals', paymentError)
+      } else {
+        ;((paymentData as PaymentSubmissionRow[] | null) ?? []).forEach((payment) => {
+          const invoiceId = Number(payment.invoice_id ?? 0)
+          if (!Number.isFinite(invoiceId) || invoiceId <= 0 || !isSuccessfulPaymentStatus(payment.payment_status)) {
+            return
+          }
+
+          const nextTotal = (paidAmountByInvoiceId.get(invoiceId) ?? 0) + parseAmountValue(String(payment.amount_paid ?? '0'))
+          paidAmountByInvoiceId.set(invoiceId, Number(nextTotal.toFixed(2)))
+        })
+      }
+    }
+
+    const rows = invoiceRows.map((row) => {
       const emp = row.employees as { employee_name?: string } | { employee_name?: string }[] | null
       const empObj = Array.isArray(emp) ? emp[0] : emp
       const clientObj = row.clients as { name?: string } | { name?: string }[] | null
@@ -778,9 +804,7 @@ export default function Invoice() {
         amount: ((row.amount as string) ?? '').trim() || subtotal.toFixed(2),
         status: (row.status as string) ?? 'Pending',
         payable_amount: row.payable_amount == null ? null : Number(row.payable_amount),
-        paid_amount: Number((row.invoice_payment_summary && typeof row.invoice_payment_summary === 'object' && 'paid_amount' in row.invoice_payment_summary
-          ? (row.invoice_payment_summary as { paid_amount: number }).paid_amount
-          : 0).toFixed(2)),
+        paid_amount: Number((paidAmountByInvoiceId.get(invoiceId) ?? 0).toFixed(2)),
         invoice_type: (row.invoice_type as string) ?? INVOICE_TYPE_OPTIONS[0],
       }
     })
