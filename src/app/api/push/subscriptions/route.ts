@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { applyRateLimit, getRateLimitIdentity } from '@/lib/rate-limit'
 
 type PushSubscriptionPayload = {
   endpoint?: string
@@ -80,6 +81,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
 
+  const rateLimit = applyRateLimit({
+    key: `push-subscriptions-post:${auth.user.id}:${getRateLimitIdentity(request)}`,
+    limit: 30,
+    windowMs: 60_000,
+  })
+  if (!rateLimit.ok) {
+    return NextResponse.json({ error: 'Too many push subscription requests. Please try again shortly.' }, { status: 429 })
+  }
+
   const body = (await request.json().catch(() => null)) as { subscription?: PushSubscriptionPayload } | null
   const subscription = body?.subscription
   const endpoint = String(subscription?.endpoint ?? '').trim()
@@ -115,6 +125,15 @@ export async function DELETE(request: Request) {
   const auth = await requireEmployee(request)
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
+
+  const rateLimit = applyRateLimit({
+    key: `push-subscriptions-delete:${auth.user.id}:${getRateLimitIdentity(request)}`,
+    limit: 30,
+    windowMs: 60_000,
+  })
+  if (!rateLimit.ok) {
+    return NextResponse.json({ error: 'Too many push subscription requests. Please try again shortly.' }, { status: 429 })
   }
 
   const body = (await request.json().catch(() => null)) as { endpoint?: string } | null

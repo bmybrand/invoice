@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { syncServerAuthSession } from '@/lib/auth-session-sync'
 import { supabase } from '@/lib/supabase'
 
 export default function RegisterPendingPage() {
@@ -47,6 +48,7 @@ export default function RegisterPendingPage() {
 
       if (employeeData || clientData) {
         await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+        await syncServerAuthSession(null).catch(() => {})
         if (!active) return
         router.replace('/login?reason=approved')
         return
@@ -56,6 +58,7 @@ export default function RegisterPendingPage() {
 
       if (requestStatus === 'rejected') {
         await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+        await syncServerAuthSession(null).catch(() => {})
         if (!active) return
         router.replace('/login?reason=rejected')
       }
@@ -84,6 +87,7 @@ export default function RegisterPendingPage() {
           type="button"
           onClick={async () => {
             await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+            await syncServerAuthSession(null).catch(() => {})
             router.replace('/login')
           }}
           className="mt-6 inline-block rounded-xl bg-orange-500 px-6 py-3 text-sm font-semibold text-white hover:bg-orange-600 transition"

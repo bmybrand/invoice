@@ -34,7 +34,6 @@ type RealtimeChatMessageRow = {
   client_id?: number | null
   sender_auth_id?: string | null
   message?: string | null
-  attachment_name?: string | null
   created_at?: string | null
   read_by_employee?: boolean | null
   isdeleted?: boolean | null
@@ -104,8 +103,6 @@ function compareCreatedAt(a: string | null | undefined, b: string | null | undef
 function buildMessagePreview(row: RealtimeChatMessageRow | null | undefined) {
   const text = (row?.message || '').trim()
   if (text) return text
-  const attachment = (row?.attachment_name || '').trim()
-  if (attachment) return `Attachment: ${attachment}`
   return 'New message'
 }
 
@@ -472,6 +469,10 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
       }
 
       const preview = buildMessagePreview(nextRow)
+      if (!preview || preview === 'New message') {
+        void fetchNotifications()
+        return
+      }
       const createdAt = nextRow?.created_at || previousRow?.created_at || new Date().toISOString()
 
       const nextMessages = applyMessageNotificationsRef.current((prev) => {

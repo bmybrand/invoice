@@ -6,6 +6,7 @@ import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { FiEye, FiEyeOff } from 'react-icons/fi'
 import { supabase } from '@/lib/supabase'
+import { syncServerAuthSession } from '@/lib/auth-session-sync'
 import { useSessionContext } from '@/context/SessionContext'
 import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
 
@@ -43,11 +44,13 @@ export function LoginForm() {
     reason === 'approved'
       ? 'Your registration request was approved. Please sign in with your email and password.'
       : null
+  const nextPath = searchParams.get('next')
+  const postLoginTarget = nextPath && nextPath.startsWith('/') ? nextPath : '/dashboard'
 
   useEffect(() => {
     if (sessionLoading || !sessionUser) return
-    router.replace('/dashboard')
-  }, [router, sessionLoading, sessionUser])
+    router.replace(postLoginTarget)
+  }, [postLoginTarget, router, sessionLoading, sessionUser])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -60,12 +63,15 @@ export function LoginForm() {
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
-        const { error: signInError } = await supabase.auth.signInWithPassword({
+        const { data, error: signInError } = await supabase.auth.signInWithPassword({
           email,
           password,
         })
 
         if (!signInError) {
+          if (data.session) {
+            await syncServerAuthSession(data.session)
+          }
           signedIn = true
           break
         }
@@ -105,7 +111,7 @@ export function LoginForm() {
       return
     }
 
-    router.replace('/dashboard')
+    router.replace(postLoginTarget)
     router.refresh()
   }
 

@@ -461,9 +461,9 @@ export default function ClientDashboardPage() {
                   outerRadius={95}
                   paddingAngle={pieChartData.length === 1 ? 0 : 4}
                 >
-                  {pieChartData.map((_, i) => (
+                  {pieChartData.map((entry, i) => (
                     <Cell
-                      key={i}
+                      key={entry.name}
                       fill={
                         pieChartData.length === 1
                           ? '#334155'

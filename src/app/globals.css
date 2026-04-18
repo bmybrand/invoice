@@ -1,3 +1,23 @@
+@media print {
+  #invoice-print-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100vw;
+    background: #f8fafc !important;
+    color: #64748b !important;
+    border-top: 1px solid #e2e8f0 !important;
+    padding: 1.5rem 2.5rem !important;
+    font-size: 0.875rem !important;
+    z-index: 9999;
+    text-align: center;
+    box-sizing: border-box;
+  }
+  body {
+    margin-bottom: 80px !important;
+  }
+}
 @import "tailwindcss";
 
 :root {
@@ -45,21 +65,6 @@ body {
 }
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
   background: rgb(100 116 139);
-}
-
-/* Invoice print footer - in body, fixed at bottom of every printed page */
-@media print {
-  #invoice-print-footer {
-    display: block !important;
-    position: fixed !important;
-    bottom: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    width: 100% !important;
-    background: #fff !important;
-    z-index: 2147483647 !important;
-    visibility: visible !important;
-  }
 }
 
 @keyframes messageFadeSlideIn {

@@ -41,11 +41,46 @@ export default function InvoicePayRouteShell({ invoiceId, invoiceToken }: { invo
   useEffect(() => {
     async function fetchInvoice() {
       if (!Number.isFinite(invoiceId) || invoiceId <= 0) return
-      const { data, error } = await supabase
-        .from('invoices')
-        .select('service, status, brand_name, email, phone, payable_amount')
-        .eq('id', invoiceId)
-        .maybeSingle()
+
+      let data: {
+        service?: unknown
+        status?: string | null
+        brand_name?: string | null
+        email?: string | null
+        phone?: string | null
+        payable_amount?: number | string | null
+      } | null = null
+      let error: { message?: string } | null = null
+
+      if (invoiceToken) {
+        const response = await fetch(`/api/public/invoice?token=${encodeURIComponent(invoiceToken)}`)
+        const payload = (await response.json().catch(() => null)) as {
+          invoice?: {
+            service?: unknown
+            status?: string | null
+            brand_name?: string | null
+            email?: string | null
+            phone?: string | null
+            payable_amount?: number | string | null
+          }
+          error?: string
+        } | null
+
+        if (!response.ok || !payload?.invoice) {
+          error = { message: payload?.error ?? 'Failed to fetch invoice' }
+        } else {
+          data = payload.invoice
+        }
+      } else {
+        const result = await supabase
+          .from('invoices')
+          .select('service, status, brand_name, email, phone, payable_amount')
+          .eq('id', invoiceId)
+          .maybeSingle()
+
+        data = result.data
+        error = result.error
+      }
 
       if (error || !data) {
         setInvoice(null)

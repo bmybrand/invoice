@@ -3,6 +3,11 @@ import { requireSuperAdmin } from '@/lib/server-superadmin-auth'
 
 type RouteParams = { id: string }
 
+function isMissingBrandIdColumnError(error: { message?: string | null } | null | undefined) {
+  const message = (error?.message || '').toLowerCase()
+  return message.includes('brand_id') && message.includes('does not exist')
+}
+
 export async function PATCH(
   request: Request,
   { params }: { params: RouteParams | Promise<RouteParams> }
@@ -146,20 +151,52 @@ export async function POST(
   }
 
   const brandName = (row.brand_name || '').trim()
+  let { count: invoiceCount, error: invoiceCountError } = await auth.supabase
+    .from('invoices')
+    .select('id', { count: 'exact', head: true })
+    .eq('brand_id', brandId)
+
+  if (invoiceCountError && isMissingBrandIdColumnError(invoiceCountError)) {
+    invoiceCountError = null
+    invoiceCount = 0
+  }
+
+  if (invoiceCountError) {
+    return NextResponse.json(
+      { error: invoiceCountError.message || 'Failed to validate brand invoices' },
+      { status: 500 }
+    )
+  }
+
+  if ((invoiceCount ?? 0) > 0) {
+    return NextResponse.json(
+      { error: 'This brand cannot be deleted forever because invoices are still linked to this brand.' },
+      { status: 409 }
+    )
+  }
+
   if (brandName) {
-    const { count, error: invoiceCountError } = await auth.supabase
+    let { count: legacyInvoiceCount, error: legacyInvoiceCountError } = await auth.supabase
       .from('invoices')
       .select('id', { count: 'exact', head: true })
+      .is('brand_id', null)
       .eq('brand_name', brandName)
 
-    if (invoiceCountError) {
+    if (legacyInvoiceCountError && isMissingBrandIdColumnError(legacyInvoiceCountError)) {
+      ;({ count: legacyInvoiceCount, error: legacyInvoiceCountError } = await auth.supabase
+        .from('invoices')
+        .select('id', { count: 'exact', head: true })
+        .eq('brand_name', brandName))
+    }
+
+    if (legacyInvoiceCountError) {
       return NextResponse.json(
-        { error: invoiceCountError.message || 'Failed to validate brand invoices' },
+        { error: legacyInvoiceCountError.message || 'Failed to validate legacy brand invoices' },
         { status: 500 }
       )
     }
 
-    if ((count ?? 0) > 0) {
+    if ((legacyInvoiceCount ?? 0) > 0) {
       return NextResponse.json(
         { error: 'This brand cannot be deleted forever because invoices are still linked to this brand.' },
         { status: 409 }

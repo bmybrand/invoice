@@ -122,16 +122,6 @@ function shouldUseLiveKeys(): boolean {
 }
 
 function resolveGatewayKeys(gateway: PaymentGatewayRow): { secretKey: string; publishableKey: string | null } | null {
-  const directSecret = normalizeString(gateway.secret_key)
-  const directPublishable = normalizeString(gateway.publishable_key)
-
-  if (directSecret) {
-    return {
-      secretKey: directSecret,
-      publishableKey: directPublishable || null,
-    }
-  }
-
   const testingSecret = normalizeString(gateway.testing_secret_key)
   const testingPublishable = normalizeString(gateway.testing_publishable_key)
   const liveSecret = normalizeString(gateway.live_secret_key)

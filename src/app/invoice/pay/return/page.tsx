@@ -54,7 +54,6 @@ export default async function InvoicePayReturnPage({
       typeof session.payment_intent === 'string' ? null : session.payment_intent
 
     if (session.payment_status === 'paid' || sessionPaymentIntent?.status === 'succeeded') {
-      await invoiceContext.supabase.from('invoices').update({ status: 'Paid' }).eq('id', invoiceId)
       redirect(`${invoiceUrl}&payment=success`)
     }
 
@@ -68,7 +67,6 @@ export default async function InvoicePayReturnPage({
   const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId)
 
   if (paymentIntent.status === 'succeeded') {
-    await invoiceContext.supabase.from('invoices').update({ status: 'Paid' }).eq('id', invoiceId)
     redirect(`${invoiceUrl}&payment=success`)
   }
 

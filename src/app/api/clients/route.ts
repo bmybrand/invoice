@@ -1,10 +1,20 @@
 import { NextResponse } from 'next/server'
+import { applyRateLimit, getRateLimitIdentity } from '@/lib/rate-limit'
 import { requireAdminOrSuperAdmin } from '@/lib/server-admin-auth'
 
 export async function POST(request: Request) {
   const auth = await requireAdminOrSuperAdmin(request)
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
+
+  const rateLimit = applyRateLimit({
+    key: `clients-create:${auth.user.id}:${getRateLimitIdentity(request)}`,
+    limit: 10,
+    windowMs: 60_000,
+  })
+  if (!rateLimit.ok) {
+    return NextResponse.json({ error: 'Too many client creation requests. Please try again shortly.' }, { status: 429 })
   }
 
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null

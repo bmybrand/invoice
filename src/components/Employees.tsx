@@ -164,12 +164,17 @@ function areAvatarMapsEqual(a: Record<string, string>, b: Record<string, string>
 }
 
 function buildEmployeeAvatarUrl(employee: Pick<EmployeeRow, 'avatar_path' | 'avatar_url'>) {
+  const avatarUrl = (employee.avatar_url || '').trim()
+  if (avatarUrl) {
+    return avatarUrl
+  }
+
   const avatarPath = (employee.avatar_path || '').trim()
   if (avatarPath) {
     const { data } = supabase.storage.from(PROFILE_AVATAR_BUCKET).getPublicUrl(avatarPath)
     return data.publicUrl || ''
   }
-  return (employee.avatar_url || '').trim()
+  return ''
 }
 
 function initials(name: string) {

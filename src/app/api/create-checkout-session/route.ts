@@ -2,14 +2,24 @@ import { NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { encryptInvoiceId } from '@/lib/invoice-token'
 import { findMatchingStripeGatewayForAmount, getInvoicePaymentContext } from '@/lib/server-stripe-gateways'
+import { requireBoundInvoiceToken } from '@/lib/server-invoice-access'
 
 export async function POST(req: Request) {
   try {
-    const { invoiceId, email, origin: clientOrigin } = await req.json()
+    const { invoiceId, email, origin: clientOrigin, token: invoiceToken } = await req.json()
     const parsedInvoiceId = Number(invoiceId)
 
     if (!Number.isFinite(parsedInvoiceId) || parsedInvoiceId <= 0) {
       return NextResponse.json({ error: 'Invalid invoice ID' }, { status: 400 })
+    }
+
+    const access = requireBoundInvoiceToken(
+      typeof invoiceToken === 'string' ? invoiceToken : null,
+      parsedInvoiceId,
+      'pay'
+    )
+    if (!access.ok) {
+      return NextResponse.json({ error: access.error }, { status: access.status })
     }
 
     const invoiceContext = await getInvoicePaymentContext(parsedInvoiceId)
@@ -34,7 +44,7 @@ export async function POST(req: Request) {
     }
 
     const origin = req.headers.get('origin') || clientOrigin || req.headers.get('referer')?.replace(/\/$/, '') || 'http://localhost:3000'
-    const token = encryptInvoiceId(parsedInvoiceId)
+    const returnToken = encryptInvoiceId(parsedInvoiceId, 'pay')
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
@@ -53,8 +63,8 @@ export async function POST(req: Request) {
           quantity: 1,
         },
       ],
-      success_url: `${origin}/invoice/pay/return?token=${encodeURIComponent(token)}&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${origin}/invoice/pay?token=${encodeURIComponent(token)}`,
+      success_url: `${origin}/invoice/pay/return?token=${encodeURIComponent(returnToken)}&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${origin}/invoice/pay?token=${encodeURIComponent(returnToken)}`,
       customer_email: typeof email === 'string' && email.trim() ? email.trim() : undefined,
       metadata: {
         invoice_id: String(parsedInvoiceId),

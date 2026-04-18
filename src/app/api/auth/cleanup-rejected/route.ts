@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { applyRateLimit, getRateLimitIdentity } from '@/lib/rate-limit'
 
 export async function POST(request: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -22,6 +23,15 @@ export async function POST(request: Request) {
 
   if (!token) {
     return NextResponse.json({ error: 'Missing authorization token' }, { status: 401 })
+  }
+
+  const rateLimit = applyRateLimit({
+    key: `cleanup-rejected:${getRateLimitIdentity(request)}`,
+    limit: 10,
+    windowMs: 60_000,
+  })
+  if (!rateLimit.ok) {
+    return NextResponse.json({ error: 'Too many cleanup requests. Please try again shortly.' }, { status: 429 })
   }
 
   const authClient = createClient(supabaseUrl, publishableKey, {
@@ -47,21 +57,42 @@ export async function POST(request: Request) {
   })
 
   const normalizedEmail = (user.email ?? '').trim()
-
-  const { data: latestRequest, error: requestError } = await adminClient
+  const { data: latestByAuthId, error: authRequestError } = await adminClient
     .from('clients')
     .select('status, auth_id, handler_id, isdeleted')
     .neq('isdeleted', true)
-    .or(`auth_id.eq.${user.id},email.eq.${normalizedEmail}`)
+    .eq('auth_id', user.id)
     .order('created_date', { ascending: false })
     .limit(1)
     .maybeSingle()
 
-  if (requestError) {
-    return NextResponse.json({ error: requestError.message }, { status: 500 })
+  if (authRequestError) {
+    return NextResponse.json({ error: authRequestError.message }, { status: 500 })
   }
 
-  const requestRow = latestRequest as { status?: string | null; auth_id?: string | null; handler_id?: string | null } | null
+  const { data: latestByEmail, error: emailRequestError } = normalizedEmail
+    ? await adminClient
+        .from('clients')
+        .select('status, auth_id, handler_id, isdeleted')
+        .neq('isdeleted', true)
+        .eq('email', normalizedEmail)
+        .order('created_date', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    : { data: null, error: null }
+
+  if (emailRequestError) {
+    return NextResponse.json({ error: emailRequestError.message }, { status: 500 })
+  }
+
+  const authRow = latestByAuthId as { status?: string | null; auth_id?: string | null; created_date?: string | null } | null
+  const emailRow = latestByEmail as { status?: string | null; auth_id?: string | null; created_date?: string | null } | null
+  const requestRow =
+    !authRow ? emailRow :
+    !emailRow ? authRow :
+    new Date(emailRow.created_date || 0).getTime() > new Date(authRow.created_date || 0).getTime()
+      ? emailRow
+      : authRow
   const requestStatus = requestRow?.status?.trim().toLowerCase()
   const requestAuthId = (requestRow?.auth_id || '').trim()
 

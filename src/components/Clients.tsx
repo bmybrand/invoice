@@ -758,7 +758,10 @@ export default function Clients() {
     try {
       await fetch('/api/send-client-email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
         body: JSON.stringify({
           email: addEmail,
           name: addName,
@@ -766,7 +769,7 @@ export default function Clients() {
           password: addPassword,
         }),
       })
-    } catch (e) {
+    } catch {
       // Ignore email errors for now
     }
     setShowAddModal(false)
@@ -946,23 +949,8 @@ export default function Clients() {
       ])
     })
     setActionMessage({ type: 'success', text: `Client ${targetClient.name} rejected successfully.` })
-    // Send email to client after rejection
-    try {
-      await fetch('/api/send-client-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: targetClient.email,
-          name: targetClient.name,
-          status: 'rejected',
-        }),
-      })
-    } catch (e) {
-      // Ignore email errors for now
-    }
     const previousClients = clients
     const previousRequests = registrationRequests
-
     const accessToken = token?.trim() || ''
     if (!accessToken) {
       suppressBackgroundRefreshRef.current = false
@@ -972,6 +960,24 @@ export default function Clients() {
       setRequestActionError('Authentication expired. Sign in again and try again.')
       setActionMessage({ type: 'error', text: 'Authentication expired. Sign in again and try again.' })
       return
+    }
+
+    // Send email to client after rejection
+    try {
+      await fetch('/api/send-client-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          email: targetClient.email,
+          name: targetClient.name,
+          status: 'rejected',
+        }),
+      })
+    } catch {
+      // Ignore email errors for now
     }
 
     const response = await fetch(`/api/clients/registration-requests/${targetClient.id}/reject`, {
@@ -1041,24 +1047,6 @@ export default function Clients() {
       type: 'success',
       text: decision === 'approve' ? 'Request approved successfully.' : 'Request rejected successfully.',
     })
-    // Send email to client after approval/rejection
-    try {
-      const targetRequest = registrationRequests.find((row) => row.id === requestId)
-      if (targetRequest) {
-        await fetch('/api/send-client-email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: targetRequest.email,
-            name: targetRequest.name,
-            status: decision === 'approve' ? 'approved' : 'rejected',
-          }),
-        })
-      }
-    } catch (e) {
-      // Ignore email errors for now
-    }
-
     const accessToken = token?.trim() || ''
     if (!accessToken) {
       suppressBackgroundRefreshRef.current = false
@@ -1068,6 +1056,27 @@ export default function Clients() {
       setRequestActionError('Authentication expired. Sign in again and try again.')
       setActionMessage({ type: 'error', text: 'Authentication expired. Sign in again and try again.' })
       return
+    }
+
+    // Send email to client after approval/rejection
+    try {
+      const targetRequest = registrationRequests.find((row) => row.id === requestId)
+      if (targetRequest) {
+        await fetch('/api/send-client-email', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            email: targetRequest.email,
+            name: targetRequest.name,
+            status: decision === 'approve' ? 'approved' : 'rejected',
+          }),
+        })
+      }
+    } catch {
+      // Ignore email errors for now
     }
 
     const endpoint = `/api/clients/registration-requests/${requestId}/${decision}`

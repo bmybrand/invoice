@@ -53,13 +53,39 @@ export default function InvoiceView({ invoiceId, invoiceToken, publicView = fals
         return
       }
 
-      const [{ data: invoiceData, error: invoiceError }, { data: brandData, error: brandError }] = await Promise.all([
-        supabase.from('invoices').select('*, employees!invoice_creator_id(employee_name), clients!client_id(name)').eq('id', invoiceId).maybeSingle(),
-        supabase.from('brands').select('id, brand_name, brand_url, logo_url').neq('isdeleted', true).order('brand_name'),
-      ])
+      let invoiceData: Record<string, unknown> | null = null
+      let brandData: BrandOption[] = []
+      let invoiceError: { message?: string } | null = null
+      let brandError: { message?: string } | null = null
+
+      if (publicView && invoiceToken) {
+        const response = await fetch(`/api/public/invoice?token=${encodeURIComponent(invoiceToken)}`)
+        const payload = (await response.json().catch(() => null)) as {
+          invoice?: Record<string, unknown>
+          brands?: BrandOption[]
+          error?: string
+        } | null
+
+        if (!response.ok || !payload?.invoice) {
+          invoiceError = { message: payload?.error ?? 'Failed to fetch invoice' }
+        } else {
+          invoiceData = payload.invoice
+          brandData = payload.brands ?? []
+        }
+      } else {
+        const result = await Promise.all([
+          supabase.from('invoices').select('*, employees!invoice_creator_id(employee_name), clients!client_id(name)').eq('id', invoiceId).maybeSingle(),
+          supabase.from('brands').select('id, brand_name, brand_url, logo_url').neq('isdeleted', true).order('brand_name'),
+        ])
+
+        invoiceData = (result[0].data as Record<string, unknown> | null) ?? null
+        invoiceError = result[0].error
+        brandData = (result[1].data as BrandOption[] | null) ?? []
+        brandError = result[1].error
+      }
 
       if (brandError) logFetchError('Failed to fetch brands', brandError)
-      setBrands((brandData as BrandOption[]) ?? [])
+      setBrands(brandData)
 
       if (invoiceError || !invoiceData) {
         if (invoiceError) logFetchError('Failed to fetch invoice', invoiceError)
@@ -97,7 +123,7 @@ export default function InvoiceView({ invoiceId, invoiceToken, publicView = fals
     }
 
     fetchData()
-  }, [invoiceId])
+  }, [invoiceId, invoiceToken, publicView])
 
   const brandMeta = useMemo(() => {
     if (!invoice) return null
@@ -389,6 +415,7 @@ export default function InvoiceView({ invoiceId, invoiceToken, publicView = fals
             padding: 0 !important;
             background: #fff !important;
             overflow: visible !important;
+            height: auto !important;
           }
 
           body {

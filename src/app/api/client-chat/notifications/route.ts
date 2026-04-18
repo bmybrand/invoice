@@ -115,7 +115,7 @@ export async function GET(request: Request) {
 
   const { data: unreadMessages, error: unreadError } = await setup.serviceClient
     .from('client_chat_messages')
-    .select('id, client_id, message, attachment_name, created_at')
+    .select('id, client_id, message, created_at')
     .in('client_id', clientIdList)
     .eq('isdeleted', false)
     .or('read_by_employee.is.null,read_by_employee.eq.false')
@@ -131,9 +131,31 @@ export async function GET(request: Request) {
       id?: number | null
       client_id?: number | null
       message?: string | null
-      attachment_name?: string | null
       created_at?: string | null
     }> | null) ?? [])
+
+  const unreadMessageIds = unreadRows
+    .map((row) => Number(row.id ?? 0))
+    .filter((id) => Number.isFinite(id) && id > 0)
+
+  const attachmentNameByMessageId = new Map<number, string>()
+
+  if (unreadMessageIds.length > 0) {
+    const { data: attachmentRows } = await setup.serviceClient
+      .from('client_chat_message_attachments')
+      .select('message_id, attachment_name, sort_order')
+      .in('message_id', unreadMessageIds)
+      .order('sort_order', { ascending: true })
+
+    ;(((attachmentRows as Array<{ message_id?: number | null; attachment_name?: string | null }> | null) ?? [])).forEach((row) => {
+      const messageId = Number(row.message_id ?? 0)
+      const attachmentName = (row.attachment_name || '').trim()
+      if (!Number.isFinite(messageId) || messageId < 1 || !attachmentName || attachmentNameByMessageId.has(messageId)) {
+        return
+      }
+      attachmentNameByMessageId.set(messageId, attachmentName)
+    })
+  }
 
   const totalCount = unreadRows.length
   const grouped = new Map<
@@ -155,7 +177,8 @@ export async function GET(request: Request) {
     if (!clientId || !clientById.has(clientId)) continue
 
     const client = clientById.get(clientId)!
-    const preview = (row.message || '').trim() || (row.attachment_name ? `Attachment: ${row.attachment_name}` : 'New message')
+    const attachmentName = attachmentNameByMessageId.get(Number(row.id ?? 0)) || ''
+    const preview = (row.message || '').trim() || (attachmentName ? `Attachment: ${attachmentName}` : 'New message')
     const createdAt = row.created_at || ''
     const existing = grouped.get(clientId)
 

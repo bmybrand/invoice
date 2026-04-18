@@ -6,11 +6,13 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useDashboardProfile } from '@/components/DashboardLayout'
 import { useClientDashboardData } from '@/context/ClientDashboardDataContext'
-import { getInvoiceLink } from '@/lib/invoice-token'
+import { useSessionContext } from '@/context/SessionContext'
+import { getInvoiceLink as getSignedInvoiceLink } from '@/app/actions/invoice-link'
 import { formatInvoiceCode } from '@/lib/invoice-code'
 import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
 import { logFetchError } from '@/lib/fetch-error'
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock'
+import { getInvoicePath } from '@/lib/invoice-paths'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
@@ -36,6 +38,7 @@ type InvoiceRow = {
   invoice_creator_id: number
   invoice_creator: string
   client_id: number | null
+  brand_id?: number | null
   client_name: string
   brand_name: string
   email: string
@@ -46,6 +49,15 @@ type InvoiceRow = {
   payable_amount: number | null
   paid_amount: number
   invoice_type: string
+}
+
+function isMissingBrandIdColumnError(error: { message?: string | null } | null | undefined) {
+  const message = (error?.message || '').toLowerCase()
+  return message.includes('brand_id') && message.includes('does not exist')
+}
+
+type InvoiceWithServiceField = InvoiceRow & {
+  service?: unknown
 }
 
 type PaymentSubmissionRow = {
@@ -388,7 +400,7 @@ export function InvoiceDocument({
   onGrandTotalClick?: () => void
   paymentFormContent?: ReactNode
 }) {
-  const serviceLines = toServiceLines((invoice as unknown as { service?: unknown }).service)
+  const serviceLines = toServiceLines((invoice as InvoiceWithServiceField).service)
   const subTotal = servicesSubtotal(serviceLines)
   const grandTotal = subTotal
   const invoiceType = invoice.invoice_type || 'Standard'
@@ -616,6 +628,7 @@ export default function Invoice() {
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const realtimeRefreshTimeoutRef = useRef<number | null>(null)
+  const { token } = useSessionContext()
 
   useBodyScrollLock(Boolean(showAddModal || editingInvoice || deletingInvoice))
 
@@ -623,9 +636,22 @@ export default function Invoice() {
     error: string | null
     gateways: GatewayLimitInfo[]
   }> {
+    const accessToken = token?.trim() || ''
+    if (!accessToken) {
+      return {
+        error: 'Authentication required to validate payment gateway limits.',
+        gateways: [],
+      }
+    }
+
     try {
       const res = await fetch(
-        `/api/payment-gateways/validate-amount?amount=${encodeURIComponent(String(amount))}`
+        `/api/payment-gateways/validate-amount?amount=${encodeURIComponent(String(amount))}`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
       )
       const data = (await res.json().catch(() => ({}))) as {
         error?: string
@@ -721,24 +747,43 @@ export default function Invoice() {
     if (!isBackgroundRefresh && !scopedInvoiceCache) {
       setInvoicesLoading(true)
     }
-    let query = supabase
-      .from('invoices')
-      .select(`
-        id, invoice_date, invoice_creator_id, client_id, client_name, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, created_at,
-        employees!invoice_creator_id(employee_name),
-        clients!client_id(name)
-      `)
-      .order('created_at', { ascending: false })
+    const invoiceSelectWithBrandId = `
+      id, invoice_date, invoice_creator_id, client_id, brand_id, client_name, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, created_at,
+      employees!invoice_creator_id(employee_name),
+      clients!client_id(name)
+    `
+    const invoiceSelectLegacy = `
+      id, invoice_date, invoice_creator_id, client_id, client_name, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, created_at,
+      employees!invoice_creator_id(employee_name),
+      clients!client_id(name)
+    `
 
-    if (isClient && clientId) {
-      query = query.eq('client_id', clientId)
-    } else if (routeClientId != null) {
-      query = query.eq('client_id', routeClientId)
-    } else if (isUserRole && currentEmployeeId != null) {
-      query = query.eq('invoice_creator_id', currentEmployeeId)
+    const applyInvoiceFilters = <T,>(query: T) => {
+      let nextQuery = query as T & {
+        eq: (column: string, value: unknown) => typeof nextQuery
+      }
+
+      if (isClient && clientId) {
+        nextQuery = nextQuery.eq('client_id', clientId)
+      } else if (routeClientId != null) {
+        nextQuery = nextQuery.eq('client_id', routeClientId)
+      } else if (isUserRole && currentEmployeeId != null) {
+        nextQuery = nextQuery.eq('invoice_creator_id', currentEmployeeId)
+      }
+
+      return nextQuery
     }
 
-    const { data, error } = await query
+    let { data, error }: { data: Record<string, unknown>[] | null; error: { message?: string | null } | null } = await applyInvoiceFilters(
+      supabase.from('invoices').select(invoiceSelectWithBrandId).order('created_at', { ascending: false })
+    ) as unknown as { data: Record<string, unknown>[] | null; error: { message?: string | null } | null }
+
+    if (error && isMissingBrandIdColumnError(error)) {
+      ;({ data, error } = await applyInvoiceFilters(
+        supabase.from('invoices').select(invoiceSelectLegacy).order('created_at', { ascending: false })
+      ) as unknown as { data: Record<string, unknown>[] | null; error: { message?: string | null } | null })
+    }
+
     if (!isBackgroundRefresh) {
       setInvoicesLoading(false)
     }
@@ -796,6 +841,7 @@ export default function Invoice() {
         invoice_creator_id: (row.invoice_creator_id as number) ?? 0,
         invoice_creator: empObj?.employee_name ?? '--',
         client_id: (row.client_id as number) ?? null,
+        brand_id: row.brand_id == null ? null : Number(row.brand_id),
         client_name: clientName,
         brand_name: (row.brand_name as string) ?? '',
         email: (row.email as string) ?? '',
@@ -1034,7 +1080,7 @@ export default function Invoice() {
   }
 
   function openInvoiceRecord(invoiceId: number) {
-    router.push(getInvoiceLink(invoiceId))
+    router.push(getInvoicePath(invoiceId))
   }
 
   function validateServiceLines(lines: ServiceLine[]): { valid: boolean; message: string } {
@@ -1176,25 +1222,48 @@ export default function Invoice() {
     setAddError(null)
 
     const resolvedBrand = addBrand.trim() || getDefaultInvoiceBrand()
+    const resolvedBrandId = getInvoiceBrandMeta(resolvedBrand)?.id ?? null
 
-    const { data: insertedInvoice, error: insertError } = await supabase
+    let { data: insertedInvoice, error: insertError } = await supabase
       .from('invoices')
       .insert({
         invoice_date: new Date().toISOString().slice(0, 10),
         invoice_creator_id: currentEmployeeId,
         client_id: addClientId,
+        brand_id: resolvedBrandId,
         brand_name: resolvedBrand,
         client_name: addClientName.trim(),
         email: addEmail.trim(),
         service: cleanServices,
         phone: addPhone.trim(),
-        amount: subTotal.toFixed(2),
+        amount: Number(subTotal.toFixed(2)),
         status: addStatus,
-        payable_amount: payableAmount > 0 ? payableAmount.toFixed(2) : null,
+        payable_amount: payableAmount > 0 ? Number(payableAmount.toFixed(2)) : null,
         invoice_type: addInvoiceType,
       })
       .select('id')
       .single()
+
+    if (insertError && isMissingBrandIdColumnError(insertError)) {
+      ;({ data: insertedInvoice, error: insertError } = await supabase
+        .from('invoices')
+        .insert({
+          invoice_date: new Date().toISOString().slice(0, 10),
+          invoice_creator_id: currentEmployeeId,
+          client_id: addClientId,
+          brand_name: resolvedBrand,
+          client_name: addClientName.trim(),
+          email: addEmail.trim(),
+          service: cleanServices,
+          phone: addPhone.trim(),
+          amount: Number(subTotal.toFixed(2)),
+          status: addStatus,
+          payable_amount: payableAmount > 0 ? Number(payableAmount.toFixed(2)) : null,
+          invoice_type: addInvoiceType,
+        })
+        .select('id')
+        .single())
+    }
 
     setAddLoading(false)
     if (insertError) {
@@ -1205,9 +1274,12 @@ export default function Invoice() {
 
     const nextInvoiceId = typeof insertedInvoice?.id === 'number' ? insertedInvoice.id : null
     setSavedAddInvoiceId(nextInvoiceId)
-    setSavedAddInvoiceUrl(
-      nextInvoiceId === null ? '' : `${window.location.origin}${getInvoiceLink(nextInvoiceId)}`
-    )
+    if (nextInvoiceId === null) {
+      setSavedAddInvoiceUrl('')
+    } else {
+      const signedLink = await getSignedInvoiceLink(nextInvoiceId)
+      setSavedAddInvoiceUrl(`${window.location.origin}${signedLink}`)
+    }
     setAddUrlCopied(false)
     if (nextInvoiceId === null) {
       setAddError('Invoice saved, but the share URL could not be prepared.')
@@ -1267,7 +1339,12 @@ export default function Invoice() {
     setEditPayableAmount(inv.payable_amount == null ? '' : String(inv.payable_amount))
     setEditPaidAmountTotal(inv.paid_amount || 0)
     setEditInvoiceType(inv.invoice_type || INVOICE_TYPE_OPTIONS[0])
-    setEditInvoiceUrl(`${window.location.origin}${getInvoiceLink(inv.id)}`)
+    setEditInvoiceUrl('')
+    void getSignedInvoiceLink(inv.id).then((signedLink) => {
+      setEditInvoiceUrl(`${window.location.origin}${signedLink}`)
+    }).catch(() => {
+      setEditInvoiceUrl(`${window.location.origin}${getInvoicePath(inv.id)}`)
+    })
     setEditUrlCopied(false)
     setEditError(null)
     setEditGatewayLimits([])
@@ -1342,21 +1419,40 @@ export default function Invoice() {
     setEditError(null)
     setEditLoading(true)
 
-    const { error } = await supabase
+    let { error } = await supabase
       .from('invoices')
       .update({
         client_id: editClientId,
         client_name: editClientName.trim(),
+        brand_id: getInvoiceBrandMeta(editBrand.trim())?.id ?? null,
         brand_name: editBrand.trim(),
         email: editEmail.trim(),
         service: cleanServices,
         phone: editPhone.trim(),
-        amount: subTotal.toFixed(2),
+        amount: Number(subTotal.toFixed(2)),
         status: editStatus,
-        payable_amount: payableAmount > 0 ? payableAmount.toFixed(2) : null,
+        payable_amount: payableAmount > 0 ? Number(payableAmount.toFixed(2)) : null,
         invoice_type: editInvoiceType,
       })
       .eq('id', editingInvoice.id)
+
+    if (error && isMissingBrandIdColumnError(error)) {
+      ;({ error } = await supabase
+        .from('invoices')
+        .update({
+          client_id: editClientId,
+          client_name: editClientName.trim(),
+          brand_name: editBrand.trim(),
+          email: editEmail.trim(),
+          service: cleanServices,
+          phone: editPhone.trim(),
+          amount: Number(subTotal.toFixed(2)),
+          status: editStatus,
+          payable_amount: payableAmount > 0 ? Number(payableAmount.toFixed(2)) : null,
+          invoice_type: editInvoiceType,
+        })
+        .eq('id', editingInvoice.id))
+    }
 
     setEditLoading(false)
     if (error) {
@@ -1723,7 +1819,8 @@ export default function Invoice() {
                             onClick={async (e) => {
                               e.stopPropagation()
                               setOpenActionMenu(null)
-                              const invoiceUrl = `${window.location.origin}${getInvoiceLink(inv.id)}`
+                              const invoicePath = await getSignedInvoiceLink(inv.id)
+                              const invoiceUrl = `${window.location.origin}${invoicePath}`
 
                               try {
                                 await navigator.clipboard.writeText(invoiceUrl)

@@ -1,12 +1,19 @@
 import { NextResponse } from 'next/server'
 import { findMatchingStripeGatewayForAmount, getInvoicePaymentContext } from '@/lib/server-stripe-gateways'
+import { requireBoundInvoiceToken } from '@/lib/server-invoice-access'
 
 export async function GET(req: Request) {
   const url = new URL(req.url)
   const invoiceId = Number(url.searchParams.get('invoiceId') ?? '')
+  const token = url.searchParams.get('token')
 
   if (!Number.isFinite(invoiceId) || invoiceId <= 0) {
     return NextResponse.json({ error: 'Invalid invoice ID' }, { status: 400 })
+  }
+
+  const access = requireBoundInvoiceToken(token, invoiceId, 'pay')
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status })
   }
 
   const invoiceContext = await getInvoicePaymentContext(invoiceId)

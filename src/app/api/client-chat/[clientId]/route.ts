@@ -9,8 +9,6 @@ type ClientChatRow = {
   client_id: number
   sender_auth_id: string
   message: string | null
-  attachment_name: string | null
-  attachment_path: string | null
   read_by_client: boolean | null
   read_by_employee: boolean | null
   created_at: string | null
@@ -103,7 +101,7 @@ export async function GET(
 
   let messagesQuery = actor.supabase
     .from('client_chat_messages')
-    .select('id, client_id, sender_auth_id, message, attachment_name, attachment_path, read_by_client, read_by_employee, created_at, updated_at, isdeleted')
+    .select('id, client_id, sender_auth_id, message, read_by_client, read_by_employee, created_at, updated_at, isdeleted')
     .eq('client_id', clientId)
     .eq('isdeleted', false)
     .order('created_at', { ascending: false })
@@ -232,15 +230,6 @@ export async function GET(
     attachmentsByMessageId.set(messageId, current)
   })
 
-  rows.forEach((row) => {
-    const existing = attachmentsByMessageId.get(row.id)
-    if (existing && existing.length > 0) return
-    const attachmentName = (row.attachment_name || '').trim()
-    const attachmentPath = (row.attachment_path || '').trim()
-    if (!attachmentName || !attachmentPath) return
-    attachmentsByMessageId.set(row.id, [{ name: attachmentName, path: attachmentPath }])
-  })
-
   const attachmentUrlByPath = new Map<string, string>()
   const nowForAttachments = Date.now()
   const attachmentPaths = Array.from(
@@ -289,7 +278,7 @@ export async function GET(
       senderName: senderNameByAuthId.get(row.sender_auth_id) || 'User',
       senderAvatarUrl: senderAvatarByAuthId.get(row.sender_auth_id) || null,
       message: row.message || '',
-      attachmentName: primaryAttachment?.name || row.attachment_name || '',
+      attachmentName: primaryAttachment?.name || '',
       attachmentUrl: primaryAttachment?.url || null,
       attachments,
       createdAt: row.created_at,

@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server'
 import { listActiveStripeGatewayLimits, validateStripeGatewayAmount } from '@/lib/server-stripe-gateways'
+import { requireActiveEmployee } from '@/lib/server-employee-auth'
 
 export async function GET(req: Request) {
+  const auth = await requireActiveEmployee(req)
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
+
   const url = new URL(req.url)
   const amount = Number(url.searchParams.get('amount') ?? '')
 

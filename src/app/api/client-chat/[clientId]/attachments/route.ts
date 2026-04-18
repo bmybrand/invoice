@@ -107,21 +107,17 @@ export async function POST(
         return NextResponse.json({ error: 'Attachment details are required' }, { status: 400 })
       }
 
-      const primaryAttachment = attachments[0]
-
       const { data: messageData, error: insertError } = await auth.actor.supabase
         .from('client_chat_messages')
         .insert({
           client_id: clientId,
           sender_auth_id: auth.actor.user.id,
           message: message || null,
-          attachment_name: primaryAttachment.attachmentName,
-          attachment_path: primaryAttachment.filePath,
           isdeleted: false,
           read_by_client: auth.actor.accountType === 'client',
           read_by_employee: auth.actor.accountType === 'employee',
         })
-        .select('id, attachment_name')
+        .select('id')
         .single()
 
       if (insertError) {
@@ -167,7 +163,7 @@ export async function POST(
         body:
           message ||
           (attachments.length === 1
-            ? `Attachment: ${primaryAttachment.attachmentName}`
+            ? `Attachment: ${attachments[0]?.attachmentName || 'Attachment'}`
             : `${attachments.length} attachments`),
         url: `/dashboard/clients?chatClientId=${clientId}`,
       })

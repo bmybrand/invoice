@@ -1,6 +1,7 @@
 "use client";
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import type { Session, User } from '@supabase/supabase-js'
+import { syncServerAuthSession } from '@/lib/auth-session-sync'
 import { supabase } from '@/lib/supabase';
 
 export type SessionContextType = {
@@ -38,11 +39,13 @@ export const SessionProvider = ({ children }: { children: React.ReactNode }) => 
       setSession(session);
       setToken(session?.access_token || null);
       setUser(session?.user || null);
+      await syncServerAuthSession(session).catch(() => {})
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to fetch session'
       setSession(null);
       setUser(null);
       setToken(null);
+      await syncServerAuthSession(null).catch(() => {})
       if (isInvalidRefreshTokenError(message)) {
         await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
         setError(null);
@@ -62,6 +65,7 @@ export const SessionProvider = ({ children }: { children: React.ReactNode }) => 
       setUser(session?.user || null);
       setError(null);
       setLoading(false);
+      void syncServerAuthSession(session).catch(() => {})
     });
     return () => {
       listener?.subscription.unsubscribe();

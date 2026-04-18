@@ -11,7 +11,6 @@ import {
   useElements,
   useStripe,
 } from '@stripe/react-stripe-js'
-import { supabase } from '@/lib/supabase'
 import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
 
 const inputClass =
@@ -297,6 +296,7 @@ function PaymentFormInner({
     'You will receive a confirmation once the payment is complete. You can close this page or return to view the invoice.'
   )
   const [submittedPaymentStatus, setSubmittedPaymentStatus] = useState<'succeeded' | 'processing'>('processing')
+  const [submitLocked, setSubmitLocked] = useState(false)
 
   const invoiceUrl = invoiceToken
     ? `/invoice?token=${encodeURIComponent(invoiceToken)}`
@@ -359,7 +359,17 @@ function PaymentFormInner({
       const res = await fetch('/api/create-payment-intent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invoiceId }),
+        body: JSON.stringify({
+          invoiceId,
+          token: invoiceToken,
+          fullName,
+          phoneNumber,
+          emailAddress,
+          streetAddress,
+          city,
+          stateRegion,
+          zipCode,
+        }),
       })
       const data = (await res.json().catch(() => ({}))) as { clientSecret?: string; error?: string }
       if (!res.ok || !data.clientSecret) {
@@ -411,66 +421,11 @@ function PaymentFormInner({
     }
 
     const paymentStatus = paymentIntent?.status ?? 'processing'
-    const stripePaymentIntentId = paymentIntent?.id ?? null
-    // Stripe.js does not expose latest_charge on the client-side PaymentIntent type.
-    // The confirmed server-side paths populate the real transaction id afterward.
-    const stripeTransactionId = null
-
-    const { error: insertError } = await supabase.from('payment_submissions').insert({
-      invoice_id: invoiceId,
-      full_name: fullName.trim(),
-      phone: phoneNumber.trim(),
-      email: emailAddress.trim(),
-      street_address: streetAddress.trim(),
-      city: city.trim(),
-      state_region: stateRegion.trim(),
-      zip_code: zipCode.trim(),
-      name_on_card: null,
-      card_last4: null,
-      card_expiry_month: null,
-      card_expiry_year: null,
-      amount_paid: grandTotal,
-      payment_method: 'Stripe',
-      payment_status: paymentStatus,
-      stripe_payment_intent_id: stripePaymentIntentId,
-      stripe_transaction_id: stripeTransactionId,
-    })
-
-    if (insertError) {
-      submitLockRef.current = false
-      console.error('Failed to save payment data', insertError)
-      setPaymentError('Payment succeeded, but we could not save the payment details. Please contact support.')
-      setPaying(false)
-      return
-    }
 
     if (paymentStatus === 'succeeded') {
-      const paymentIntentId = paymentIntent?.id
-
-      if (!paymentIntentId) {
-        submitLockRef.current = false
-        setPaymentError('Payment succeeded, but the payment intent could not be verified. Please contact support.')
-        setPaying(false)
-        return
-      }
-
-      const res = await fetch(`/api/invoices/${invoiceId}/mark-paid`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paymentIntentId }),
-      })
-
-      if (!res.ok) {
-        submitLockRef.current = false
-        const data = (await res.json().catch(() => ({}))) as { error?: string }
-        setPaymentError(data.error ?? 'Failed to update invoice status.')
-        setPaying(false)
-        return
-      }
-
       setSubmittedPaymentStatus('succeeded')
       setPaymentSubmittedTitle('Payment submitted successfully')
-      setPaymentSubmittedMessage('Your payment has been confirmed.')
+      setPaymentSubmittedMessage('Your payment has been confirmed. Invoice status will update shortly.')
     } else {
       setSubmittedPaymentStatus('processing')
       setPaymentSubmittedTitle('Your payment is being processed')
@@ -492,8 +447,6 @@ function PaymentFormInner({
     )
   }
 
-  // Prevent double submit
-  const [submitLocked, setSubmitLocked] = useState(false);
   return (
     <form
       onSubmit={async (e) => {
@@ -677,7 +630,10 @@ export default function InvoicePayForm({
       setStripeConfigError(null)
 
       try {
-        const res = await fetch(`/api/stripe/config?invoiceId=${encodeURIComponent(String(invoiceId))}`)
+        const tokenParam = invoiceToken ? `&token=${encodeURIComponent(invoiceToken)}` : ''
+        const res = await fetch(
+          `/api/stripe/config?invoiceId=${encodeURIComponent(String(invoiceId))}${tokenParam}`
+        )
         const data = (await res.json().catch(() => ({}))) as {
           publishableKey?: string
           gateway?: string
@@ -708,7 +664,7 @@ export default function InvoicePayForm({
     return () => {
       active = false
     }
-  }, [invoiceId])
+  }, [invoiceId, invoiceToken])
 
   const stripePromise = useMemo(
     () => (stripePublishableKey ? loadStripe(stripePublishableKey) : null),

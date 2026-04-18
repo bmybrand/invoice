@@ -18,7 +18,7 @@ export default async function PublicInvoicePage({
     if (invoiceId > 0) invoiceToken = tokenParam
   } else if (idParam) {
     invoiceId = Number(idParam)
-    if (Number.isFinite(invoiceId) && invoiceId > 0) invoiceToken = encryptInvoiceId(invoiceId)
+    if (Number.isFinite(invoiceId) && invoiceId > 0) invoiceToken = encryptInvoiceId(invoiceId, 'view')
   } else {
     invoiceId = 0
   }

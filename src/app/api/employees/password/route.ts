@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { applyRateLimit, getRateLimitIdentity } from '@/lib/rate-limit'
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
 const verificationClient = supabaseUrl && publishableKey
@@ -13,6 +14,15 @@ export async function POST(request: Request) {
   const auth = await requireSuperAdmin(request)
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
+
+  const rateLimit = applyRateLimit({
+    key: `employees-password:${auth.user.id}:${getRateLimitIdentity(request)}`,
+    limit: 10,
+    windowMs: 60_000,
+  })
+  if (!rateLimit.ok) {
+    return NextResponse.json({ error: 'Too many password update requests. Please try again shortly.' }, { status: 429 })
   }
 
   const body = await request.json().catch(() => null)

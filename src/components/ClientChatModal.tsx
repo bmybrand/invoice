@@ -8,7 +8,7 @@ import { useRouter } from 'next/navigation'
 import { Plus_Jakarta_Sans } from 'next/font/google'
 import { supabase } from '@/lib/supabase'
 import { logFetchError } from '@/lib/fetch-error'
-import { getInvoiceLink } from '@/lib/invoice-token'
+import { getInvoicePath } from '@/lib/invoice-paths'
 import { useDashboardProfile } from '@/components/DashboardLayout'
 import { useSessionContext } from '@/context/SessionContext'
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock'
@@ -72,8 +72,6 @@ type RealtimeChatRow = {
   client_id: number
   sender_auth_id: string
   message: string | null
-  attachment_name: string | null
-  attachment_path: string | null
   read_by_client: boolean | null
   read_by_employee: boolean | null
   created_at: string | null
@@ -470,8 +468,7 @@ export function ClientChatModal({
       const senderAvatarUrl =
         row.sender_auth_id === currentUserAuthId ? matchingSenderMessage?.senderAvatarUrl || null : matchingSenderMessage?.senderAvatarUrl || null
       const isOwnMessage = row.sender_auth_id === currentUserAuthId
-      const attachmentName = (row.attachment_name || '').trim()
-      const needsHydration = Boolean(attachmentName || row.attachment_path || !matchingSenderMessage)
+      const needsHydration = true
 
       return {
         needsHydration,
@@ -483,16 +480,9 @@ export function ClientChatModal({
           senderName,
           senderAvatarUrl,
           message: row.message || '',
-          attachmentName,
+          attachmentName: '',
           attachmentUrl: null,
-          attachments: attachmentName
-            ? [
-                {
-                  name: attachmentName,
-                  url: null,
-                },
-              ]
-            : [],
+          attachments: [],
           createdAt: row.created_at,
           updatedAt: row.updated_at,
           isOwnMessage,
@@ -815,7 +805,6 @@ export function ClientChatModal({
                   ? {
                       ...message,
                       message: nextRow.message || '',
-                      attachmentName: (nextRow.attachment_name || '').trim() || message.attachmentName,
                       updatedAt: nextRow.updated_at,
                       seenByRecipient: message.isOwnMessage
                         ? accountType === 'client'
@@ -2170,10 +2159,10 @@ export function ClientChatModal({
                 <button
                   key={invoice.id}
                   type="button"
-                  onClick={() => {
-                    onClose()
-                    router.push(getInvoiceLink(invoice.id))
-                  }}
+                    onClick={() => {
+                      onClose()
+                      router.push(getInvoicePath(invoice.id))
+                    }}
                   className="w-full rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-3 text-left transition hover:border-slate-700 hover:bg-slate-900"
                 >
                   <div className="flex items-start justify-between gap-2">

@@ -28,12 +28,12 @@ type ChatAuthFailure = {
 
 export type ClientChatAuthResult = ChatAuthSuccess | ChatAuthFailure
 
-function normalizeRole(value: string | null | undefined): 'user' | 'admin' | 'superadmin' | 'client' {
+function normalizeRole(value: string | null | undefined): 'user' | 'admin' | 'superadmin' | null {
   const normalized = (value || '').trim().toLowerCase().replace(/\s+/g, '')
   if (normalized === 'superadmin') return 'superadmin'
   if (normalized === 'admin') return 'admin'
   if (normalized === 'user') return 'user'
-  return 'client'
+  return null
 }
 
 export async function requireClientChatAccess(
@@ -111,6 +111,13 @@ export async function requireClientChatAccess(
 
   if (employeeData) {
     const role = normalizeRole((employeeData as { role?: string | null }).role)
+    if (!role) {
+      console.error('Unrecognized employee role in chat auth', {
+        userId: user.id,
+        role: (employeeData as { role?: string | null }).role ?? null,
+      })
+      return { ok: false, status: 403, error: 'Unrecognized employee role' }
+    }
     const canAccess =
       role === 'superadmin' || role === 'admin' || clientRow.handler_id === user.id
 

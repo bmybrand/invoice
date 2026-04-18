@@ -61,6 +61,7 @@ import { TbBrandBlogger } from 'react-icons/tb'
 import { IoPersonSharp } from 'react-icons/io5'
 import { MdGroups2 } from 'react-icons/md'
 import { RiSecurePaymentFill } from 'react-icons/ri'
+import { syncServerAuthSession } from '@/lib/auth-session-sync'
 import { supabase } from '@/lib/supabase'
 import { ClientDashboardDataProvider, useClientDashboardData } from '@/context/ClientDashboardDataContext'
 import { useSessionContext } from '@/context/SessionContext'
@@ -510,11 +511,13 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         case 'deleted':
           resetDashboardProfile(false)
           await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+          await syncServerAuthSession(null).catch(() => {})
           redirectToLoginHard()
           return
         case 'rejected':
           resetDashboardProfile(false)
           await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+          await syncServerAuthSession(null).catch(() => {})
           router.replace('/login?reason=rejected')
           return
         case 'none':
@@ -598,6 +601,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           if (payload.eventType === 'DELETE' || nextRow?.isdeleted === true || previousRow?.isdeleted === true) {
             resetDashboardProfile(false)
             await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+            await syncServerAuthSession(null).catch(() => {})
             redirectToLoginHard()
           }
         }
@@ -636,6 +640,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           ) {
             resetDashboardProfile(false)
             await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+            await syncServerAuthSession(null).catch(() => {})
             redirectToLoginHard()
           }
         }
@@ -666,6 +671,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         if (!cancelled && data) {
           resetDashboardProfile(false)
           await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+          await syncServerAuthSession(null).catch(() => {})
           redirectToLoginHard()
         }
 
@@ -691,6 +697,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       if (!cancelled && (row?.isdeleted === true || status === 'rejected')) {
         resetDashboardProfile(false)
         await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+        await syncServerAuthSession(null).catch(() => {})
         redirectToLoginHard()
       }
     }
@@ -860,6 +867,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     setProfileLoaded(false)
     logoutPendingRef.current = true
     const { error } = await supabase.auth.signOut({ scope: 'local' })
+    await syncServerAuthSession(null).catch(() => {})
     logoutPendingRef.current = false
     if (error) {
       console.error('Failed to sign out', error)

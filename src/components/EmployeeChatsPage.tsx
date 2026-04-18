@@ -228,7 +228,7 @@ export function EmployeeChatsPage() {
 
     const { data: messageData, error: messageError } = await supabase
       .from('client_chat_messages')
-      .select('id, client_id, sender_auth_id, message, attachment_name, created_at')
+      .select('id, client_id, sender_auth_id, message, created_at')
       .in('client_id', clientIds)
       .eq('isdeleted', false)
       .order('created_at', { ascending: false })
@@ -238,10 +238,38 @@ export function EmployeeChatsPage() {
       throw messageError
     }
 
+    const messageRows = ((messageData as ChatMessageRow[] | null) ?? [])
+    const messageIds = messageRows.map((row) => row.id).filter((id) => Number.isFinite(id) && id > 0)
+    const attachmentNameByMessageId = new Map<number, string>()
+
+    if (messageIds.length > 0) {
+      const { data: attachmentData, error: attachmentError } = await supabase
+        .from('client_chat_message_attachments')
+        .select('message_id, attachment_name, sort_order')
+        .in('message_id', messageIds)
+        .order('sort_order', { ascending: true })
+
+      if (attachmentError) {
+        throw attachmentError
+      }
+
+      ;(((attachmentData as Array<{ message_id?: number | null; attachment_name?: string | null }> | null) ?? [])).forEach((row) => {
+        const messageId = Number(row.message_id ?? 0)
+        const attachmentName = (row.attachment_name || '').trim()
+        if (!Number.isFinite(messageId) || messageId < 1 || !attachmentName || attachmentNameByMessageId.has(messageId)) {
+          return
+        }
+        attachmentNameByMessageId.set(messageId, attachmentName)
+      })
+    }
+
     const nextLatest: Record<number, ChatMessageRow> = {}
-    ;(((messageData as ChatMessageRow[] | null) ?? [])).forEach((row) => {
+    messageRows.forEach((row) => {
       if (!nextLatest[row.client_id]) {
-        nextLatest[row.client_id] = row
+        nextLatest[row.client_id] = {
+          ...row,
+          attachment_name: attachmentNameByMessageId.get(row.id) || null,
+        }
       }
     })
 
@@ -418,6 +446,10 @@ export function EmployeeChatsPage() {
       }
 
       if (payload.eventType === 'INSERT' && nextRow) {
+        if (!(nextRow.message || '').trim()) {
+          void loadConversations()
+          return
+        }
         setLatestByClientState((prev) => ({
           ...prev,
           [clientId]: nextRow,
@@ -452,6 +484,10 @@ export function EmployeeChatsPage() {
         compareDateValues(nextRow.created_at, previousLatest.created_at) >= 0
 
       if (shouldReplaceLatest) {
+        if (!(nextRow.message || '').trim()) {
+          void loadConversations()
+          return
+        }
         setLatestByClientState((prev) => ({
           ...prev,
           [clientId]: nextRow,

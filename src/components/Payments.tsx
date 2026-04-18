@@ -9,7 +9,7 @@ import { useDashboardProfile } from '@/components/DashboardLayout'
 import { InvoiceDocument } from '@/components/Invoice'
 import { useClientDashboardData } from '@/context/ClientDashboardDataContext'
 import { formatInvoiceCode } from '@/lib/invoice-code'
-import { getInvoiceLink } from '@/lib/invoice-token'
+import { getInvoicePath } from '@/lib/invoice-paths'
 import { logFetchError } from '@/lib/fetch-error'
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock'
 
@@ -708,7 +708,7 @@ export default function Payments() {
 
   function openPaymentInvoice(invoiceId: number | null) {
     if (invoiceId == null) return
-    router.push(getInvoiceLink(invoiceId))
+    router.push(getInvoicePath(invoiceId))
   }
 
   function togglePaymentSelection(paymentId: number, checked: boolean) {

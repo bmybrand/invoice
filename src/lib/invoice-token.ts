@@ -1,40 +1,107 @@
-import CryptoJS from 'crypto-js'
+import crypto from 'node:crypto'
+import { env } from '@/lib/env'
 
-const SECRET = process.env.INVOICE_LINK_SECRET_KEY || 'invoice-crm-default-secret-change-in-production'
+export type InvoiceTokenPurpose = 'view' | 'pay'
 
-function toBase64Url(str: string): string {
-  return str.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+type InvoiceTokenPayload = {
+  id: number
+  exp: number
+  purpose: InvoiceTokenPurpose
 }
 
-function fromBase64Url(str: string): string {
-  let b64 = str.replace(/-/g, '+').replace(/_/g, '/')
-  const pad = b64.length % 4
-  if (pad) b64 += '='.repeat(4 - pad)
-  return b64
+const DEFAULT_TTL_SECONDS = 60 * 60 * 24 * 30
+
+function b64urlEncode(buffer: Buffer): string {
+  return buffer.toString('base64url')
 }
 
-export function encryptInvoiceId(id: number): string {
-  const encrypted = CryptoJS.AES.encrypt(String(id), SECRET).toString()
-  return toBase64Url(encrypted)
+function b64urlDecode(value: string): Buffer {
+  return Buffer.from(value, 'base64url')
 }
 
-export function decryptInvoiceToken(token: string): number | null {
+function signPayload(payload: InvoiceTokenPayload): string {
+  const body = b64urlEncode(Buffer.from(JSON.stringify(payload), 'utf8'))
+  const signature = b64urlEncode(
+    crypto.createHmac('sha256', env.INVOICE_LINK_SECRET_KEY).update(body).digest()
+  )
+  return `${body}.${signature}`
+}
+
+export function verifyInvoiceToken(token: string): InvoiceTokenPayload | null {
   try {
-    const decrypted = CryptoJS.AES.decrypt(fromBase64Url(token), SECRET).toString(CryptoJS.enc.Utf8)
-    const id = Number(decrypted)
-    return Number.isFinite(id) && id > 0 ? id : null
+    const [body, signature] = token.split('.')
+    if (!body || !signature) {
+      return null
+    }
+
+    const expectedSignature = b64urlEncode(
+      crypto.createHmac('sha256', env.INVOICE_LINK_SECRET_KEY).update(body).digest()
+    )
+
+    if (
+      signature.length !== expectedSignature.length ||
+      !crypto.timingSafeEqual(Buffer.from(signature, 'utf8'), Buffer.from(expectedSignature, 'utf8'))
+    ) {
+      return null
+    }
+
+    const parsed = JSON.parse(b64urlDecode(body).toString('utf8')) as Partial<InvoiceTokenPayload>
+    const id = Number(parsed.id)
+    const exp = Number(parsed.exp)
+    const purpose = parsed.purpose
+
+    if (!Number.isFinite(id) || id <= 0 || !Number.isFinite(exp)) {
+      return null
+    }
+
+    if (purpose !== 'view' && purpose !== 'pay') {
+      return null
+    }
+
+    if (exp < Math.floor(Date.now() / 1000)) {
+      return null
+    }
+
+    return {
+      id,
+      exp,
+      purpose,
+    }
   } catch {
     return null
   }
 }
 
+export function encryptInvoiceId(
+  id: number,
+  purpose: InvoiceTokenPurpose = 'view',
+  ttlSeconds = DEFAULT_TTL_SECONDS
+): string {
+  return signPayload({
+    id,
+    exp: Math.floor(Date.now() / 1000) + ttlSeconds,
+    purpose,
+  })
+}
+
+export function decryptInvoiceToken(token: string, expectedPurpose?: InvoiceTokenPurpose): number | null {
+  const payload = verifyInvoiceToken(token)
+  if (!payload) {
+    return null
+  }
+  if (expectedPurpose && payload.purpose !== expectedPurpose) {
+    return null
+  }
+  return payload.id
+}
+
 export function getInvoiceLink(invoiceId: number, payment?: string): string {
-  const token = encryptInvoiceId(invoiceId)
+  const token = encryptInvoiceId(invoiceId, 'view')
   const base = `/invoice?token=${encodeURIComponent(token)}`
   return payment ? `${base}&payment=${encodeURIComponent(payment)}` : base
 }
 
 export function getInvoicePayLink(invoiceId: number): string {
-  const token = encryptInvoiceId(invoiceId)
+  const token = encryptInvoiceId(invoiceId, 'pay')
   return `/invoice/pay?token=${encodeURIComponent(token)}`
 }

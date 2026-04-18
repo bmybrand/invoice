@@ -187,12 +187,17 @@ function isSuccessfulPaymentStatus(value: string | null | undefined): boolean {
 }
 
 function buildEmployeeAvatarUrl(employee: { avatar_path?: string | null; avatar_url?: string | null }) {
+  const avatarUrl = (employee.avatar_url || '').trim()
+  if (avatarUrl) {
+    return avatarUrl
+  }
+
   const avatarPath = (employee.avatar_path || '').trim()
   if (avatarPath) {
     const { data } = supabase.storage.from(PROFILE_AVATAR_BUCKET).getPublicUrl(avatarPath)
     return data.publicUrl || ''
   }
-  return (employee.avatar_url || '').trim()
+  return ''
 }
 
 function initials(name: string) {
