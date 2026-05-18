@@ -183,6 +183,18 @@ function ChatIcon({ className = 'h-5 w-5 text-slate-400' }: { className?: string
   )
 }
 
+function BriefcaseFormIcon({ className = 'h-5 w-5 text-slate-400' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M7.5 6.75V6A2.25 2.25 0 019.75 3.75h4.5A2.25 2.25 0 0116.5 6v.75m-12 2.25h15A1.5 1.5 0 0121 10.5v7.5a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-7.5A1.5 1.5 0 014.5 9zm5.25 3h4.5m-4.5 3h3"
+      />
+    </svg>
+  )
+}
+
 function ChevronLeftIcon({ className = 'h-5 w-5' }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -234,6 +246,8 @@ function NavIcon({ label, active }: { label: string; active: boolean }) {
       return <PaymentIcon className={className} />
     case 'Chat':
       return <ChatIcon className={className} />
+    case 'BMYBrand Brief Forms':
+      return <BriefcaseFormIcon className={className} />
     case 'Settings':
       return <GearIcon className={className} />
     default:
@@ -346,6 +360,7 @@ const allNavItems: Array<{ label: string; href: string }> = [
   { label: 'Brand Identity', href: '/dashboard/brands' },
   { label: 'Invoice', href: '/dashboard/invoices' },
   { label: 'Payment', href: '/dashboard/payments' },
+  { label: 'BMYBrand Brief Forms', href: '/dashboard/brief-forms' },
   { label: 'Settings', href: '/dashboard/settings' },
 ]
 
@@ -1084,7 +1099,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                 <Link
                   key={item.label}
                   href={item.href}
-                  className={`flex items-center justify-start gap-2 rounded-md border-l-4 border-orange-500 bg-linear-to-r from-orange-500/20 to-orange-500/0 py-2 sm:gap-3 sm:rounded-lg sm:py-2.5 md:rounded-xl md:py-3 ${sidebarCollapsed ? 'justify-center px-1 sm:px-1.5' : 'px-3 sm:px-4'}`}
+                  className={`flex min-w-0 items-center justify-start gap-2 rounded-md border-l-4 border-orange-500 bg-linear-to-r from-orange-500/20 to-orange-500/0 py-2 sm:gap-3 sm:rounded-lg sm:py-2.5 md:rounded-xl md:py-3 ${sidebarCollapsed ? 'justify-center px-1 sm:px-1.5' : 'px-3 sm:px-4'}`}
                   title={sidebarCollapsed ? item.label : undefined}
                 >
                   <span className="relative h-3 w-3 shrink-0 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4 lg:h-5 lg:w-5 [&_svg]:block [&_svg]:h-full! [&_svg]:w-full!">
@@ -1096,10 +1111,12 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                     ) : null}
                   </span>
                   <span
-                    className={`truncate text-sm font-bold leading-5 text-orange-500 transition-opacity duration-200 md:text-base md:leading-6 ${sidebarCollapsed ? 'max-w-0 opacity-0' : 'opacity-100 delay-200'}`}
+                    className={`min-w-0 flex-1 truncate text-sm font-bold leading-5 text-orange-500 transition-opacity duration-200 md:text-base md:leading-6 ${sidebarCollapsed ? 'max-w-0 opacity-0' : 'opacity-100 delay-200'}`}
                   >
-                    <span className="inline-flex items-center gap-2">
-                      <span>{item.label}</span>
+                    <span className="flex min-w-0 w-full items-center gap-2">
+                      <span className="block min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
+                        {item.label}
+                      </span>
                       {isChatItem && chatMessageCount > 0 ? (
                         <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-orange-500 px-1.5 text-[10px] font-black leading-none text-white">
                           {chatMessageCount > 99 ? '99+' : chatMessageCount}
@@ -1112,7 +1129,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                 <Link
                   key={item.label}
                   href={item.href}
-                  className={`flex items-center justify-start gap-2 rounded-md py-2 hover:bg-white/5 sm:rounded-lg sm:py-2.5 md:rounded-xl md:py-3 ${sidebarCollapsed ? 'justify-center px-1 sm:px-1.5' : 'px-3 sm:px-4'}`}
+                  className={`flex min-w-0 items-center justify-start gap-2 rounded-md py-2 hover:bg-white/5 sm:rounded-lg sm:py-2.5 md:rounded-xl md:py-3 ${sidebarCollapsed ? 'justify-center px-1 sm:px-1.5' : 'px-3 sm:px-4'}`}
                   title={sidebarCollapsed ? item.label : undefined}
                 >
                   <span className="relative h-3 w-3 shrink-0 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4 lg:h-5 lg:w-5 [&_svg]:block [&_svg]:h-full! [&_svg]:w-full!">
@@ -1124,10 +1141,12 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                     ) : null}
                   </span>
                   <span
-                    className={`truncate text-sm font-normal leading-5 text-slate-400 transition-opacity duration-200 md:text-base md:leading-6 ${sidebarCollapsed ? 'max-w-0 opacity-0' : 'opacity-100 delay-200'}`}
+                    className={`min-w-0 flex-1 truncate text-sm font-normal leading-5 text-slate-400 transition-opacity duration-200 md:text-base md:leading-6 ${sidebarCollapsed ? 'max-w-0 opacity-0' : 'opacity-100 delay-200'}`}
                   >
-                    <span className="inline-flex items-center gap-2">
-                      <span>{item.label}</span>
+                    <span className="flex min-w-0 w-full items-center gap-2">
+                      <span className="block min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
+                        {item.label}
+                      </span>
                       {isChatItem && chatMessageCount > 0 ? (
                         <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-orange-500 px-1.5 text-[10px] font-black leading-none text-white">
                           {chatMessageCount > 99 ? '99+' : chatMessageCount}
