@@ -48,8 +48,10 @@ export default function SeoQuestionnaireRouteShell() {
   }
 
   return (
-    <div className="min-h-screen bg-white">
-      <SeoQuestionnaireForm publicView />
+    <div className="min-h-screen bg-[#f8fafc] px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+      <div className="mx-auto w-full max-w-[920px] border border-slate-200 bg-white">
+        <SeoQuestionnaireForm publicView />
+      </div>
     </div>
   )
 }

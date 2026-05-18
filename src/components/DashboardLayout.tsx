@@ -246,7 +246,7 @@ function NavIcon({ label, active }: { label: string; active: boolean }) {
       return <PaymentIcon className={className} />
     case 'Chat':
       return <ChatIcon className={className} />
-    case 'BMYBrand Brief Forms':
+    case 'Brief Forms':
       return <BriefcaseFormIcon className={className} />
     case 'Settings':
       return <GearIcon className={className} />
@@ -360,7 +360,7 @@ const allNavItems: Array<{ label: string; href: string }> = [
   { label: 'Brand Identity', href: '/dashboard/brands' },
   { label: 'Invoice', href: '/dashboard/invoices' },
   { label: 'Payment', href: '/dashboard/payments' },
-  { label: 'BMYBrand Brief Forms', href: '/dashboard/brief-forms' },
+  { label: 'Brief Forms', href: '/dashboard/brief-forms' },
   { label: 'Settings', href: '/dashboard/settings' },
 ]
 
