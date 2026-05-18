@@ -5,11 +5,11 @@ import Link from 'next/link'
 
 const briefFormOptions = [
   {
-    title: 'BOOKKEEPING & TAX FILING',
-    description: 'Collect bookkeeping scope, filing frequency, business structure, and compliance deadlines.',
+    title: 'SEO',
+    description: 'Collect business goals, website access, target audience, competitors, and SEO campaign requirements.',
     accent: 'from-orange-500/22 via-amber-500/10 to-transparent',
-    tag: 'Finance',
-    href: '/dashboard/brief-forms/bookkeeping-tax-filing',
+    tag: 'Growth',
+    href: '/dashboard/brief-forms/seo-questionnaire',
     status: 'Ready',
   },
   {
@@ -17,32 +17,32 @@ const briefFormOptions = [
     description: 'Capture sitemap needs, conversion goals, content status, integrations, and launch timing.',
     accent: 'from-sky-500/18 via-cyan-500/8 to-transparent',
     tag: 'Digital',
-    href: '',
-    status: 'Soon',
+    href: '/dashboard/brief-forms/website',
+    status: 'Ready',
   },
   {
     title: 'LOGO DESIGN',
     description: 'Gather brand personality, visual references, color direction, and logo usage requirements.',
     accent: 'from-fuchsia-500/18 via-pink-500/8 to-transparent',
     tag: 'Identity',
-    href: '',
-    status: 'Soon',
+    href: '/dashboard/brief-forms/logo-design',
+    status: 'Ready',
   },
   {
     title: 'GRAPHIC DESIGN',
     description: 'Define asset formats, campaign goals, dimensions, target audience, and revision expectations.',
     accent: 'from-violet-500/18 via-indigo-500/8 to-transparent',
     tag: 'Creative',
-    href: '',
-    status: 'Soon',
+    href: '/dashboard/brief-forms/graphic-design',
+    status: 'Ready',
   },
   {
     title: 'Video Animation',
     description: 'Outline script status, style references, runtime, aspect ratios, and delivery platforms.',
     accent: 'from-emerald-500/18 via-teal-500/8 to-transparent',
     tag: 'Motion',
-    href: '',
-    status: 'Soon',
+    href: '/dashboard/brief-forms/video-animation',
+    status: 'Ready',
   },
 ]
 
@@ -71,8 +71,8 @@ export default function BriefFormsPage() {
               Brief Forms
             </h1>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-400 sm:text-base">
-              Start the right intake flow for each service line. The bookkeeping questionnaire is live now,
-              and the remaining brief types can be added into the same system next.
+              Start the right intake flow for each service line. The SEO, Website, Logo Design, Graphic
+              Design, and Video Animation questionnaires are live now.
             </p>
           </div>
 
@@ -81,7 +81,7 @@ export default function BriefFormsPage() {
               <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Forms</p>
               <div className="mt-2 flex items-end justify-between gap-3">
                 <p className="text-2xl font-black text-white">{briefFormOptions.length}</p>
-                <p className="text-sm font-bold text-emerald-300">1 live now</p>
+                <p className="text-sm font-bold text-emerald-300">5 live now</p>
               </div>
             </div>
           </div>
