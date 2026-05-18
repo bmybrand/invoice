@@ -96,18 +96,8 @@ export default function BriefFormsPage() {
 
         <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
           {briefFormOptions.map((option, index) => {
-            const CardTag = option.href ? Link : 'div'
-
-            return (
-              <CardTag
-                key={option.title}
-                {...(option.href ? { href: option.href } : {})}
-                className={`group relative overflow-hidden rounded-[1.6rem] border border-slate-800 bg-[#111827] p-5 text-left transition duration-200 ${
-                  option.href
-                    ? 'cursor-pointer hover:-translate-y-0.5 hover:border-slate-700 hover:bg-[#131d33]'
-                    : 'cursor-default opacity-85'
-                }`}
-              >
+            const cardContent = (
+              <>
                 <div className={`absolute inset-0 bg-linear-to-br ${option.accent} opacity-90`} />
                 <div className="absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-white/12 to-transparent" />
 
@@ -147,7 +137,27 @@ export default function BriefFormsPage() {
                     </span>
                   </div>
                 </div>
-              </CardTag>
+              </>
+            )
+
+            const cardClassName = `group relative overflow-hidden rounded-[1.6rem] border border-slate-800 bg-[#111827] p-5 text-left transition duration-200 ${
+              option.href
+                ? 'cursor-pointer hover:-translate-y-0.5 hover:border-slate-700 hover:bg-[#131d33]'
+                : 'cursor-default opacity-85'
+            }`
+
+            if (option.href) {
+              return (
+                <Link key={option.title} href={option.href} className={cardClassName}>
+                  {cardContent}
+                </Link>
+              )
+            }
+
+            return (
+              <div key={option.title} className={cardClassName}>
+                {cardContent}
+              </div>
             )
           })}
         </div>
