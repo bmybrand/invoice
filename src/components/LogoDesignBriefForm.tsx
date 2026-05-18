@@ -16,7 +16,7 @@ function TextField({
   label,
   placeholder,
   type = 'text',
-  required = true,
+  required = false,
 }: {
   label: string
   placeholder?: string
@@ -25,7 +25,10 @@ function TextField({
 }) {
   return (
     <label className="block">
-      <span className="mb-2 block text-sm font-semibold text-slate-700">{label}</span>
+      <span className="mb-2 block text-sm font-semibold text-slate-700">
+        {required ? <span className="mr-1 text-slate-400">*</span> : null}
+        {label}
+      </span>
       <input
         type={type}
         placeholder={placeholder}
@@ -40,7 +43,7 @@ function TextAreaField({
   label,
   placeholder = 'Message',
   rows = 4,
-  required = true,
+  required = false,
 }: {
   label: string
   placeholder?: string
@@ -49,7 +52,10 @@ function TextAreaField({
 }) {
   return (
     <label className="block">
-      <span className="mb-2 block text-sm font-semibold text-slate-700">{label}</span>
+      <span className="mb-2 block text-sm font-semibold text-slate-700">
+        {required ? <span className="mr-1 text-slate-400">*</span> : null}
+        {label}
+      </span>
       <textarea
         rows={rows}
         placeholder={placeholder}
@@ -80,17 +86,87 @@ function SectionCard({
   )
 }
 
+const logoExamples = [
+  {
+    title: 'Corporate/Professional',
+    description:
+      'Corporate logos are simple, bold and communicate strength. They do not necessarily illustrate what a company does. They are basic trademarks that come to symbolize a company even if they start as a somewhat arbitrary choice.',
+    imageSrc: '/logo-1.jpg',
+  },
+  {
+    title: 'Text Only',
+    description:
+      'Text-only logos are a challenge to keep unique because most fonts are so widely used. However, it can provide a nice literary or legal look. Alternatively, if you want something artier, a handwritten or arty font can look unique.',
+    imageSrc: '/logo-2.jpg',
+  },
+  {
+    title: 'Historical/Seals',
+    description: 'These are having classic rich feel and have real longevity.',
+    imageSrc: '/logo-3.jpg',
+  },
+  {
+    title: 'Old World',
+    description: 'Fun and beautiful. We are huge fans of old world style.',
+    imageSrc: '/logo-4.jpg',
+  },
+  {
+    title: 'Whimsical',
+    description:
+      'Whimsical logos, they are based on illustrations take more time and more budget and are more unique than any other type of logo.',
+    imageSrc: '/logo-5.jpg',
+  },
+] as const
+
 function ExampleBlock({
   title,
   description,
+  imageSrc,
+  checked,
+  onToggle,
 }: {
   title: string
   description: string
+  imageSrc?: string
+  checked: boolean
+  onToggle: (checked: boolean) => void
 }) {
   return (
-    <div className="border border-slate-300 bg-slate-50 p-4">
-      <h3 className="text-sm font-bold text-slate-800">{title}</h3>
-      <p className="mt-2 text-sm leading-7 text-slate-600">{description}</p>
+    <div className="border border-slate-300 bg-white">
+      <div className={`border-b border-slate-300 px-4 py-3 ${checked ? 'bg-slate-100' : 'bg-white'}`}>
+        <div className="flex items-start gap-3">
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={(event) => onToggle(event.target.checked)}
+            className="mt-1 h-4 w-4 shrink-0 rounded-[2px] border border-slate-400 accent-orange-500"
+          />
+          <div>
+            <h3 className="text-sm font-bold text-slate-800">{title}</h3>
+            <p className="mt-1 text-sm leading-6 text-slate-600">{description}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t border-slate-200 bg-white p-3">
+        <div className="overflow-hidden border border-slate-200 bg-slate-50">
+          {imageSrc ? (
+            <Image
+              src={imageSrc}
+              alt={`${title} logo examples`}
+              width={1200}
+              height={800}
+              className="h-auto w-full"
+              sizes="(max-width: 768px) 100vw, 50vw"
+            />
+          ) : null}
+
+          {!imageSrc ? (
+            <div className="flex min-h-[168px] items-center justify-center text-center text-sm font-medium text-slate-400">
+              Add one collage image for {title}
+            </div>
+          ) : null}
+        </div>
+      </div>
     </div>
   )
 }
@@ -106,6 +182,8 @@ export default function LogoDesignBriefForm({
 }) {
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle')
   const [submitNotice, setSubmitNotice] = useState('')
+  const [selectedLogoExamples, setSelectedLogoExamples] = useState<string[]>([])
+  const [logoExampleError, setLogoExampleError] = useState('')
 
   async function handleCopyLink() {
     try {
@@ -122,7 +200,20 @@ export default function LogoDesignBriefForm({
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     if (!publicView) return
     event.preventDefault()
+    if (selectedLogoExamples.length === 0) {
+      setSubmitNotice('')
+      setLogoExampleError('Select at least one logo example style before submitting.')
+      return
+    }
+    setLogoExampleError('')
     setSubmitNotice('Successfully submitted.')
+  }
+
+  function handleLogoExampleToggle(title: string, checked: boolean) {
+    setLogoExampleError('')
+    setSelectedLogoExamples((current) =>
+      checked ? [...current, title] : current.filter((item) => item !== title)
+    )
   }
 
   return (
@@ -170,14 +261,14 @@ export default function LogoDesignBriefForm({
       <form onSubmit={handleSubmit} className="relative space-y-6 bg-white px-6 py-6 sm:px-8 sm:py-8">
         <SectionCard title="Client Information">
           <div className="grid gap-5 md:grid-cols-2">
-            <TextField label="Company:" placeholder="Your Company" />
-            <TextField label="Email:" placeholder="Your Email Address" type="email" />
+            <TextField label="Company:" placeholder="Your Company" required />
+            <TextField label="Email:" placeholder="Your Email Address" type="email" required />
           </div>
           <div className="grid gap-5 md:grid-cols-2">
-            <TextField label="Phone:" placeholder="Your Phone Number" type="tel" />
-            <TextField label="Website Address:" placeholder="Your Website Address" type="url" />
+            <TextField label="Phone:" placeholder="Your Phone Number" type="tel" required />
+            <TextField label="Website Address:" placeholder="Your Website Address" type="url" required />
           </div>
-          <TextField label="Contact Person:" placeholder="Your Contact Person" />
+          <TextField label="Contact Person:" placeholder="Your Contact Person" required />
         </SectionCard>
 
         <SectionCard title="Logo Design Brief">
@@ -203,6 +294,7 @@ export default function LogoDesignBriefForm({
         </SectionCard>
 
         <SectionCard title="Logo Examples">
+          <p className="text-base font-semibold text-slate-700">Corporate/Professional</p>
           <p className="text-sm leading-7 text-slate-600">
             These examples are a starting point to help illustrate what we mean when we use terms such as
             corporate, old world, illustrative, etc. There are not clean divisions between these categories.
@@ -210,31 +302,24 @@ export default function LogoDesignBriefForm({
           </p>
 
           <div className="grid gap-4 md:grid-cols-2">
-            <ExampleBlock
-              title="Corporate/Professional"
-              description="Corporate logos are simple, bold and communicate strength. They do not necessarily illustrate what a company does. They are basic trademarks that come to symbolize a company even if they start as a somewhat arbitrary choice."
-            />
-            <ExampleBlock
-              title="Text Only"
-              description="Text-only logos are a challenge to keep unique because most fonts are so widely used. However, it can provide a nice literary or legal look. Alternatively, if you want something artier, a handwritten or arty font can look unique."
-            />
-            <ExampleBlock
-              title="Historical/Seals"
-              description="These have a classic rich feel and have real longevity."
-            />
-            <ExampleBlock
-              title="Old World"
-              description="Fun and beautiful. We are huge fans of old world style."
-            />
-            <ExampleBlock
-              title="Whimsical"
-              description="Whimsical logos based on illustrations take more time and more budget, but are often more unique than any other type of logo."
-            />
+            {logoExamples.map((example) => (
+              <ExampleBlock
+                key={example.title}
+                title={example.title}
+                description={example.description}
+                imageSrc={example.imageSrc}
+                checked={selectedLogoExamples.includes(example.title)}
+                onToggle={(checked) => handleLogoExampleToggle(example.title, checked)}
+              />
+            ))}
           </div>
+          {logoExampleError ? (
+            <p className="text-sm font-medium text-rose-600">{logoExampleError}</p>
+          ) : null}
         </SectionCard>
 
         <SectionCard title="Other Information">
-          <TextAreaField label="Please provide any information, which you think we might need to know, which hasn’t been covered in your answers?" />
+          <TextAreaField label="Please provide any information, which you think we might need to know, which hasn't been covered in your answers?" />
         </SectionCard>
 
         {publicView ? (

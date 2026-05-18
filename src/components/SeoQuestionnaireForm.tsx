@@ -52,6 +52,26 @@ const seoServices: Option[] = [
   { value: 'content-optimization', label: 'Content Optimization' },
 ]
 
+const timeZoneOptions = [
+  'Pacific Time (PT) - GMT-8',
+  'Mountain Time (MT) - GMT-7',
+  'Central Time (CT) - GMT-6',
+  'Eastern Time (ET) - GMT-5',
+  'Atlantic Time (AT) - GMT-4',
+  'Greenwich Mean Time (GMT) - GMT+0',
+  'British Summer Time (BST) - GMT+1',
+  'Central European Time (CET) - GMT+1',
+  'Gulf Standard Time (GST) - GMT+4',
+  'Pakistan Standard Time (PKT) - GMT+5',
+  'India Standard Time (IST) - GMT+5:30',
+  'Bangladesh Standard Time - GMT+6',
+  'Singapore Time (SGT) - GMT+8',
+  'Philippine Time (PHT) - GMT+8',
+  'Japan Standard Time (JST) - GMT+9',
+  'Australian Eastern Time (AET) - GMT+10',
+  'New Zealand Time (NZT) - GMT+12',
+]
+
 function BackIcon() {
   return (
     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -64,7 +84,7 @@ function TextField({
   label,
   placeholder,
   type = 'text',
-  required = true,
+  required = false,
 }: {
   label: string
   placeholder?: string
@@ -73,7 +93,10 @@ function TextField({
 }) {
   return (
     <label className="block">
-      <span className="mb-2 block text-sm font-semibold text-slate-700">{label}</span>
+      <span className="mb-2 block text-sm font-semibold text-slate-700">
+        {required ? <span className="mr-1 text-slate-400">*</span> : null}
+        {label}
+      </span>
       <input
         type={type}
         placeholder={placeholder}
@@ -88,7 +111,7 @@ function TextAreaField({
   label,
   placeholder,
   rows = 4,
-  required = true,
+  required = false,
 }: {
   label: string
   placeholder?: string
@@ -97,7 +120,10 @@ function TextAreaField({
 }) {
   return (
     <label className="block">
-      <span className="mb-2 block text-sm font-semibold text-slate-700">{label}</span>
+      <span className="mb-2 block text-sm font-semibold text-slate-700">
+        {required ? <span className="mr-1 text-slate-400">*</span> : null}
+        {label}
+      </span>
       <textarea
         rows={rows}
         placeholder={placeholder}
@@ -108,12 +134,47 @@ function TextAreaField({
   )
 }
 
+function SelectField({
+  label,
+  options,
+  placeholder = 'Select an option',
+  required = false,
+}: {
+  label: string
+  options: string[]
+  placeholder?: string
+  required?: boolean
+}) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-sm font-semibold text-slate-700">
+        {required ? <span className="mr-1 text-slate-400">*</span> : null}
+        {label}
+      </span>
+      <select
+        defaultValue=""
+        required={required}
+        className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-500/10"
+      >
+        <option value="" disabled>
+          {placeholder}
+        </option>
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
 function ChoiceGroup({
   label,
   name,
   options,
   type = 'radio',
-  required = true,
+  required = false,
 }: {
   label: string
   name: string
@@ -123,7 +184,10 @@ function ChoiceGroup({
 }) {
   return (
     <fieldset>
-      <legend className="mb-3 text-sm font-semibold text-slate-700">{label}</legend>
+      <legend className="mb-3 text-sm font-semibold text-slate-700">
+        {required ? <span className="mr-1 text-slate-400">*</span> : null}
+        {label}
+      </legend>
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
         {options.map((option) => (
           <label
@@ -240,19 +304,19 @@ export default function SeoQuestionnaireForm({
       <form onSubmit={handleSubmit} className="relative space-y-6 bg-white px-6 py-6 sm:px-8 sm:py-8">
         <SectionCard title="Business Information">
           <div className="grid gap-5 md:grid-cols-2">
-            <TextField label="1. Full Name:" placeholder="Full Name" />
-            <TextField label="2. Company Name:" placeholder="Company Name" />
+            <TextField label="1. Full Name:" placeholder="Full Name" required />
+            <TextField label="2. Company Name:" placeholder="Company Name" required />
           </div>
           <div className="grid gap-5 md:grid-cols-2">
-            <TextField label="3. Website URL:" placeholder="https://yourwebsite.com" type="url" />
-            <TextField label="4. Business Email:" placeholder="Business Email" type="email" />
+            <TextField label="3. Website URL:" placeholder="https://yourwebsite.com" type="url" required />
+            <TextField label="4. Business Email:" placeholder="Business Email" type="email" required />
           </div>
           <div className="grid gap-5 md:grid-cols-2">
-            <TextField label="5. Phone Number:" placeholder="Phone Number" type="tel" />
-            <TextField label="7. Primary Contact Person:" placeholder="Primary Contact Person" />
+            <TextField label="5. Phone Number:" placeholder="Phone Number" type="tel" required />
+            <TextField label="7. Primary Contact Person:" placeholder="Primary Contact Person" required />
           </div>
-          <TextField label="6. Business Address:" placeholder="Business Address" />
-          <TextField label="8. Time Zone:" placeholder="Time Zone" />
+          <TextField label="6. Business Address:" placeholder="Business Address" required />
+          <SelectField label="8. Time Zone:" options={timeZoneOptions} placeholder="Time Zone" required />
         </SectionCard>
 
         <SectionCard title="Business Overview" subtitle="About Your Business">
@@ -353,8 +417,17 @@ export default function SeoQuestionnaireForm({
         </SectionCard>
 
         <SectionCard title="Client Declaration">
-          <div className="rounded-2xl border border-slate-300 bg-slate-50 px-4 py-4 text-sm leading-7 text-slate-600">
-            I confirm that the information provided above is accurate and complete to the best of my knowledge.
+          <div className="rounded-2xl border border-slate-300 bg-slate-50 px-4 py-4">
+            <label className="flex items-start justify-between gap-4 text-sm leading-7 text-slate-600">
+              <span>
+                I confirm that the information provided above is accurate and complete to the best of my knowledge.
+              </span>
+              <input
+                type="checkbox"
+                name="clientDeclaration"
+                className="mt-1 h-5 w-5 shrink-0 accent-orange-500"
+              />
+            </label>
           </div>
           <div className="grid gap-5 md:grid-cols-3">
             <TextField label="Client Name" placeholder="Client Name" />

@@ -16,7 +16,7 @@ function TextField({
   label,
   placeholder,
   type = 'text',
-  required = true,
+  required = false,
 }: {
   label: string
   placeholder?: string
@@ -25,7 +25,10 @@ function TextField({
 }) {
   return (
     <label className="block">
-      <span className="mb-2 block text-sm font-semibold text-slate-700">{label}</span>
+      <span className="mb-2 block text-sm font-semibold text-slate-700">
+        {required ? <span className="mr-1 text-slate-400">*</span> : null}
+        {label}
+      </span>
       <input
         type={type}
         placeholder={placeholder}
@@ -40,7 +43,7 @@ function TextAreaField({
   label,
   placeholder = 'Message',
   rows = 4,
-  required = true,
+  required = false,
 }: {
   label: string
   placeholder?: string
@@ -49,7 +52,10 @@ function TextAreaField({
 }) {
   return (
     <label className="block">
-      <span className="mb-2 block text-sm font-semibold text-slate-700">{label}</span>
+      <span className="mb-2 block text-sm font-semibold text-slate-700">
+        {required ? <span className="mr-1 text-slate-400">*</span> : null}
+        {label}
+      </span>
       <textarea
         rows={rows}
         placeholder={placeholder}
@@ -152,14 +158,14 @@ export default function VideoAnimationBriefForm({
       <form onSubmit={handleSubmit} className="relative space-y-6 bg-white px-6 py-6 sm:px-8 sm:py-8">
         <SectionCard title="Client Information">
           <div className="grid gap-5 md:grid-cols-2">
-            <TextField label="Company:" placeholder="Your Company" />
-            <TextField label="Email:" placeholder="Your Email Address" type="email" />
+            <TextField label="Company:" placeholder="Your Company" required />
+            <TextField label="Email:" placeholder="Your Email Address" type="email" required />
           </div>
           <div className="grid gap-5 md:grid-cols-2">
-            <TextField label="Phone:" placeholder="Your Phone Number" type="tel" />
-            <TextField label="Website Address:" placeholder="Your Website Address" type="url" />
+            <TextField label="Phone:" placeholder="Your Phone Number" type="tel" required />
+            <TextField label="Website Address:" placeholder="Your Website Address" type="url" required />
           </div>
-          <TextField label="Contact Person:" placeholder="Your Contact Person" />
+          <TextField label="Contact Person:" placeholder="Your Contact Person" required />
         </SectionCard>
 
         <SectionCard title="Video Animation Brief">

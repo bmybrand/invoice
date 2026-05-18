@@ -26,7 +26,7 @@ function TextField({
   label,
   placeholder,
   type = 'text',
-  required = true,
+  required = false,
 }: {
   label: string
   placeholder?: string
@@ -35,7 +35,10 @@ function TextField({
 }) {
   return (
     <label className="block">
-      <span className="mb-2 block text-sm font-semibold text-slate-700">{label}</span>
+      <span className="mb-2 block text-sm font-semibold text-slate-700">
+        {required ? <span className="mr-1 text-slate-400">*</span> : null}
+        {label}
+      </span>
       <input
         type={type}
         placeholder={placeholder}
@@ -50,7 +53,7 @@ function TextAreaField({
   label,
   placeholder = 'Message',
   rows = 4,
-  required = true,
+  required = false,
 }: {
   label: string
   placeholder?: string
@@ -59,7 +62,10 @@ function TextAreaField({
 }) {
   return (
     <label className="block">
-      <span className="mb-2 block text-sm font-semibold text-slate-700">{label}</span>
+      <span className="mb-2 block text-sm font-semibold text-slate-700">
+        {required ? <span className="mr-1 text-slate-400">*</span> : null}
+        {label}
+      </span>
       <textarea
         rows={rows}
         placeholder={placeholder}
@@ -74,7 +80,7 @@ function ChoiceGroup({
   label,
   name,
   options,
-  required = true,
+  required = false,
 }: {
   label: string
   name: string
@@ -83,7 +89,10 @@ function ChoiceGroup({
 }) {
   return (
     <fieldset>
-      <legend className="mb-3 text-sm font-semibold text-slate-700">{label}</legend>
+      <legend className="mb-3 text-sm font-semibold text-slate-700">
+        {required ? <span className="mr-1 text-slate-400">*</span> : null}
+        {label}
+      </legend>
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
         {options.map((option) => (
           <label
@@ -196,12 +205,12 @@ export default function GraphicDesignBriefForm({
 
       <form onSubmit={handleSubmit} className="relative space-y-6 bg-white px-6 py-6 sm:px-8 sm:py-8">
         <SectionCard title="1. Basic Information">
-          <TextField label="Company / Brand Name:" placeholder="Your Company or Brand Name" />
+          <TextField label="Company / Brand Name:" placeholder="Your Company or Brand Name" required />
           <div className="grid gap-5 md:grid-cols-2">
-            <TextField label="Your Full Name:" placeholder="Your Full Name" />
-            <TextField label="Email Address:" placeholder="Your Email Address" type="email" />
+            <TextField label="Your Full Name:" placeholder="Your Full Name" required />
+            <TextField label="Email Address:" placeholder="Your Email Address" type="email" required />
           </div>
-          <TextField label="Phone Number:" placeholder="Phone Number" type="tel" />
+          <TextField label="Phone Number:" placeholder="Phone Number" type="tel" required />
         </SectionCard>
 
         <SectionCard title="2. Project Overview">
