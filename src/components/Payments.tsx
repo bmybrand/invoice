@@ -111,6 +111,11 @@ type UserInvoiceMetaRow = {
   employees?: { employee_name?: string | null } | Array<{ employee_name?: string | null }> | null
 }
 
+type RealtimePaymentSubmissionRow = {
+  invoice_id?: number | null
+  email?: string | null
+}
+
 let paymentsTableCache: PaymentsScopedCache | null = null
 
 function SearchIcon({ className = 'h-4 w-4' }: { className?: string }) {
@@ -260,8 +265,9 @@ export default function Payments() {
   const isSuperAdmin = normalizedRole === 'superadmin'
   const clientData = useClientDashboardData()
   const scopedPaymentsCache = paymentsTableCache?.ownerAuthId === currentUserAuthId ? paymentsTableCache.rows : null
+  const hasScopedPaymentsCache = Boolean(scopedPaymentsCache)
   const [payments, setPayments] = useState<PaymentRow[]>(() => scopedPaymentsCache ?? [])
-  const [paymentsLoading, setPaymentsLoading] = useState(() => !scopedPaymentsCache)
+  const [paymentsLoading, setPaymentsLoading] = useState(() => !hasScopedPaymentsCache)
   const [searchQuery, setSearchQuery] = useState(() => (searchParams.get('globalSearch') || '').trim())
   const [currentPage, setCurrentPage] = useState(1)
   const [selectedPaymentIds, setSelectedPaymentIds] = useState<number[]>([])
@@ -283,8 +289,15 @@ export default function Payments() {
   const [downloadProgress, setDownloadProgress] = useState(0)
   const [downloadStatusMessage, setDownloadStatusMessage] = useState('')
   const paymentsRefreshTimeoutRef = useRef<number | null>(null)
+  const visibleInvoiceIdsRef = useRef<number[]>(scopedPaymentsCache?.map((payment) => payment.invoiceId ?? 0).filter((id) => Number.isFinite(id) && id > 0) ?? [])
 
   useBodyScrollLock(showBulkDownloadModal && isFinanceDepartment)
+
+  useEffect(() => {
+    visibleInvoiceIdsRef.current = payments
+      .map((payment) => Number(payment.invoiceId ?? 0))
+      .filter((id) => Number.isFinite(id) && id > 0)
+  }, [payments])
 
   useEffect(() => {
     let active = true
@@ -299,7 +312,7 @@ export default function Payments() {
         return
       }
 
-      if (!isBackground && !scopedPaymentsCache && active) {
+      if (!isBackground && !hasScopedPaymentsCache && active) {
         setPaymentsLoading(true)
       }
 
@@ -509,6 +522,27 @@ export default function Payments() {
 
     void fetchPayments()
 
+    const shouldRefreshForPaymentChange = (row: RealtimePaymentSubmissionRow | null) => {
+      if (!row) return false
+
+      const invoiceId = Number(row.invoice_id ?? 0)
+      const email = (row.email || '').trim().toLowerCase()
+
+      if (accountType === 'client') {
+        const clientEmail = (clientData?.clientEmail || '').trim().toLowerCase()
+        if (Number.isFinite(invoiceId) && invoiceId > 0 && visibleInvoiceIdsRef.current.includes(invoiceId)) {
+          return true
+        }
+        return Boolean(clientEmail) && email === clientEmail
+      }
+
+      if (isUserRole && currentEmployeeId != null) {
+        return Number.isFinite(invoiceId) && invoiceId > 0 && visibleInvoiceIdsRef.current.includes(invoiceId)
+      }
+
+      return true
+    }
+
     // Supabase Realtime subscription for payment_submissions table
     const channelName = `payments-table-sync-${currentUserAuthId || 'unknown'}`
     const channel = supabase.channel(channelName)
@@ -520,7 +554,12 @@ export default function Payments() {
         schema: 'public',
         table: 'payment_submissions',
       },
-      () => {
+      (payload) => {
+        const nextRow = (payload.new ?? null) as RealtimePaymentSubmissionRow | null
+        const previousRow = (payload.old ?? null) as RealtimePaymentSubmissionRow | null
+        if (!shouldRefreshForPaymentChange(nextRow) && !shouldRefreshForPaymentChange(previousRow)) {
+          return
+        }
         if (paymentsRefreshTimeoutRef.current !== null) {
           window.clearTimeout(paymentsRefreshTimeoutRef.current)
         }
@@ -540,7 +579,7 @@ export default function Payments() {
       }
       void supabase.removeChannel(channel)
     }
-  }, [accountType, clientData?.client?.id, clientData?.loading, currentEmployeeId, currentUserAuthId, isUserRole, profileLoaded, scopedPaymentsCache])
+  }, [accountType, clientData?.client?.id, clientData?.clientEmail, clientData?.invoices, clientData?.loading, currentEmployeeId, currentUserAuthId, hasScopedPaymentsCache, isUserRole, profileLoaded])
 
   useEffect(() => {
     const nextQuery = (searchParams.get('globalSearch') || '').trim()

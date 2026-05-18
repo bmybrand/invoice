@@ -250,8 +250,9 @@ export default function Employees() {
   const { token } = useSessionContext()
   const scopedEmployeesCache =
     employeesTableCache?.ownerAuthId === profileCurrentUserAuthId ? employeesTableCache : null
+  const hasScopedEmployeesCache = Boolean(scopedEmployeesCache)
   const [employees, setEmployees] = useState<EmployeeRow[]>(() => scopedEmployeesCache?.employees ?? [])
-  const [employeesLoading, setEmployeesLoading] = useState(() => !scopedEmployeesCache)
+  const [employeesLoading, setEmployeesLoading] = useState(() => !hasScopedEmployeesCache)
   const [showAddModal, setShowAddModal] = useState(false)
   const [showArchivedModal, setShowArchivedModal] = useState(false)
   const [addEmail, setAddEmail] = useState('')
@@ -309,6 +310,16 @@ export default function Employees() {
     (displayRole || '').trim().toLowerCase().replace(/\s+/g, '') === 'admin'
   const canManageArchivedEmployees = isSuperAdmin || isAdmin
   const onlineAuthIdSet = new Set(onlineAuthIds)
+  const employeesRef = useRef<EmployeeRow[]>(scopedEmployeesCache?.employees ?? [])
+  const employeeAvatarUrlsRef = useRef<Record<string, string>>(scopedEmployeesCache?.avatarUrls ?? {})
+
+  useEffect(() => {
+    employeesRef.current = employees
+  }, [employees])
+
+  useEffect(() => {
+    employeeAvatarUrlsRef.current = employeeAvatarUrls
+  }, [employeeAvatarUrls])
 
   const [currentUserEmployeeId, setCurrentUserEmployeeId] = useState<number | null>(null)
   useEffect(() => {
@@ -410,7 +421,7 @@ export default function Employees() {
       setEmployeeAvatarUrls({})
       employeesTableCache = {
         ownerAuthId: profileCurrentUserAuthId,
-        employees: scopedEmployeesCache?.employees ?? [],
+        employees: employeesRef.current,
         avatarUrls: {},
       }
       return
@@ -425,16 +436,16 @@ export default function Employees() {
       const next = areAvatarMapsEqual(prev, nextMap) ? prev : nextMap
       employeesTableCache = {
         ownerAuthId: profileCurrentUserAuthId,
-        employees: scopedEmployeesCache?.employees ?? [],
+        employees: employeesRef.current,
         avatarUrls: next,
       }
       return next
     })
-  }, [profileCurrentUserAuthId, scopedEmployeesCache])
+  }, [profileCurrentUserAuthId])
 
   const fetchEmployees = useCallback(async (options?: { background?: boolean }) => {
     const isBackgroundRefresh = options?.background ?? false
-    if (!isBackgroundRefresh && !scopedEmployeesCache) {
+    if (!isBackgroundRefresh && !hasScopedEmployeesCache) {
       setEmployeesLoading(true)
     }
     const { data, error } = await supabase
@@ -462,7 +473,7 @@ export default function Employees() {
         employeesTableCache = {
           ownerAuthId: profileCurrentUserAuthId,
           employees: next,
-          avatarUrls: scopedEmployeesCache?.avatarUrls ?? {},
+          avatarUrls: employeeAvatarUrlsRef.current,
         }
         return next
       }
@@ -470,12 +481,12 @@ export default function Employees() {
       employeesTableCache = {
         ownerAuthId: profileCurrentUserAuthId,
         employees: [...rows],
-        avatarUrls: scopedEmployeesCache?.avatarUrls ?? {},
+        avatarUrls: employeeAvatarUrlsRef.current,
       }
       return [...rows]
     })
     void fetchEmployeeAvatarUrls(rows)
-  }, [fetchEmployeeAvatarUrls, profileCurrentUserAuthId, scopedEmployeesCache])
+  }, [fetchEmployeeAvatarUrls, hasScopedEmployeesCache, profileCurrentUserAuthId])
 
   const applyRealtimeEmployeeChange = useCallback((row: RealtimeEmployeeRow | null, previousRow: RealtimeEmployeeRow | null) => {
     const targetId = Number(row?.id ?? previousRow?.id ?? 0)

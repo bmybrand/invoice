@@ -35,21 +35,22 @@ function buildEmailTemplate({
   const brandNavy = '#20254b'
   const brandOrange = '#ff6b2c'
   const brandInk = '#1f2937'
-  const brandMuted = '#6b7280'
-  const brandSurface = '#f6f8fc'
-  const brandLine = '#e5e7eb'
+  const brandMuted = '#667085'
+  const brandSurface = '#f8fafc'
+  const brandLine = '#e6eaf0'
+  const brandSoft = '#fdf2ea'
 
   const renderedSteps = steps.length
     ? `
-      <div style="margin: 0 0 24px; padding: 20px 22px; background: ${brandSurface}; border: 1px solid ${brandLine}; border-radius: 14px;">
-        <p style="margin: 0 0 12px; font-size: 14px; line-height: 1.5; color: ${brandNavy}; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;">
+      <div style="margin: 0 0 24px; padding: 22px 24px; background: ${brandSurface}; border: 1px solid ${brandLine}; border-radius: 16px;">
+        <p style="margin: 0 0 14px; font-size: 13px; line-height: 1.4; color: ${brandNavy}; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;">
           Next Steps
         </p>
         <ul style="margin: 0; padding-left: 20px; color: ${brandInk};">
         ${steps
           .map(
             (step) =>
-              `<li style="margin: 0 0 10px; font-size: 15px; line-height: 1.7;">${escapeHtml(step)}</li>`
+              `<li style="margin: 0 0 12px; font-size: 15px; line-height: 1.7;">${escapeHtml(step)}</li>`
           )
           .join('')}
         </ul>
@@ -59,19 +60,19 @@ function buildEmailTemplate({
 
   const renderedCredentials = credentials?.length
     ? `
-      <div style="margin: 0 0 24px; padding: 20px 22px; background: #fff8f3; border: 1px solid #f5d5c4; border-radius: 14px;">
-        <p style="margin: 0 0 14px; font-size: 14px; line-height: 1.5; color: ${brandNavy}; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;">
+      <div style="margin: 0 0 24px; padding: 22px 24px; background: ${brandSoft}; border: 1px solid #f3d7c8; border-radius: 16px;">
+        <p style="margin: 0 0 14px; font-size: 13px; line-height: 1.4; color: ${brandNavy}; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;">
           Account Details
         </p>
         <table role="presentation" style="width: 100%; border-collapse: collapse;">
           ${credentials
             .map(
-              (item) => `
+              (item, index) => `
                 <tr>
-                  <td style="padding: 8px 0; font-size: 15px; line-height: 1.7; font-weight: 700; color: ${brandNavy}; vertical-align: top; white-space: nowrap;">
+                  <td style="padding: 12px 0; font-size: 14px; line-height: 1.6; font-weight: 700; color: ${brandNavy}; vertical-align: top; white-space: nowrap; ${index > 0 ? 'border-top: 1px solid #f1dfd4;' : ''}">
                     ${escapeHtml(item.label)}
                   </td>
-                  <td style="padding: 8px 0 8px 24px; font-size: 15px; line-height: 1.7; color: ${brandInk}; text-align: right; vertical-align: top; word-break: break-word;">
+                  <td style="padding: 12px 0 12px 24px; font-size: 14px; line-height: 1.6; color: ${brandInk}; text-align: right; vertical-align: top; word-break: break-word; ${index > 0 ? 'border-top: 1px solid #f1dfd4;' : ''}">
                     ${escapeHtml(item.value)}
                   </td>
                 </tr>
@@ -84,28 +85,35 @@ function buildEmailTemplate({
     : ''
 
   return `
-    <div style="margin: 0; padding: 40px 16px; background: #eef2f7; font-family: Arial, Helvetica, sans-serif;">
-      <div style="max-width: 640px; margin: 0 auto; background: #ffffff; border: 1px solid ${brandLine}; border-radius: 20px; overflow: hidden; box-shadow: 0 20px 40px rgba(15, 23, 42, 0.08);">
-        <div style="padding: 26px 32px; background: ${brandNavy};">
-          <div style="display: flex; align-items: center; gap: 14px;">
-            <div style="width: 46px; height: 46px; border-radius: 12px; background: linear-gradient(135deg, #ff8f3d 0%, ${brandOrange} 100%); color: #ffffff; font-size: 28px; line-height: 46px; font-weight: 800; text-align: center;">
-            B
-            </div>
-            <div>
-              <div style="font-size: 24px; line-height: 1.1; font-weight: 800; color: #ffffff;">
-                BMYBrand
-              </div>
-              <div style="margin-top: 4px; font-size: 13px; line-height: 1.4; color: rgba(255,255,255,0.72);">
-                Design. Build. Grow.
-              </div>
-            </div>
-          </div>
+    <div style="margin: 0; padding: 40px 16px; background: #f3f6fb; font-family: Arial, Helvetica, sans-serif;">
+      <div style="max-width: 640px; margin: 0 auto; background: #ffffff; border: 1px solid ${brandLine}; border-radius: 20px; overflow: hidden; box-shadow: 0 12px 32px rgba(16, 24, 40, 0.08);">
+        <div style="height: 6px; background: linear-gradient(90deg, ${brandOrange} 0%, #ff9a64 100%);"></div>
+        <div style="padding: 28px 32px 22px; border-bottom: 1px solid ${brandLine};">
+          <table role="presentation" style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="vertical-align: middle;">
+                <table role="presentation" style="border-collapse: collapse;">
+                  <tr>
+                    <td style="width: 44px; height: 44px; border-radius: 12px; background: linear-gradient(135deg, #ff8f3d 0%, ${brandOrange} 100%); color: #ffffff; font-size: 26px; line-height: 44px; font-weight: 800; text-align: center;">
+                      B
+                    </td>
+                    <td style="padding-left: 14px; vertical-align: middle;">
+                      <div style="font-size: 23px; line-height: 1.1; font-weight: 800; color: ${brandNavy};">BMYBrand</div>
+                      <div style="margin-top: 4px; font-size: 13px; line-height: 1.4; color: ${brandMuted};">Design. Build. Grow.</div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+              <td style="vertical-align: top; text-align: right;">
+                <span style="display: inline-block; padding: 8px 12px; background: ${brandSurface}; border: 1px solid ${brandLine}; border-radius: 999px; font-size: 11px; line-height: 1; font-weight: 700; color: ${brandOrange}; text-transform: uppercase; letter-spacing: 0.1em;">
+                  ${escapeHtml(subtitle)}
+                </span>
+              </td>
+            </tr>
+          </table>
         </div>
-        <div style="padding: 34px 32px 10px;">
-          <div style="display: inline-block; margin-bottom: 18px; padding: 8px 12px; background: ${brandSurface}; border: 1px solid ${brandLine}; border-radius: 999px; font-size: 12px; line-height: 1; font-weight: 700; color: ${brandOrange}; text-transform: uppercase; letter-spacing: 0.1em;">
-            ${escapeHtml(subtitle)}
-          </div>
-          <div style="margin: 0 0 12px; font-size: 34px; line-height: 1.15; font-weight: 800; color: ${brandNavy}; letter-spacing: -0.02em;">
+        <div style="padding: 32px 32px 8px;">
+          <div style="margin: 0 0 12px; font-size: 32px; line-height: 1.18; font-weight: 800; color: ${brandNavy}; letter-spacing: -0.02em;">
             ${escapeHtml(title)}
           </div>
           <div style="margin: 0 0 28px; font-size: 16px; line-height: 1.75; color: ${brandMuted};">
@@ -113,21 +121,21 @@ function buildEmailTemplate({
           </div>
         </div>
         <div style="padding: 0 32px 34px;">
-        <p style="margin: 0 0 18px; font-size: 18px; line-height: 1.7; color: ${brandInk};">
-          Hi ${escapeHtml(name)},
-        </p>
-        <p style="margin: 0 0 22px; font-size: 17px; line-height: 1.8; color: ${brandInk};">
-          ${intro}
-        </p>
-        ${renderedCredentials}
-        ${renderedSteps}
-        <p style="margin: 0 0 28px; font-size: 16px; line-height: 1.8; color: ${brandInk};">
-          ${closing}
-        </p>
-        <p style="margin: 0; font-size: 16px; line-height: 1.8; color: ${brandInk};">
-          Regards,<br />
-          <strong style="color: ${brandNavy};">The BMYBrand Team</strong>
-        </p>
+          <p style="margin: 0 0 16px; font-size: 17px; line-height: 1.7; color: ${brandInk};">
+            Hi ${escapeHtml(name)},
+          </p>
+          <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.8; color: ${brandInk};">
+            ${intro}
+          </p>
+          ${renderedCredentials}
+          ${renderedSteps}
+          <p style="margin: 0 0 28px; font-size: 16px; line-height: 1.8; color: ${brandInk};">
+            ${closing}
+          </p>
+          <p style="margin: 0; font-size: 16px; line-height: 1.8; color: ${brandInk};">
+            Regards,<br />
+            <strong style="color: ${brandNavy};">The BMYBrand Team</strong>
+          </p>
         </div>
       </div>
     </div>

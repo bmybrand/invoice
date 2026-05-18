@@ -66,6 +66,16 @@ type PaymentSubmissionRow = {
   payment_status: string | null
 }
 
+type RealtimeInvoiceRow = {
+  id?: number | null
+  client_id?: number | null
+  invoice_creator_id?: number | null
+}
+
+type RealtimePaymentSubmissionRow = {
+  invoice_id?: number | null
+}
+
 type InvoiceScopedCache = {
   ownerAuthId: string | null
   rows: InvoiceRow[]
@@ -581,8 +591,9 @@ export default function Invoice() {
   const isFinanceDepartment = normalizedDepartment.includes('finance')
   const clientData = useClientDashboardData()
   const scopedInvoiceCache = invoiceTableCache?.ownerAuthId === currentUserAuthId ? invoiceTableCache.rows : null
+  const hasScopedInvoiceCache = Boolean(scopedInvoiceCache)
   const [invoices, setInvoices] = useState<InvoiceRow[]>(() => scopedInvoiceCache ?? [])
-  const [invoicesLoading, setInvoicesLoading] = useState(() => !scopedInvoiceCache)
+  const [invoicesLoading, setInvoicesLoading] = useState(() => !hasScopedInvoiceCache)
   const [employees, setEmployees] = useState<EmployeeOption[]>([])
   const [clients, setClients] = useState<ClientOption[]>([])
   const [brands, setBrands] = useState<BrandOption[]>([])
@@ -628,6 +639,7 @@ export default function Invoice() {
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const realtimeRefreshTimeoutRef = useRef<number | null>(null)
+  const invoiceIdsRef = useRef<number[]>(scopedInvoiceCache?.map((invoice) => invoice.id) ?? [])
   const { token } = useSessionContext()
 
   useBodyScrollLock(Boolean(showAddModal || editingInvoice || deletingInvoice))
@@ -744,7 +756,7 @@ export default function Invoice() {
       return
     }
 
-    if (!isBackgroundRefresh && !scopedInvoiceCache) {
+    if (!isBackgroundRefresh && !hasScopedInvoiceCache) {
       setInvoicesLoading(true)
     }
     const invoiceSelectWithBrandId = `
@@ -862,7 +874,7 @@ export default function Invoice() {
       }
       return next
     })
-  }, [accountType, clientData?.client?.id, clientData?.loading, currentEmployeeId, currentUserAuthId, isUserRole, profileLoaded, routeClientId, scopedInvoiceCache])
+  }, [accountType, clientData?.client?.id, clientData?.loading, currentEmployeeId, currentUserAuthId, hasScopedInvoiceCache, isUserRole, profileLoaded, routeClientId])
 
   const fetchEmployees = useCallback(async () => {
     const { data, error } = await supabase
@@ -930,9 +942,47 @@ export default function Invoice() {
   const PAGE_SIZE = 4
 
   useEffect(() => {
+    invoiceIdsRef.current = invoices.map((invoice) => invoice.id).filter((id) => Number.isFinite(id) && id > 0)
+  }, [invoices])
+
+  useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       void fetchInvoices()
     }, 0)
+
+    const shouldRefreshForInvoiceChange = (row: RealtimeInvoiceRow | null) => {
+      if (!row) return false
+      const rowClientId = Number(row.client_id ?? 0)
+      const rowCreatorId = Number(row.invoice_creator_id ?? 0)
+      const dashboardClientId = clientData?.client?.id ?? null
+
+      if (accountType === 'client' && dashboardClientId != null) {
+        return rowClientId === dashboardClientId
+      }
+
+      if (routeClientId != null) {
+        return rowClientId === routeClientId
+      }
+
+      if (isUserRole && currentEmployeeId != null) {
+        return rowCreatorId === currentEmployeeId
+      }
+
+      return true
+    }
+
+    const shouldRefreshForPaymentChange = (row: RealtimePaymentSubmissionRow | null) => {
+      const invoiceId = Number(row?.invoice_id ?? 0)
+      if (!Number.isFinite(invoiceId) || invoiceId <= 0) {
+        return true
+      }
+
+      if (accountType === 'client') {
+        return invoiceIdsRef.current.includes(invoiceId)
+      }
+
+      return !isUserRole || currentEmployeeId == null || invoiceIdsRef.current.includes(invoiceId)
+    }
 
     const channels = [
       supabase
@@ -944,7 +994,13 @@ export default function Invoice() {
             schema: 'public',
             table: 'invoices',
           },
-          scheduleInvoicesRefresh
+          (payload) => {
+            const nextRow = (payload.new ?? null) as RealtimeInvoiceRow | null
+            const previousRow = (payload.old ?? null) as RealtimeInvoiceRow | null
+            if (shouldRefreshForInvoiceChange(nextRow) || shouldRefreshForInvoiceChange(previousRow)) {
+              scheduleInvoicesRefresh()
+            }
+          }
         ),
       supabase
         .channel(`invoice-payments-sync-${currentUserAuthId || 'unknown'}`)
@@ -955,7 +1011,13 @@ export default function Invoice() {
             schema: 'public',
             table: 'payment_submissions',
           },
-          scheduleInvoicesRefresh
+          (payload) => {
+            const nextRow = (payload.new ?? null) as RealtimePaymentSubmissionRow | null
+            const previousRow = (payload.old ?? null) as RealtimePaymentSubmissionRow | null
+            if (shouldRefreshForPaymentChange(nextRow) || shouldRefreshForPaymentChange(previousRow)) {
+              scheduleInvoicesRefresh()
+            }
+          }
         ),
     ]
 
@@ -973,7 +1035,7 @@ export default function Invoice() {
         void supabase.removeChannel(channel)
       })
     }
-  }, [currentUserAuthId, scheduleInvoicesRefresh])
+  }, [accountType, clientData?.client?.id, currentEmployeeId, currentUserAuthId, fetchInvoices, isUserRole, routeClientId, scheduleInvoicesRefresh])
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {

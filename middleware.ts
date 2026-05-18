@@ -56,6 +56,18 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
+  const { pathname, search } = request.nextUrl
+  const isProtectedRoute =
+    pathname === '/dashboard' ||
+    pathname.startsWith('/dashboard/') ||
+    pathname === '/register/pending'
+  const isGuestOnlyRoute = pathname === '/' || pathname === '/login'
+  const isProtectedApiRoute = isProtectedApiMutation(pathname, request.method)
+
+  if (!isProtectedRoute && !isGuestOnlyRoute && !isProtectedApiRoute) {
+    return NextResponse.next()
+  }
+
   let response = NextResponse.next({
     request: {
       headers: request.headers,
@@ -88,14 +100,6 @@ export async function middleware(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser()
-
-  const { pathname, search } = request.nextUrl
-  const isProtectedRoute =
-    pathname === '/dashboard' ||
-    pathname.startsWith('/dashboard/') ||
-    pathname === '/register/pending'
-  const isGuestOnlyRoute = pathname === '/' || pathname === '/login'
-  const isProtectedApiRoute = isProtectedApiMutation(pathname, request.method)
 
   if (!user && isProtectedRoute) {
     const loginUrl = new URL('/login', request.url)

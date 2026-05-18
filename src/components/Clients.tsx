@@ -205,8 +205,9 @@ export default function Clients() {
   const { currentUserAuthId, displayRole } = useDashboardProfile()
   const { token } = useSessionContext()
   const scopedClientsCache = clientsTableCache?.ownerAuthId === currentUserAuthId ? clientsTableCache : null
+  const hasScopedClientsCache = Boolean(scopedClientsCache)
   const [clients, setClients] = useState<ClientRow[]>(() => scopedClientsCache?.clients ?? [])
-  const [clientsLoading, setClientsLoading] = useState(() => !scopedClientsCache)
+  const [clientsLoading, setClientsLoading] = useState(() => !hasScopedClientsCache)
   const [registrationRequests, setRegistrationRequests] = useState<RegistrationRequestRow[]>(
     () => scopedClientsCache?.registrationRequests ?? []
   )
@@ -341,7 +342,7 @@ export default function Clients() {
     isFetchingRef.current = true
     const fetchVersion = ++fetchVersionRef.current
     const mutationVersionAtStart = mutationVersionRef.current
-    if (!isBackgroundRefresh && !scopedClientsCache) {
+    if (!isBackgroundRefresh && !hasScopedClientsCache) {
       setClientsLoading(true)
     }
     const { data: clientsData, error: clientsError } = await supabase
@@ -477,7 +478,7 @@ export default function Clients() {
       queuedRefreshRef.current = false
       void fetchClientsRef.current?.({ background: true })
     }
-  }, [currentUserAuthId, isAdmin, isSuperAdmin, scopedClientsCache])
+  }, [currentUserAuthId, hasScopedClientsCache, isAdmin, isSuperAdmin])
 
   const scheduleClientsRefresh = useCallback(() => {
     suppressBackgroundRefreshRef.current = true

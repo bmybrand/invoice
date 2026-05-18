@@ -653,69 +653,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   }, [accountType, currentUserAuthId, redirectToLoginHard, resetDashboardProfile])
 
   useEffect(() => {
-    if (!currentUserAuthId || !accountType) return
-
-    let cancelled = false
-
-    const enforceSessionGuard = async () => {
-      if (cancelled) return
-
-      if (accountType === 'employee') {
-        const { data } = await supabase
-          .from('employees')
-          .select('id')
-          .eq('auth_id', currentUserAuthId)
-          .eq('isdeleted', true)
-          .maybeSingle()
-
-        if (!cancelled && data) {
-          resetDashboardProfile(false)
-          await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
-          await syncServerAuthSession(null).catch(() => {})
-          redirectToLoginHard()
-        }
-
-        return
-      }
-
-      const identifierFilters = [`auth_id.eq.${currentUserAuthId}`]
-      if (currentUserEmail.trim()) {
-        identifierFilters.push(`email.eq.${currentUserEmail.trim()}`)
-      }
-
-      const { data } = await supabase
-        .from('clients')
-        .select('isdeleted, status')
-        .or(identifierFilters.join(','))
-        .order('created_date', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
-      const row = data as { isdeleted?: boolean | null; status?: string | null } | null
-      const status = (row?.status || '').trim().toLowerCase()
-
-      if (!cancelled && (row?.isdeleted === true || status === 'rejected')) {
-        resetDashboardProfile(false)
-        await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
-        await syncServerAuthSession(null).catch(() => {})
-        redirectToLoginHard()
-      }
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      void enforceSessionGuard()
-    }, 0)
-
-
-
-    return () => {
-      cancelled = true
-      window.clearTimeout(timeoutId)
-      // window.clearInterval(intervalId) // removed polling
-    }
-  }, [accountType, currentUserAuthId, currentUserEmail, redirectToLoginHard, resetDashboardProfile])
-
-  useEffect(() => {
     if (!currentUserAuthId || accountType !== 'employee') return
 
     let cancelled = false
@@ -1205,22 +1142,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
           <div className="p-3 sm:p-4 md:p-6">
             <button
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className={`mb-1 flex items-center justify-center rounded-md border border-slate-700/50 bg-slate-800/50 text-slate-400 transition hover:bg-slate-800 hover:text-white sm:mb-1.5 sm:rounded-lg md:mb-2 md:rounded-xl ${
-                sidebarCollapsed
-                  ? 'h-9 w-full sm:h-10 md:h-11'
-                  : 'w-full p-1.5 sm:p-2 md:p-2.5'
-              }`}
-              aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            >
-              {sidebarCollapsed ? (
-                <ChevronRightIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4 lg:h-5 lg:w-5" />
-              ) : (
-                <ChevronLeftIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4 lg:h-5 lg:w-5" />
-              )}
-            </button>
-
-            <button
               onClick={handleLogout}
               className={`flex w-full items-center justify-center gap-1.5 rounded-md border border-orange-500/20 bg-orange-500 text-xs font-bold leading-4 text-white shadow-[0px_4px_20px_0px_rgba(249,115,22,0.2)] transition hover:bg-orange-600 sm:gap-2 sm:rounded-lg sm:text-sm sm:leading-5 md:rounded-xl md:leading-6 ${
                 sidebarCollapsed
@@ -1242,9 +1163,22 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
         </aside>
 
+        <button
+          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          className="absolute bottom-[104px] z-30 flex h-11 w-11 items-center justify-center rounded-full border border-slate-700/70 bg-[#16233a] text-slate-300 shadow-[0_10px_24px_rgba(2,8,23,0.35)] transition-[left,background-color,border-color,color,box-shadow] duration-200 ease-out hover:border-slate-500 hover:bg-[#1b2c49] hover:text-white"
+          style={{
+            left: sidebarCollapsed ? 'calc(5rem - 22px)' : 'calc(16rem - 22px)',
+          }}
+          aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          <ChevronLeftIcon
+            className={`h-4 w-4 transition-transform duration-200 ease-out ${sidebarCollapsed ? 'rotate-180' : 'rotate-0'}`}
+          />
+        </button>
+
         <div
           id="dashboard-main-shell"
-          className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-gray-900 pl-12 sm:pl-14 md:pl-20 xl:pl-0"
+          className="relative flex min-w-0 flex-1 flex-col overflow-x-visible overflow-y-hidden bg-gray-900 pl-12 sm:pl-14 md:pl-20 xl:pl-0"
         >
           <header className="absolute left-0 top-0 z-10 flex h-20 w-full items-center justify-between gap-4 border-b border-slate-800 bg-gray-900 pl-12 pr-4 backdrop-blur-md sm:pl-14 sm:pr-6 md:pl-20 md:pr-8 xl:px-8">
             <div className="flex min-w-0 flex-1 items-center gap-3 pl-2 sm:gap-4 sm:pl-0">

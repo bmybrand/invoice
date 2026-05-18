@@ -158,6 +158,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
   const pushSetupStartedRef = useRef(false)
   const messagesRef = useRef<MessageNotification[]>([])
   const lastFetchedAtRef = useRef(0)
+  const refreshTimeoutRef = useRef<number | null>(null)
 
   const normalizedRole = useMemo(() => normalizeRole(displayRole || ''), [displayRole])
   const isAdminBell = accountType === 'employee' && (normalizedRole === 'admin' || normalizedRole === 'superadmin')
@@ -283,6 +284,17 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
     }
   }, [isAdminBell, maybeNotifyDesktop, shouldShowBell, token])
 
+  const scheduleNotificationsRefresh = useCallback((options?: { showLoading?: boolean; delayMs?: number }) => {
+    const delayMs = options?.delayMs ?? 120
+    if (refreshTimeoutRef.current !== null) {
+      window.clearTimeout(refreshTimeoutRef.current)
+    }
+    refreshTimeoutRef.current = window.setTimeout(() => {
+      refreshTimeoutRef.current = null
+      void fetchNotifications({ showLoading: options?.showLoading })
+    }, delayMs)
+  }, [fetchNotifications])
+
   useEffect(() => {
     applyMessageNotificationsRef.current = applyMessageNotifications
   }, [applyMessageNotifications])
@@ -388,7 +400,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
       const senderAuthId = (activeRow?.sender_auth_id || '').trim()
 
       if (!Number.isFinite(clientId) || clientId <= 0 || !messageId || !senderAuthId) {
-        void fetchNotifications()
+        scheduleNotificationsRefresh()
         return
       }
 
@@ -397,7 +409,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
           const target = prev.find((item) => item.clientId === clientId)
           if (!target) return prev
           if (target.latestMessageId === messageId) {
-            void fetchNotifications()
+            scheduleNotificationsRefresh()
             return prev
           }
           if (senderAuthId === target.handlerId) return prev
@@ -450,7 +462,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
           const delta = (isUnread ? 1 : 0) - (wasUnread ? 1 : 0)
           const nextCount = Math.max(0, target.count + delta)
           if (target.latestMessageId === messageId && nextCount > 0) {
-            void fetchNotifications()
+            scheduleNotificationsRefresh()
             return prev
           }
           if (nextCount < 1) {
@@ -470,7 +482,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
 
       const preview = buildMessagePreview(nextRow)
       if (!preview || preview === 'New message') {
-        void fetchNotifications()
+        scheduleNotificationsRefresh()
         return
       }
       const createdAt = nextRow?.created_at || previousRow?.created_at || new Date().toISOString()
@@ -478,7 +490,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
       const nextMessages = applyMessageNotificationsRef.current((prev) => {
         const target = prev.find((item) => item.clientId === clientId)
         if (!target) {
-          void fetchNotifications()
+          scheduleNotificationsRefresh()
           return prev
         }
 
@@ -515,7 +527,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
       const activeRow = payload.eventType === 'DELETE' ? previousRow : nextRow
       const clientId = Number(activeRow?.id ?? 0)
       if (!Number.isFinite(clientId) || clientId <= 0) {
-        void fetchNotifications()
+        scheduleNotificationsRefresh()
         return
       }
 
@@ -591,19 +603,23 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
     })
 
     return () => {
+      if (refreshTimeoutRef.current !== null) {
+        window.clearTimeout(refreshTimeoutRef.current)
+        refreshTimeoutRef.current = null
+      }
       channels.forEach((channel) => {
         void supabase.removeChannel(channel)
       })
     }
-  }, [currentUserAuthId, fetchNotifications, isAdminBell, isEmployeeBell, shouldShowBell])
+  }, [currentUserAuthId, fetchNotifications, isAdminBell, isEmployeeBell, scheduleNotificationsRefresh, shouldShowBell])
 
   useEffect(() => {
     if (!open || !shouldShowBell) return
     const isStale = Date.now() - lastFetchedAtRef.current > 60_000
     if (!hasLoadedRef.current || isStale) {
-      void fetchNotifications({ showLoading: !hasLoadedRef.current })
+      scheduleNotificationsRefresh({ showLoading: !hasLoadedRef.current, delayMs: 0 })
     }
-  }, [fetchNotifications, open, shouldShowBell])
+  }, [open, scheduleNotificationsRefresh, shouldShowBell])
 
   useEffect(() => {
     if (typeof window === 'undefined' || !shouldShowBell) return
@@ -645,7 +661,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
       })
       if (res.ok) {
         setRequests((prev) => prev.filter((r) => r.id !== id))
-        void fetchNotifications()
+        scheduleNotificationsRefresh()
       }
     } finally {
       setProcessingId(null)
@@ -664,7 +680,7 @@ export function NotificationsBell({ accountType, displayRole }: NotificationsBel
       })
       if (res.ok) {
         setRequests((prev) => prev.filter((r) => r.id !== id))
-        void fetchNotifications()
+        scheduleNotificationsRefresh()
       }
     } finally {
       setProcessingId(null)

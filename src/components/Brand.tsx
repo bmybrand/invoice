@@ -123,8 +123,9 @@ export default function Brand() {
   const { currentUserAuthId, displayRole } = useDashboardProfile()
   const { token } = useSessionContext()
   const scopedBrandCache = brandTableCache?.ownerAuthId === currentUserAuthId ? brandTableCache.rows : null
+  const hasScopedBrandCache = Boolean(scopedBrandCache)
   const [brands, setBrands] = useState<BrandRow[]>(() => scopedBrandCache ?? [])
-  const [brandsLoading, setBrandsLoading] = useState(() => !scopedBrandCache)
+  const [brandsLoading, setBrandsLoading] = useState(() => !hasScopedBrandCache)
   const [searchQuery, setSearchQuery] = useState(() => (searchParams.get('globalSearch') || '').trim())
   const [currentPage, setCurrentPage] = useState(1)
   const [showAddModal, setShowAddModal] = useState(false)
@@ -158,7 +159,7 @@ export default function Brand() {
 
   const fetchBrands = useCallback(async (options?: { background?: boolean }) => {
     const isBackgroundRefresh = options?.background ?? false
-    if (!isBackgroundRefresh && !scopedBrandCache) {
+    if (!isBackgroundRefresh && !hasScopedBrandCache) {
       setBrandsLoading(true)
     }
     const { data, error } = await supabase
@@ -186,7 +187,7 @@ export default function Brand() {
       }
       return next
     })
-  }, [currentUserAuthId, scopedBrandCache])
+  }, [currentUserAuthId, hasScopedBrandCache])
 
   const fetchArchivedBrands = useCallback(async () => {
     setArchivedLoading(true)
