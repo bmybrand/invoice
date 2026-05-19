@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
+import type { BriefFormPrefill } from '@/lib/brief-form-prefill'
 
 type Option = {
   value: string
@@ -34,11 +35,13 @@ function TextField({
   placeholder,
   type = 'text',
   required = false,
+  defaultValue,
 }: {
   label: string
   placeholder?: string
   type?: string
   required?: boolean
+  defaultValue?: string
 }) {
   return (
     <label className="block">
@@ -50,6 +53,7 @@ function TextField({
         type={type}
         placeholder={placeholder}
         required={required}
+        defaultValue={defaultValue}
         className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/10"
       />
     </label>
@@ -147,10 +151,14 @@ export default function WebsiteBriefForm({
   backHref,
   backLabel,
   publicView = false,
+  prefill = {},
+  showCopyAction = !publicView,
 }: {
   backHref?: string
   backLabel?: string
   publicView?: boolean
+  prefill?: BriefFormPrefill
+  showCopyAction?: boolean
 }) {
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle')
   const [submitNotice, setSubmitNotice] = useState('')
@@ -168,7 +176,7 @@ export default function WebsiteBriefForm({
   }
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    if (!publicView) return
+    if (showCopyAction) return
     event.preventDefault()
     setSubmitNotice('Successfully submitted.')
   }
@@ -218,15 +226,15 @@ export default function WebsiteBriefForm({
       <form onSubmit={handleSubmit} className="relative space-y-6 bg-white px-6 py-6 sm:px-8 sm:py-8">
         <SectionCard title="Client Information">
           <div className="grid gap-5 md:grid-cols-2">
-            <TextField label="Client Name:" placeholder="Enter Your Name" required />
-            <TextField label="Contact Person:" placeholder="Contact Person" required />
+            <TextField label="Client Name:" placeholder="Enter Your Name" required defaultValue={prefill.clientName} />
+            <TextField label="Contact Person:" placeholder="Contact Person" required defaultValue={prefill.contactPerson} />
           </div>
           <div className="grid gap-5 md:grid-cols-2">
             <TextField label="Designation:" placeholder="Designation" required />
-            <TextField label="Email Address:" placeholder="Your Email Address" type="email" required />
+            <TextField label="Email Address:" placeholder="Your Email Address" type="email" required defaultValue={prefill.email} />
           </div>
           <div className="grid gap-5 md:grid-cols-2">
-            <TextField label="Phone Number:" placeholder="Phone Number" type="tel" required />
+            <TextField label="Phone Number:" placeholder="Phone Number" type="tel" required defaultValue={prefill.phone} />
             <TextField label="Skype:" placeholder="Skype" required />
           </div>
           <TextField label="Industry:" placeholder="Industry" required />
@@ -257,7 +265,7 @@ export default function WebsiteBriefForm({
           <TextAreaField label="Do you have any other suggestion, idea or requirements for the website?" />
         </SectionCard>
 
-        {publicView ? (
+        {!showCopyAction ? (
           <div className="border border-slate-300 bg-white px-5 py-6 sm:px-6">
             <div className="flex flex-col gap-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

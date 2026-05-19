@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation'
+import WebsiteBriefRouteShell from '@/components/WebsiteBriefRouteShell'
 
 export default function WebsiteBriefPage() {
-  redirect('/brief-forms/website')
+  return <WebsiteBriefRouteShell embedInDashboard />
 }

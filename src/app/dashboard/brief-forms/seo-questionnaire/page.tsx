@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation'
+import SeoQuestionnaireRouteShell from '@/components/SeoQuestionnaireRouteShell'
 
 export default function SeoQuestionnairePage() {
-  redirect('/brief-forms/seo-questionnaire')
+  return <SeoQuestionnaireRouteShell embedInDashboard />
 }

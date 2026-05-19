@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation'
+import VideoAnimationBriefRouteShell from '@/components/VideoAnimationBriefRouteShell'
 
 export default function VideoAnimationBriefPage() {
-  redirect('/brief-forms/video-animation')
+  return <VideoAnimationBriefRouteShell embedInDashboard />
 }

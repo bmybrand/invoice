@@ -426,6 +426,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           { label: 'Invoice', href: '/dashboard/invoices' },
           { label: 'Payment', href: '/dashboard/payments' },
           { label: 'Chat', href: '/dashboard/chat' },
+          { label: 'Brief Forms', href: '/dashboard/brief-forms' },
         ]
       : allNavItems.filter((item) => {
           const normalizedDepartment = (displayDepartment || '').trim().toLowerCase()

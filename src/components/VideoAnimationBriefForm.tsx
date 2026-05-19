@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
+import type { BriefFormPrefill } from '@/lib/brief-form-prefill'
 
 function BackIcon() {
   return (
@@ -17,11 +18,13 @@ function TextField({
   placeholder,
   type = 'text',
   required = false,
+  defaultValue,
 }: {
   label: string
   placeholder?: string
   type?: string
   required?: boolean
+  defaultValue?: string
 }) {
   return (
     <label className="block">
@@ -33,6 +36,7 @@ function TextField({
         type={type}
         placeholder={placeholder}
         required={required}
+        defaultValue={defaultValue}
         className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/10"
       />
     </label>
@@ -87,10 +91,14 @@ export default function VideoAnimationBriefForm({
   backHref,
   backLabel,
   publicView = false,
+  prefill = {},
+  showCopyAction = !publicView,
 }: {
   backHref?: string
   backLabel?: string
   publicView?: boolean
+  prefill?: BriefFormPrefill
+  showCopyAction?: boolean
 }) {
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle')
   const [submitNotice, setSubmitNotice] = useState('')
@@ -108,7 +116,7 @@ export default function VideoAnimationBriefForm({
   }
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    if (!publicView) return
+    if (showCopyAction) return
     event.preventDefault()
     setSubmitNotice('Successfully submitted.')
   }
@@ -159,13 +167,13 @@ export default function VideoAnimationBriefForm({
         <SectionCard title="Client Information">
           <div className="grid gap-5 md:grid-cols-2">
             <TextField label="Company:" placeholder="Your Company" required />
-            <TextField label="Email:" placeholder="Your Email Address" type="email" required />
+            <TextField label="Email:" placeholder="Your Email Address" type="email" required defaultValue={prefill.email} />
           </div>
           <div className="grid gap-5 md:grid-cols-2">
-            <TextField label="Phone:" placeholder="Your Phone Number" type="tel" required />
+            <TextField label="Phone:" placeholder="Your Phone Number" type="tel" required defaultValue={prefill.phone} />
             <TextField label="Website Address:" placeholder="Your Website Address" type="url" required />
           </div>
-          <TextField label="Contact Person:" placeholder="Your Contact Person" required />
+          <TextField label="Contact Person:" placeholder="Your Contact Person" required defaultValue={prefill.contactPerson} />
         </SectionCard>
 
         <SectionCard title="Video Animation Brief">
@@ -188,7 +196,7 @@ export default function VideoAnimationBriefForm({
           <TextAreaField label="Any other info?" />
         </SectionCard>
 
-        {publicView ? (
+        {!showCopyAction ? (
           <div className="border border-slate-300 bg-white px-5 py-6 sm:px-6">
             <div className="flex flex-col gap-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

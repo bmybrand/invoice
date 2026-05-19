@@ -3,6 +3,9 @@
 import { useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
+import type { BriefFormPrefill } from '@/lib/brief-form-prefill'
+
+const MAX_REFERENCE_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
 
 function BackIcon() {
   return (
@@ -17,11 +20,13 @@ function TextField({
   placeholder,
   type = 'text',
   required = false,
+  defaultValue,
 }: {
   label: string
   placeholder?: string
   type?: string
   required?: boolean
+  defaultValue?: string
 }) {
   return (
     <label className="block">
@@ -33,6 +38,7 @@ function TextField({
         type={type}
         placeholder={placeholder}
         required={required}
+        defaultValue={defaultValue}
         className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/10"
       />
     </label>
@@ -62,6 +68,49 @@ function TextAreaField({
         required={required}
         className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/10"
       />
+    </label>
+  )
+}
+
+function FileField({
+  label,
+  accept = 'image/*',
+  maxSizeBytes,
+}: {
+  label: string
+  accept?: string
+  maxSizeBytes?: number
+}) {
+  const [error, setError] = useState('')
+
+  function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+
+    if (!file || !maxSizeBytes) {
+      setError('')
+      return
+    }
+
+    if (file.size > maxSizeBytes) {
+      event.target.value = ''
+      setError(`Please upload an image smaller than ${Math.round(maxSizeBytes / (1024 * 1024))} MB.`)
+      return
+    }
+
+    setError('')
+  }
+
+  return (
+    <label className="block">
+      <span className="mb-2 block text-sm font-semibold text-slate-700">{label}</span>
+      <input
+        type="file"
+        accept={accept}
+        onChange={handleChange}
+        className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition file:mr-4 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-slate-700 hover:file:bg-slate-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/10"
+      />
+      <span className="mt-2 block text-xs text-slate-500">Accepted image files up to 5 MB.</span>
+      {error ? <span className="mt-2 block text-sm font-medium text-rose-600">{error}</span> : null}
     </label>
   )
 }
@@ -175,10 +224,14 @@ export default function LogoDesignBriefForm({
   backHref,
   backLabel,
   publicView = false,
+  prefill = {},
+  showCopyAction = !publicView,
 }: {
   backHref?: string
   backLabel?: string
   publicView?: boolean
+  prefill?: BriefFormPrefill
+  showCopyAction?: boolean
 }) {
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle')
   const [submitNotice, setSubmitNotice] = useState('')
@@ -198,7 +251,7 @@ export default function LogoDesignBriefForm({
   }
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    if (!publicView) return
+    if (showCopyAction) return
     event.preventDefault()
     if (selectedLogoExamples.length === 0) {
       setSubmitNotice('')
@@ -262,13 +315,13 @@ export default function LogoDesignBriefForm({
         <SectionCard title="Client Information">
           <div className="grid gap-5 md:grid-cols-2">
             <TextField label="Company:" placeholder="Your Company" required />
-            <TextField label="Email:" placeholder="Your Email Address" type="email" required />
+            <TextField label="Email:" placeholder="Your Email Address" type="email" required defaultValue={prefill.email} />
           </div>
           <div className="grid gap-5 md:grid-cols-2">
-            <TextField label="Phone:" placeholder="Your Phone Number" type="tel" required />
+            <TextField label="Phone:" placeholder="Your Phone Number" type="tel" required defaultValue={prefill.phone} />
             <TextField label="Website Address:" placeholder="Your Website Address" type="url" required />
           </div>
-          <TextField label="Contact Person:" placeholder="Your Contact Person" required />
+          <TextField label="Contact Person:" placeholder="Your Contact Person" required defaultValue={prefill.contactPerson} />
         </SectionCard>
 
         <SectionCard title="Logo Design Brief">
@@ -283,6 +336,10 @@ export default function LogoDesignBriefForm({
           <TextAreaField label="What sort of style do you envision? (E.g. professional, modern and clean, old world, cutting edge, vintage, sporty, futuristic, High etc.)" />
           <TextAreaField label="Please provide some adjectives that describe what you hope to communicate with your logo (e.g. strong, exciting, warm, welcoming, inventive, humorous, feminine, serene, athletic, etc.). Be sure to look at the logo examples we provide at the end of this questionnaire." />
           <TextAreaField label="Are there any ideas that you like to use for the logo (or) you are open to ideas?" />
+          <FileField
+            label="Upload any reference image(s) you want us to review"
+            maxSizeBytes={MAX_REFERENCE_IMAGE_SIZE_BYTES}
+          />
         </SectionCard>
 
         <SectionCard title="Ideas, icons, images or symbols">
@@ -322,7 +379,7 @@ export default function LogoDesignBriefForm({
           <TextAreaField label="Please provide any information, which you think we might need to know, which hasn't been covered in your answers?" />
         </SectionCard>
 
-        {publicView ? (
+        {!showCopyAction ? (
           <div className="border border-slate-300 bg-white px-5 py-6 sm:px-6">
             <div className="flex flex-col gap-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

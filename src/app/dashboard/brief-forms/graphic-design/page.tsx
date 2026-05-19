@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation'
+import GraphicDesignBriefRouteShell from '@/components/GraphicDesignBriefRouteShell'
 
 export default function GraphicDesignBriefPage() {
-  redirect('/brief-forms/graphic-design')
+  return <GraphicDesignBriefRouteShell embedInDashboard />
 }

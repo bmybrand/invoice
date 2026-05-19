@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { DashboardLayout } from '@/components/DashboardLayout'
 import WebsiteBriefForm from '@/components/WebsiteBriefForm'
+import type { BriefFormPrefill } from '@/lib/brief-form-prefill'
 
-export default function WebsiteBriefRouteShell() {
+export default function WebsiteBriefRouteShell({ embedInDashboard = false }: { embedInDashboard?: boolean }) {
   const [resolved, setResolved] = useState(false)
+  const [isPortalUser, setIsPortalUser] = useState(false)
   const [isEmployee, setIsEmployee] = useState(false)
+  const [prefill, setPrefill] = useState<BriefFormPrefill>({})
 
   useEffect(() => {
     async function resolveViewer() {
@@ -16,7 +18,9 @@ export default function WebsiteBriefRouteShell() {
       } = await supabase.auth.getUser()
 
       if (!user?.id) {
+        setIsPortalUser(false)
         setIsEmployee(false)
+        setPrefill({})
         setResolved(true)
         return
       }
@@ -28,7 +32,31 @@ export default function WebsiteBriefRouteShell() {
         .neq('isdeleted', true)
         .maybeSingle()
 
-      setIsEmployee(!!employee)
+      const employeeMatch = !!employee
+      setIsPortalUser(employeeMatch)
+      setIsEmployee(employeeMatch)
+
+      if (!employeeMatch) {
+        const { data: client } = await supabase
+          .from('clients')
+          .select('name, email, phone')
+          .eq('auth_id', user.id)
+          .neq('isdeleted', true)
+          .maybeSingle()
+
+        const clientRow = client as { name?: string | null; email?: string | null; phone?: string | null } | null
+        const clientMatch = !!clientRow
+        setIsPortalUser(clientMatch)
+        setPrefill({
+          clientName: clientRow?.name?.trim() || '',
+          contactPerson: clientRow?.name?.trim() || '',
+          email: clientRow?.email?.trim() || user.email || '',
+          phone: clientRow?.phone?.trim() || '',
+        })
+      } else {
+        setPrefill({})
+      }
+
       setResolved(true)
     }
 
@@ -36,21 +64,25 @@ export default function WebsiteBriefRouteShell() {
   }, [])
 
   if (!resolved) {
-    return <div className="min-h-screen bg-white p-6 text-sm text-slate-500">Loading form...</div>
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#0f172a] p-6 text-sm text-slate-400">
+        Loading form...
+      </div>
+    )
   }
 
-  if (isEmployee) {
-    return (
-      <DashboardLayout>
-        <WebsiteBriefForm backHref="/dashboard/brief-forms" backLabel="Back to Brief Forms" />
-      </DashboardLayout>
+  if (isPortalUser) {
+    return isEmployee ? (
+      <WebsiteBriefForm backHref="/dashboard/brief-forms" backLabel="Back to Brief Forms" />
+    ) : (
+      <WebsiteBriefForm backHref="/dashboard/brief-forms" backLabel="Back to Brief Forms" prefill={prefill} showCopyAction={false} />
     )
   }
 
   return (
     <div className="min-h-screen bg-[#f8fafc] px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
       <div className="mx-auto w-full max-w-[920px] border border-slate-200 bg-white">
-        <WebsiteBriefForm publicView />
+        <WebsiteBriefForm publicView prefill={prefill} />
       </div>
     </div>
   )

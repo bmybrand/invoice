@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
+import type { BriefFormPrefill } from '@/lib/brief-form-prefill'
 
 type Option = {
   value: string
@@ -85,11 +86,13 @@ function TextField({
   placeholder,
   type = 'text',
   required = false,
+  defaultValue,
 }: {
   label: string
   placeholder?: string
   type?: string
   required?: boolean
+  defaultValue?: string
 }) {
   return (
     <label className="block">
@@ -101,6 +104,7 @@ function TextField({
         type={type}
         placeholder={placeholder}
         required={required}
+        defaultValue={defaultValue}
         className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/10"
       />
     </label>
@@ -139,11 +143,13 @@ function SelectField({
   options,
   placeholder = 'Select an option',
   required = false,
+  defaultValue,
 }: {
   label: string
   options: string[]
   placeholder?: string
   required?: boolean
+  defaultValue?: string
 }) {
   return (
     <label className="block">
@@ -152,7 +158,7 @@ function SelectField({
         {label}
       </span>
       <select
-        defaultValue=""
+        defaultValue={defaultValue || ''}
         required={required}
         className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-500/10"
       >
@@ -233,10 +239,14 @@ export default function SeoQuestionnaireForm({
   backHref,
   backLabel,
   publicView = false,
+  prefill = {},
+  showCopyAction = !publicView,
 }: {
   backHref?: string
   backLabel?: string
   publicView?: boolean
+  prefill?: BriefFormPrefill
+  showCopyAction?: boolean
 }) {
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle')
   const [submitNotice, setSubmitNotice] = useState('')
@@ -254,7 +264,7 @@ export default function SeoQuestionnaireForm({
   }
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    if (!publicView) return
+    if (showCopyAction) return
     event.preventDefault()
     setSubmitNotice('Successfully submitted.')
   }
@@ -304,16 +314,16 @@ export default function SeoQuestionnaireForm({
       <form onSubmit={handleSubmit} className="relative space-y-6 bg-white px-6 py-6 sm:px-8 sm:py-8">
         <SectionCard title="Business Information">
           <div className="grid gap-5 md:grid-cols-2">
-            <TextField label="1. Full Name:" placeholder="Full Name" required />
+            <TextField label="1. Full Name:" placeholder="Full Name" required defaultValue={prefill.contactPerson} />
             <TextField label="2. Company Name:" placeholder="Company Name" required />
           </div>
           <div className="grid gap-5 md:grid-cols-2">
             <TextField label="3. Website URL:" placeholder="https://yourwebsite.com" type="url" required />
-            <TextField label="4. Business Email:" placeholder="Business Email" type="email" required />
+            <TextField label="4. Business Email:" placeholder="Business Email" type="email" required defaultValue={prefill.email} />
           </div>
           <div className="grid gap-5 md:grid-cols-2">
-            <TextField label="5. Phone Number:" placeholder="Phone Number" type="tel" required />
-            <TextField label="7. Primary Contact Person:" placeholder="Primary Contact Person" required />
+            <TextField label="5. Phone Number:" placeholder="Phone Number" type="tel" required defaultValue={prefill.phone} />
+            <TextField label="7. Primary Contact Person:" placeholder="Primary Contact Person" required defaultValue={prefill.contactPerson} />
           </div>
           <TextField label="6. Business Address:" placeholder="Business Address" required />
           <SelectField label="8. Time Zone:" options={timeZoneOptions} placeholder="Time Zone" required />
@@ -436,7 +446,7 @@ export default function SeoQuestionnaireForm({
           </div>
         </SectionCard>
 
-        {publicView ? (
+        {!showCopyAction ? (
           <div className="border border-slate-300 bg-white px-5 py-6 sm:px-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <button
