@@ -1184,8 +1184,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         </aside>
 
         <button
+          type="button"
           onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          className="fixed bottom-[98px] z-30 flex h-11 w-11 items-center justify-center rounded-full border border-slate-700/70 bg-[#16233a] text-slate-300 shadow-[0_10px_24px_rgba(2,8,23,0.35)] transition-[left,background-color,border-color,color,box-shadow] duration-200 ease-out hover:border-slate-500 hover:bg-[#1b2c49] hover:text-white"
+          className="no-print print:!hidden fixed bottom-[98px] z-30 flex h-11 w-11 items-center justify-center rounded-full border border-slate-700/70 bg-[#16233a] text-slate-300 shadow-[0_10px_24px_rgba(2,8,23,0.35)] transition-[left,background-color,border-color,color,box-shadow] duration-200 ease-out hover:border-slate-500 hover:bg-[#1b2c49] hover:text-white"
           style={{
             left: sidebarCollapsed ? 'calc(5rem - 22px)' : 'calc(16rem - 22px)',
           }}

@@ -349,7 +349,7 @@ export default function InvoiceView({ invoiceId, invoiceToken, publicView = fals
   }
 
   return (
-    <div id="invoice-view-root" className={publicView ? 'space-y-4 p-4 sm:p-6 print:p-0 print:m-0' : 'p-4 sm:p-6 space-y-4 print:p-0 print:m-0'}>
+    <div id="invoice-view-root" className={publicView ? 'space-y-4 print:space-y-0 p-4 sm:p-6 print:p-0 print:m-0' : 'p-4 sm:p-6 space-y-4 print:space-y-0 print:p-0 print:m-0'}>
       {(showPaymentCompleteBanner || paymentCompletedLocally) && (
         <div className="no-print mb-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
           <p className="text-sm font-semibold text-emerald-400">Payment complete</p>
@@ -437,7 +437,13 @@ export default function InvoiceView({ invoiceId, invoiceToken, publicView = fals
           #dashboard-main-shell,
           #dashboard-main-content,
           #dashboard-root-shell {
+            padding-top: 0 !important;
+            padding-right: 0 !important;
+            padding-bottom: 0 !important;
             padding-left: 0 !important;
+            margin-top: 0 !important;
+            margin-right: 0 !important;
+            margin-bottom: 0 !important;
             margin-left: 0 !important;
             overflow: visible !important;
             height: auto !important;

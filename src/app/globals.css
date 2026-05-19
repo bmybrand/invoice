@@ -17,6 +17,28 @@
   body {
     margin-bottom: 80px !important;
   }
+
+  button[aria-label="Collapse sidebar"],
+  button[aria-label="Expand sidebar"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+
+  .no-print {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  button[aria-label="Collapse sidebar"],
+  button[aria-label="Expand sidebar"],
+  .fixed.bottom-\[98px\] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
 }
 @import "tailwindcss";
 
