@@ -1085,7 +1085,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             <span
               className={`truncate text-lg font-extrabold leading-6 transition-[opacity,max-width] duration-200 md:text-xl md:leading-7 ${sidebarCollapsed ? 'w-0 max-w-0 opacity-0' : 'opacity-100 delay-200'}`}
             >
-              Invoice <span className="text-orange-500">CRM</span>
+              BMYBrand <span className="text-orange-500">CRM</span>
             </span>
           </div>
 
