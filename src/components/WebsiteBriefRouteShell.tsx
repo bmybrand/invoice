@@ -73,9 +73,15 @@ export default function WebsiteBriefRouteShell({ embedInDashboard = false }: { e
 
   if (isPortalUser) {
     return isEmployee ? (
-      <WebsiteBriefForm backHref="/dashboard/brief-forms" backLabel="Back to Brief Forms" />
+      <WebsiteBriefForm backHref="/dashboard/brief-forms" backLabel="Back to Brief Forms" canSubmit={false} />
     ) : (
-      <WebsiteBriefForm backHref="/dashboard/brief-forms" backLabel="Back to Brief Forms" prefill={prefill} showCopyAction={false} />
+      <WebsiteBriefForm
+        backHref="/dashboard/brief-forms"
+        backLabel="Back to Brief Forms"
+        prefill={prefill}
+        showCopyAction={false}
+        canSubmit
+      />
     )
   }
 

@@ -47,6 +47,10 @@ function isProtectedApiMutation(pathname: string, method: string) {
     return false
   }
 
+  if (pathname === '/api/brief-forms' && normalizedMethod === 'POST') {
+    return false
+  }
+
   return !publicApiPrefixes.some((prefix) => pathname.startsWith(prefix))
 }
 

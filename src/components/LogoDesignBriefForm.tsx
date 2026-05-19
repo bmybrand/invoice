@@ -4,6 +4,8 @@ import { useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import type { BriefFormPrefill } from '@/lib/brief-form-prefill'
+import { canSubmitBriefForm } from '@/lib/brief-form-access'
+import { useBriefFormSubmit } from '@/lib/use-brief-form-submit'
 
 const MAX_REFERENCE_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
 
@@ -226,15 +228,18 @@ export default function LogoDesignBriefForm({
   publicView = false,
   prefill = {},
   showCopyAction = !publicView,
+  canSubmit,
 }: {
   backHref?: string
   backLabel?: string
   publicView?: boolean
   prefill?: BriefFormPrefill
   showCopyAction?: boolean
+  canSubmit?: boolean
 }) {
+  const submitAllowed = canSubmit ?? canSubmitBriefForm(publicView, showCopyAction)
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle')
-  const [submitNotice, setSubmitNotice] = useState('')
+  const { submitting, submitNotice, submitError, handleSubmit } = useBriefFormSubmit('logo-design')
   const [selectedLogoExamples, setSelectedLogoExamples] = useState<string[]>([])
   const [logoExampleError, setLogoExampleError] = useState('')
 
@@ -250,16 +255,19 @@ export default function LogoDesignBriefForm({
     }
   }
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    if (showCopyAction) return
-    event.preventDefault()
+  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     if (selectedLogoExamples.length === 0) {
-      setSubmitNotice('')
+      event.preventDefault()
       setLogoExampleError('Select at least one logo example style before submitting.')
       return
     }
+
     setLogoExampleError('')
-    setSubmitNotice('Successfully submitted.')
+    await handleSubmit(event, {
+      showCopyAction: false,
+      canSubmit: submitAllowed,
+      extra: { logo_example_styles: selectedLogoExamples },
+    })
   }
 
   function handleLogoExampleToggle(title: string, checked: boolean) {
@@ -311,7 +319,7 @@ export default function LogoDesignBriefForm({
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="relative space-y-6 bg-white px-6 py-6 sm:px-8 sm:py-8">
+      <form onSubmit={onSubmit} className="relative space-y-6 bg-white px-6 py-6 sm:px-8 sm:py-8">
         <SectionCard title="Client Information">
           <div className="grid gap-5 md:grid-cols-2">
             <TextField label="Company:" placeholder="Your Company" required />
@@ -379,22 +387,27 @@ export default function LogoDesignBriefForm({
           <TextAreaField label="Please provide any information, which you think we might need to know, which hasn't been covered in your answers?" />
         </SectionCard>
 
-        {!showCopyAction ? (
+        {true ? (
           <div className="border border-slate-300 bg-white px-5 py-6 sm:px-6">
             <div className="flex flex-col gap-5">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <button
-                  type="submit"
-                  className="inline-flex items-center justify-center self-start rounded-2xl bg-orange-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-orange-600"
-                >
-                  Submit
-                </button>
-                {submitNotice ? (
-                  <p className="text-sm font-medium text-emerald-600 sm:ml-auto">{submitNotice}</p>
-                ) : null}
-              </div>
+              {submitAllowed ? (
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="inline-flex items-center justify-center self-start rounded-2xl bg-orange-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {submitting ? 'Submitting...' : 'Submit'}
+                  </button>
+                  {submitError ? (
+                    <p className="text-sm font-medium text-rose-600 sm:ml-auto">{submitError}</p>
+                  ) : submitNotice ? (
+                    <p className="text-sm font-medium text-emerald-600 sm:ml-auto">{submitNotice}</p>
+                  ) : null}
+                </div>
+              ) : null}
 
-              <div className="space-y-4 border-t border-slate-200 pt-5 text-sm leading-7 text-slate-600">
+              <div className={`space-y-4 pt-5 text-sm leading-7 text-slate-600 ${submitAllowed ? 'border-t border-slate-200' : ''}`}>
                 <p>Once this form completed, please send it back to your Project Account manager.</p>
                 <p>
                   Thank you for taking time out of your day to fill out this design brief for logo. Please save
@@ -434,7 +447,9 @@ export default function LogoDesignBriefForm({
               </div>
             </div>
           </div>
-        ) : (
+        ) : null}
+
+        {showCopyAction ? (
           <div className="border border-slate-300 bg-white px-5 py-6 sm:px-6">
             <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -452,7 +467,7 @@ export default function LogoDesignBriefForm({
               </button>
             </div>
           </div>
-        )}
+        ) : null}
 
         <footer className="pb-2 text-center text-xs text-slate-400">
           Copyright 2026 BMYBrand. All Rights Reserved

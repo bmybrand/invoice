@@ -73,9 +73,15 @@ export default function GraphicDesignBriefRouteShell({ embedInDashboard = false 
 
   if (isPortalUser) {
     return isEmployee ? (
-      <GraphicDesignBriefForm backHref="/dashboard/brief-forms" backLabel="Back to Brief Forms" />
+      <GraphicDesignBriefForm backHref="/dashboard/brief-forms" backLabel="Back to Brief Forms" canSubmit={false} />
     ) : (
-      <GraphicDesignBriefForm backHref="/dashboard/brief-forms" backLabel="Back to Brief Forms" prefill={prefill} showCopyAction={false} />
+      <GraphicDesignBriefForm
+        backHref="/dashboard/brief-forms"
+        backLabel="Back to Brief Forms"
+        prefill={prefill}
+        showCopyAction={false}
+        canSubmit
+      />
     )
   }
 

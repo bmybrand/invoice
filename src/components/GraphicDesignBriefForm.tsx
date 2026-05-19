@@ -4,6 +4,9 @@ import { useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import type { BriefFormPrefill } from '@/lib/brief-form-prefill'
+import { canSubmitBriefForm } from '@/lib/brief-form-access'
+import { useBriefFormSubmit } from '@/lib/use-brief-form-submit'
+import { BriefFormCopySection, BriefFormSubmitBar } from '@/components/brief-forms/BriefFormActions'
 
 const MAX_REFERENCE_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
 
@@ -186,15 +189,18 @@ export default function GraphicDesignBriefForm({
   publicView = false,
   prefill = {},
   showCopyAction = !publicView,
+  canSubmit,
 }: {
   backHref?: string
   backLabel?: string
   publicView?: boolean
   prefill?: BriefFormPrefill
   showCopyAction?: boolean
+  canSubmit?: boolean
 }) {
+  const submitAllowed = canSubmit ?? canSubmitBriefForm(publicView, showCopyAction)
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle')
-  const [submitNotice, setSubmitNotice] = useState('')
+  const { submitting, submitNotice, submitError, handleSubmit } = useBriefFormSubmit('graphic-design')
 
   async function handleCopyLink() {
     try {
@@ -208,10 +214,8 @@ export default function GraphicDesignBriefForm({
     }
   }
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    if (showCopyAction) return
-    event.preventDefault()
-    setSubmitNotice('Successfully submitted.')
+  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+    await handleSubmit(event, { showCopyAction: false, canSubmit: submitAllowed })
   }
 
   return (
@@ -256,7 +260,7 @@ export default function GraphicDesignBriefForm({
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="relative space-y-6 bg-white px-6 py-6 sm:px-8 sm:py-8">
+      <form onSubmit={onSubmit} className="relative space-y-6 bg-white px-6 py-6 sm:px-8 sm:py-8">
         <SectionCard title="1. Basic Information">
           <TextField label="Company / Brand Name:" placeholder="Your Company or Brand Name" required defaultValue={prefill.clientName} />
           <div className="grid gap-5 md:grid-cols-2">
@@ -305,39 +309,17 @@ export default function GraphicDesignBriefForm({
           <TextAreaField label="Is there anything else you would like us to know?" placeholder="Competitor links, inspiration, special instructions" />
         </SectionCard>
 
-        {!showCopyAction ? (
-          <div className="border border-slate-300 bg-white px-5 py-6 sm:px-6">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <button
-                type="submit"
-                className="inline-flex items-center justify-center rounded-2xl bg-orange-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-orange-600"
-              >
-                Submit Graphic Design Brief
-              </button>
-              {submitNotice ? (
-                <p className="text-sm font-medium text-emerald-600 sm:ml-auto">{submitNotice}</p>
-              ) : null}
-            </div>
-          </div>
-        ) : (
-          <div className="border border-slate-300 bg-white px-5 py-6 sm:px-6">
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-lg font-bold text-slate-950">Ready to copy?</p>
-                <p className="mt-1 text-sm text-slate-500">
-                  Copy this form link and send it to the client so they can fill it out.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={handleCopyLink}
-                className="inline-flex items-center justify-center rounded-2xl bg-orange-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-orange-600"
-              >
-                {copyState === 'copied' ? 'Copied' : copyState === 'error' ? 'Copy Failed' : 'Copy Link'}
-              </button>
-            </div>
-          </div>
-        )}
+        {showCopyAction ? (
+          <BriefFormCopySection copyState={copyState} onCopyLink={handleCopyLink} />
+        ) : null}
+
+        <BriefFormSubmitBar
+          canSubmit={submitAllowed}
+          submitting={submitting}
+          submitNotice={submitNotice}
+          submitError={submitError}
+          submitLabel="Submit Graphic Design Brief"
+        />
 
         <footer className="pb-2 text-center text-xs text-slate-400">
           Copyright 2026 BMYBrand. All Rights Reserved

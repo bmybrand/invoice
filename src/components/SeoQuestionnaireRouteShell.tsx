@@ -73,9 +73,15 @@ export default function SeoQuestionnaireRouteShell({ embedInDashboard = false }:
 
   if (isPortalUser) {
     return isEmployee ? (
-      <SeoQuestionnaireForm backHref="/dashboard/brief-forms" backLabel="Back to Brief Forms" />
+      <SeoQuestionnaireForm backHref="/dashboard/brief-forms" backLabel="Back to Brief Forms" canSubmit={false} />
     ) : (
-      <SeoQuestionnaireForm backHref="/dashboard/brief-forms" backLabel="Back to Brief Forms" prefill={prefill} showCopyAction={false} />
+      <SeoQuestionnaireForm
+        backHref="/dashboard/brief-forms"
+        backLabel="Back to Brief Forms"
+        prefill={prefill}
+        showCopyAction={false}
+        canSubmit
+      />
     )
   }
 

@@ -72,9 +72,15 @@ export default function LogoDesignBriefRouteShell({ embedInDashboard = false }: 
 
   if (isPortalUser) {
     return isEmployee ? (
-      <LogoDesignBriefForm backHref="/dashboard/brief-forms" backLabel="Back to Brief Forms" />
+      <LogoDesignBriefForm backHref="/dashboard/brief-forms" backLabel="Back to Brief Forms" canSubmit={false} />
     ) : (
-      <LogoDesignBriefForm backHref="/dashboard/brief-forms" backLabel="Back to Brief Forms" prefill={prefill} showCopyAction={false} />
+      <LogoDesignBriefForm
+        backHref="/dashboard/brief-forms"
+        backLabel="Back to Brief Forms"
+        prefill={prefill}
+        showCopyAction={false}
+        canSubmit
+      />
     )
   }
 

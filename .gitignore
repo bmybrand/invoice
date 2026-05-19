@@ -37,6 +37,9 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# cPanel bridge credentials (upload config.php to server only)
+/cpanel-bridge/config.php
+
 # vercel
 .vercel
 

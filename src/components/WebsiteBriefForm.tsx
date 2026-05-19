@@ -4,6 +4,8 @@ import { useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import type { BriefFormPrefill } from '@/lib/brief-form-prefill'
+import { canSubmitBriefForm } from '@/lib/brief-form-access'
+import { useBriefFormSubmit } from '@/lib/use-brief-form-submit'
 
 type Option = {
   value: string
@@ -153,15 +155,18 @@ export default function WebsiteBriefForm({
   publicView = false,
   prefill = {},
   showCopyAction = !publicView,
+  canSubmit,
 }: {
   backHref?: string
   backLabel?: string
   publicView?: boolean
   prefill?: BriefFormPrefill
   showCopyAction?: boolean
+  canSubmit?: boolean
 }) {
+  const submitAllowed = canSubmit ?? canSubmitBriefForm(publicView, showCopyAction)
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle')
-  const [submitNotice, setSubmitNotice] = useState('')
+  const { submitting, submitNotice, submitError, handleSubmit } = useBriefFormSubmit('website')
 
   async function handleCopyLink() {
     try {
@@ -175,10 +180,8 @@ export default function WebsiteBriefForm({
     }
   }
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    if (showCopyAction) return
-    event.preventDefault()
-    setSubmitNotice('Successfully submitted.')
+  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+    await handleSubmit(event, { showCopyAction: false, canSubmit: submitAllowed })
   }
 
   return (
@@ -223,7 +226,7 @@ export default function WebsiteBriefForm({
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="relative space-y-6 bg-white px-6 py-6 sm:px-8 sm:py-8">
+      <form onSubmit={onSubmit} className="relative space-y-6 bg-white px-6 py-6 sm:px-8 sm:py-8">
         <SectionCard title="Client Information">
           <div className="grid gap-5 md:grid-cols-2">
             <TextField label="Client Name:" placeholder="Enter Your Name" required defaultValue={prefill.clientName} />
@@ -265,22 +268,27 @@ export default function WebsiteBriefForm({
           <TextAreaField label="Do you have any other suggestion, idea or requirements for the website?" />
         </SectionCard>
 
-        {!showCopyAction ? (
+        {true ? (
           <div className="border border-slate-300 bg-white px-5 py-6 sm:px-6">
             <div className="flex flex-col gap-5">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <button
-                  type="submit"
-                  className="inline-flex items-center justify-center self-start rounded-2xl bg-orange-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-orange-600"
-                >
-                  Submit
-                </button>
-                {submitNotice ? (
-                  <p className="text-sm font-medium text-emerald-600 sm:ml-auto">{submitNotice}</p>
-                ) : null}
-              </div>
+              {submitAllowed ? (
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="inline-flex items-center justify-center self-start rounded-2xl bg-orange-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {submitting ? 'Submitting...' : 'Submit'}
+                  </button>
+                  {submitError ? (
+                    <p className="text-sm font-medium text-rose-600 sm:ml-auto">{submitError}</p>
+                  ) : submitNotice ? (
+                    <p className="text-sm font-medium text-emerald-600 sm:ml-auto">{submitNotice}</p>
+                  ) : null}
+                </div>
+              ) : null}
 
-              <div className="border-t border-slate-200 pt-5">
+              <div className={`pt-5 ${submitAllowed ? 'border-t border-slate-200' : ''}`}>
                 <p className="text-sm font-bold uppercase tracking-[0.14em] text-slate-700">Disclaimer:</p>
                 <div className="mt-3 space-y-4 text-sm leading-7 text-slate-600">
                   <p>
@@ -306,7 +314,9 @@ export default function WebsiteBriefForm({
               </div>
             </div>
           </div>
-        ) : (
+        ) : null}
+
+        {showCopyAction ? (
           <div className="border border-slate-300 bg-white px-5 py-6 sm:px-6">
             <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -324,7 +334,7 @@ export default function WebsiteBriefForm({
               </button>
             </div>
           </div>
-        )}
+        ) : null}
 
         <footer className="pb-2 text-center text-xs text-slate-400">
           Copyright 2026 BMYBrand. All Rights Reserved

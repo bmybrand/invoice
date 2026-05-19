@@ -72,9 +72,15 @@ export default function VideoAnimationBriefRouteShell({ embedInDashboard = false
 
   if (isPortalUser) {
     return isEmployee ? (
-      <VideoAnimationBriefForm backHref="/dashboard/brief-forms" backLabel="Back to Brief Forms" />
+      <VideoAnimationBriefForm backHref="/dashboard/brief-forms" backLabel="Back to Brief Forms" canSubmit={false} />
     ) : (
-      <VideoAnimationBriefForm backHref="/dashboard/brief-forms" backLabel="Back to Brief Forms" prefill={prefill} showCopyAction={false} />
+      <VideoAnimationBriefForm
+        backHref="/dashboard/brief-forms"
+        backLabel="Back to Brief Forms"
+        prefill={prefill}
+        showCopyAction={false}
+        canSubmit
+      />
     )
   }
 
