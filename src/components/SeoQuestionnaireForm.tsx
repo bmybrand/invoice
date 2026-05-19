@@ -254,20 +254,7 @@ export default function SeoQuestionnaireForm({
   canSubmit?: boolean
 }) {
   const submitAllowed = canSubmit ?? canSubmitBriefForm(publicView, showCopyAction)
-  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle')
   const { submitting, submitNotice, submitError, handleSubmit } = useBriefFormSubmit('seo-questionnaire')
-
-  async function handleCopyLink() {
-    try {
-      const publicUrl = new URL('/brief-forms/seo-questionnaire', window.location.origin).toString()
-      await navigator.clipboard.writeText(publicUrl)
-      setCopyState('copied')
-      window.setTimeout(() => setCopyState('idle'), 2000)
-    } catch {
-      setCopyState('error')
-      window.setTimeout(() => setCopyState('idle'), 2000)
-    }
-  }
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     await handleSubmit(event, { showCopyAction: false, canSubmit: submitAllowed })
@@ -451,7 +438,7 @@ export default function SeoQuestionnaireForm({
         </SectionCard>
 
         {showCopyAction ? (
-          <BriefFormCopySection copyState={copyState} onCopyLink={handleCopyLink} />
+          <BriefFormCopySection formType="seo-questionnaire" />
         ) : null}
 
         <BriefFormSubmitBar

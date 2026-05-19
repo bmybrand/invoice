@@ -5,6 +5,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import type { BriefFormPrefill } from '@/lib/brief-form-prefill'
 import { canSubmitBriefForm } from '@/lib/brief-form-access'
+import { BriefFormCopySection } from '@/components/brief-forms/BriefFormActions'
 import { useBriefFormSubmit } from '@/lib/use-brief-form-submit'
 
 const MAX_REFERENCE_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
@@ -238,22 +239,9 @@ export default function LogoDesignBriefForm({
   canSubmit?: boolean
 }) {
   const submitAllowed = canSubmit ?? canSubmitBriefForm(publicView, showCopyAction)
-  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle')
   const { submitting, submitNotice, submitError, handleSubmit } = useBriefFormSubmit('logo-design')
   const [selectedLogoExamples, setSelectedLogoExamples] = useState<string[]>([])
   const [logoExampleError, setLogoExampleError] = useState('')
-
-  async function handleCopyLink() {
-    try {
-      const publicUrl = new URL('/brief-forms/logo-design', window.location.origin).toString()
-      await navigator.clipboard.writeText(publicUrl)
-      setCopyState('copied')
-      window.setTimeout(() => setCopyState('idle'), 2000)
-    } catch {
-      setCopyState('error')
-      window.setTimeout(() => setCopyState('idle'), 2000)
-    }
-  }
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     if (selectedLogoExamples.length === 0) {
@@ -449,25 +437,7 @@ export default function LogoDesignBriefForm({
           </div>
         ) : null}
 
-        {showCopyAction ? (
-          <div className="border border-slate-300 bg-white px-5 py-6 sm:px-6">
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-lg font-bold text-slate-950">Ready to copy?</p>
-                <p className="mt-1 text-sm text-slate-500">
-                  Copy this form link and send it to the client so they can fill it out.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={handleCopyLink}
-                className="inline-flex items-center justify-center rounded-2xl bg-orange-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-orange-600"
-              >
-                {copyState === 'copied' ? 'Copied' : copyState === 'error' ? 'Copy Failed' : 'Copy Link'}
-              </button>
-            </div>
-          </div>
-        ) : null}
+        {showCopyAction ? <BriefFormCopySection formType="logo-design" /> : null}
 
         <footer className="pb-2 text-center text-xs text-slate-400">
           Copyright 2026 BMYBrand. All Rights Reserved

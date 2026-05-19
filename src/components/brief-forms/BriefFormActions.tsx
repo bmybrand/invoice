@@ -1,26 +1,39 @@
 'use client'
 
+import { useState } from 'react'
+import type { BriefFormType } from '@/lib/brief-form-types'
+import { getBriefFormPublicUrl } from '@/lib/brief-form-public-url'
+
 type CopyState = 'idle' | 'copied' | 'error'
 
-export function BriefFormCopySection({
-  copyState,
-  onCopyLink,
-}: {
-  copyState: CopyState
-  onCopyLink: () => void
-}) {
+export function BriefFormCopySection({ formType }: { formType: BriefFormType }) {
+  const [copyState, setCopyState] = useState<CopyState>('idle')
+
+  async function handleCopyLink() {
+    try {
+      const publicUrl = getBriefFormPublicUrl(formType)
+      await navigator.clipboard.writeText(publicUrl)
+      setCopyState('copied')
+      window.setTimeout(() => setCopyState('idle'), 2000)
+    } catch {
+      setCopyState('error')
+      window.setTimeout(() => setCopyState('idle'), 2000)
+    }
+  }
+
   return (
     <div className="border border-slate-300 bg-white px-5 py-6 sm:px-6">
       <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-lg font-bold text-slate-950">Send to client</p>
           <p className="mt-1 text-sm text-slate-500">
-            Copy the public link and send it to your client so they can complete and submit the form.
+            Copy the public link on your brand site and send it to your client so they can complete and
+            submit the form.
           </p>
         </div>
         <button
           type="button"
-          onClick={onCopyLink}
+          onClick={handleCopyLink}
           className="inline-flex items-center justify-center rounded-2xl border border-slate-300 bg-white px-6 py-3 text-sm font-bold text-slate-800 transition hover:border-slate-400"
         >
           {copyState === 'copied' ? 'Copied' : copyState === 'error' ? 'Copy Failed' : 'Copy Link'}

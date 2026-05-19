@@ -167,8 +167,16 @@ Open [http://localhost:3000](http://localhost:3000).
 | `MYSQL_DATABASE` | Local | Database name |
 | `CPANEL_BRIEF_FORMS_BRIDGE_URL` | Production | Full URL to `brief-forms.php` on cPanel |
 | `CPANEL_BRIEF_FORMS_BRIDGE_SECRET` | Production | Shared secret (must match `config.php` on server) |
+| `NEXT_PUBLIC_BRIEF_FORMS_PUBLIC_BASE_URL` | CRM deploy | Brand site base URL for staff **Copy Link** (e.g. `https://bmybrand.vercel.app`) |
 
 > **Note:** If both `CPANEL_BRIEF_FORMS_BRIDGE_*` and `MYSQL_*` are set, the **cPanel bridge is used first**. For local development, use only `MYSQL_*`.
+
+### Brand site + CRM (two Vercel projects)
+
+1. **Brand Vercel project** — hosts public brief forms at `/brief-forms/*` (same app routes). Clients open links here without logging in.
+2. **CRM Vercel project** — staff dashboard. Set `NEXT_PUBLIC_BRIEF_FORMS_PUBLIC_BASE_URL` to the brand project URL so **Copy Link** points clients to the brand domain.
+
+Both deployments need the same Supabase, Stripe, and cPanel bridge env vars so forms can submit. On the brand deployment you can leave `NEXT_PUBLIC_BRIEF_FORMS_PUBLIC_BASE_URL` empty (links default to that site’s own origin).
 
 ---
 
