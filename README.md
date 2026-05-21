@@ -173,10 +173,17 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ### Brand site + CRM (two Vercel projects)
 
-1. **Brand Vercel project** — hosts public brief forms at `/brief-forms/*` (same app routes). Clients open links here without logging in.
-2. **CRM Vercel project** — staff dashboard. Set `NEXT_PUBLIC_BRIEF_FORMS_PUBLIC_BASE_URL` to the brand project URL so **Copy Link** points clients to the brand domain.
+| Project | Repo path | Role |
+|---------|-----------|------|
+| **Brand** | `Bmybrand/rebranding/bmybrand` | Marketing site (`bmybrand.vercel.app`) |
+| **CRM** | `invoice_portal/invoice` | Staff dashboard + brief form UI + API |
 
-Both deployments need the same Supabase, Stripe, and cPanel bridge env vars so forms can submit. On the brand deployment you can leave `NEXT_PUBLIC_BRIEF_FORMS_PUBLIC_BASE_URL` empty (links default to that site’s own origin).
+1. **CRM Vercel** — set `NEXT_PUBLIC_BRIEF_FORMS_PUBLIC_BASE_URL=https://bmybrand.vercel.app` so **Copy Link** uses the brand domain.
+2. **Brand Vercel** — set `INVOICE_PORTAL_ORIGIN` to your **CRM** production URL (e.g. `https://your-invoice-crm.vercel.app`). The brand app serves `/brief-forms/*` pages that embed the CRM form (iframe). Use the CRM URL here, not `bmybrand.vercel.app`.
+
+Both deployments need the same Supabase and cPanel bridge env vars so public forms can submit.
+
+**404 on brand links?** Deploy the latest **bmybrand** code (includes `app/brief-forms/[formType]`). On the **bmybrand** Vercel project (not CRM), set `INVOICE_PORTAL_ORIGIN` to your CRM production URL and redeploy. If you see “Brief form is not configured”, the env var is missing or points at the wrong host.
 
 ---
 

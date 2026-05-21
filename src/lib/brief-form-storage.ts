@@ -68,7 +68,8 @@ export async function listBriefFormSubmissions(input: {
   }
 
   const pool = getMysqlPool()
-  const params: Record<string, string | number> = { limit: input.limit }
+  const limit = Math.min(Math.max(Math.trunc(input.limit), 1), 200)
+  const params: Record<string, string> = {}
 
   let sql = `SELECT id, form_type, payload, submitter_email, submitted_by_auth_id, source, created_at
              FROM brief_form_submissions`
@@ -78,7 +79,8 @@ export async function listBriefFormSubmissions(input: {
     params.formType = input.formType
   }
 
-  sql += ' ORDER BY created_at DESC LIMIT :limit'
+  // LIMIT cannot use a bound placeholder with mysql2 named placeholders on all hosts.
+  sql += ` ORDER BY created_at DESC LIMIT ${limit}`
 
   const [rows] = await pool.execute<RowDataPacket[]>(sql, params)
 

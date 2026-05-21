@@ -8,7 +8,8 @@ import {
   listBriefFormSubmissions,
   saveBriefFormSubmission,
 } from '@/lib/brief-form-storage'
-import { requireAdminOrSuperAdmin } from '@/lib/server-admin-auth'
+import { briefFormClientError, briefFormStorageSetupHint } from '@/lib/brief-form-errors'
+import { requireBriefFormSubmissionsViewer } from '@/lib/server-brief-form-submissions-auth'
 
 type SubmissionPayload = Record<string, string | string[]>
 
@@ -125,15 +126,22 @@ export async function POST(request: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Database error'
     console.error('[brief-forms] insert failed:', message)
+    const hint = briefFormStorageSetupHint()
     return NextResponse.json(
-      { error: 'Could not save submission. Check cPanel bridge or MySQL configuration.' },
+      {
+        error: briefFormClientError(
+          error,
+          'Could not save submission. Check cPanel bridge or MySQL configuration.'
+        ),
+        hint,
+      },
       { status: 500 }
     )
   }
 }
 
 export async function GET(request: Request) {
-  const auth = await requireAdminOrSuperAdmin(request)
+  const auth = await requireBriefFormSubmissionsViewer(request)
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
@@ -170,6 +178,13 @@ export async function GET(request: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Database error'
     console.error('[brief-forms] list failed:', message)
-    return NextResponse.json({ error: 'Could not load submissions.' }, { status: 500 })
+    const hint = briefFormStorageSetupHint()
+    return NextResponse.json(
+      {
+        error: briefFormClientError(error, 'Could not load submissions.'),
+        hint,
+      },
+      { status: 500 }
+    )
   }
 }
