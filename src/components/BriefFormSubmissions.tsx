@@ -50,10 +50,10 @@ function SubmissionDetailModal({
       onClick={onClose}
     >
       <div
-        className="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-2xl border border-slate-700 bg-[#111827] shadow-2xl"
+        className="flex max-h-[min(90vh,900px)] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-700 bg-[#111827] shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-slate-800 px-6 py-5">
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-800 px-6 py-5">
           <div>
             <p className="text-[11px] font-black uppercase tracking-[0.18em] text-orange-300">
               Submission #{row.id}
@@ -72,7 +72,7 @@ function SubmissionDetailModal({
           </button>
         </div>
 
-        <div className="space-y-4 overflow-y-auto px-6 py-5">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-6 py-5">
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3">
               <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Email</p>
