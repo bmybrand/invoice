@@ -1,5 +1,6 @@
 import type { BriefFormType } from '@/lib/brief-form-types'
 import {
+  getBriefFormByIdViaCpanelBridge,
   isCpanelBridgeConfigured,
   listBriefFormsViaCpanelBridge,
   saveBriefFormViaCpanelBridge,
@@ -84,7 +85,11 @@ export async function listBriefFormSubmissions(input: {
 
   const [rows] = await pool.execute<RowDataPacket[]>(sql, params)
 
-  return rows.map((row) => ({
+  return rows.map((row) => mapMysqlSubmissionRow(row))
+}
+
+function mapMysqlSubmissionRow(row: RowDataPacket): BriefFormSubmissionRow {
+  return {
     id: Number(row.id),
     formType: String(row.form_type),
     payload:
@@ -95,5 +100,33 @@ export async function listBriefFormSubmissions(input: {
     submittedByAuthId: row.submitted_by_auth_id ? String(row.submitted_by_auth_id) : null,
     source: String(row.source),
     createdAt: String(row.created_at),
-  }))
+  }
+}
+
+export async function getBriefFormSubmissionById(
+  id: number
+): Promise<BriefFormSubmissionRow | null> {
+  if (!Number.isFinite(id) || id <= 0) {
+    return null
+  }
+
+  if (isCpanelBridgeConfigured()) {
+    return getBriefFormByIdViaCpanelBridge(id)
+  }
+
+  if (!isMysqlConfigured()) {
+    throw new Error('Brief form storage is not configured.')
+  }
+
+  const pool = getMysqlPool()
+  const [rows] = await pool.execute<RowDataPacket[]>(
+    `SELECT id, form_type, payload, submitter_email, submitted_by_auth_id, source, created_at
+     FROM brief_form_submissions
+     WHERE id = :id
+     LIMIT 1`,
+    { id }
+  )
+
+  const row = rows[0]
+  return row ? mapMysqlSubmissionRow(row) : null
 }

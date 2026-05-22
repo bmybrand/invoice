@@ -101,3 +101,21 @@ export async function listBriefFormsViaCpanelBridge(input: {
 
   return data?.submissions ?? []
 }
+
+export async function getBriefFormByIdViaCpanelBridge(
+  id: number
+): Promise<BriefFormSubmissionRow | null> {
+  const params = new URLSearchParams()
+  params.set('id', String(id))
+
+  const response = await bridgeFetch(`?${params.toString()}`, { method: 'GET' })
+  const data = (await response.json().catch(() => null)) as
+    | { submission?: BriefFormSubmissionRow | null; error?: string }
+    | null
+
+  if (!response.ok) {
+    throw new Error(data?.error || 'cPanel bridge could not load the submission.')
+  }
+
+  return data?.submission ?? null
+}

@@ -1,140 +1,14 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useDashboardProfile } from '@/components/DashboardLayout'
 import { canViewBriefFormSubmissions } from '@/lib/brief-form-submissions-access'
 import { getBriefFormLabel } from '@/lib/brief-form-labels'
+import { formatBriefFormSubmittedAt } from '@/lib/brief-form-submission-format'
 import { BRIEF_FORM_TYPES, type BriefFormType } from '@/lib/brief-form-types'
 import type { BriefFormSubmissionRow } from '@/lib/cpanel-brief-forms-bridge'
-import { downloadBriefFormSubmissionPdf } from '@/lib/brief-form-pdf'
 import { useSessionContext } from '@/context/SessionContext'
-
-type PayloadValue = string | string[]
-
-function formatPayloadValue(value: PayloadValue): string {
-  if (Array.isArray(value)) {
-    return value.filter(Boolean).join(', ') || '—'
-  }
-  return value.trim() || '—'
-}
-
-function formatSubmittedAt(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-  return date.toLocaleString(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  })
-}
-
-function SubmissionDetailModal({
-  row,
-  onClose,
-}: {
-  row: BriefFormSubmissionRow
-  onClose: () => void
-}) {
-  const [downloadingPdf, setDownloadingPdf] = useState(false)
-
-  const entries = useMemo(() => {
-    const payload = row.payload || {}
-    return Object.entries(payload).sort(([a], [b]) => a.localeCompare(b))
-  }, [row.payload])
-
-  const handleDownloadPdf = async () => {
-    setDownloadingPdf(true)
-    try {
-      await downloadBriefFormSubmissionPdf(row)
-    } catch {
-      window.alert('Could not generate PDF. Please try again.')
-    } finally {
-      setDownloadingPdf(false)
-    }
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="brief-submission-title"
-      onClick={onClose}
-    >
-      <div
-        className="flex max-h-[min(90vh,900px)] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-700 bg-[#111827] shadow-2xl"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-800 px-6 py-5">
-          <div>
-            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-orange-300">
-              Submission #{row.id}
-            </p>
-            <h2 id="brief-submission-title" className="mt-1 text-xl font-bold text-white">
-              {getBriefFormLabel(row.formType)}
-            </h2>
-            <p className="mt-1 text-sm text-slate-400">{formatSubmittedAt(row.createdAt)}</p>
-          </div>
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => void handleDownloadPdf()}
-              disabled={downloadingPdf}
-              className="rounded-xl border border-orange-500/40 bg-orange-500/10 px-3 py-1.5 text-sm font-semibold text-orange-300 transition hover:bg-orange-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {downloadingPdf ? 'Preparing PDF…' : 'Download PDF'}
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-xl border border-slate-700 px-3 py-1.5 text-sm font-semibold text-slate-300 transition hover:bg-slate-800"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-6 py-5">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Email</p>
-              <p className="mt-1 text-sm text-white">{row.submitterEmail || '—'}</p>
-            </div>
-            <div className="rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Source</p>
-              <p className="mt-1 text-sm capitalize text-white">{row.source || 'public'}</p>
-            </div>
-          </div>
-
-          <div>
-            <p className="mb-3 text-xs font-black uppercase tracking-[0.16em] text-slate-500">Responses</p>
-            <div className="space-y-2">
-              {entries.length === 0 ? (
-                <p className="text-sm text-slate-400">No field data recorded.</p>
-              ) : (
-                entries.map(([key, value]) => (
-                  <div
-                    key={key}
-                    className="rounded-xl border border-slate-800/90 bg-slate-950/50 px-4 py-3"
-                  >
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                      {key.replace(/_/g, ' ')}
-                    </p>
-                    <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-200">
-                      {formatPayloadValue(value as PayloadValue)}
-                    </p>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 export default function BriefFormSubmissions() {
   const { token } = useSessionContext()
@@ -143,7 +17,6 @@ export default function BriefFormSubmissions() {
   const [submissions, setSubmissions] = useState<BriefFormSubmissionRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [selected, setSelected] = useState<BriefFormSubmissionRow | null>(null)
 
   const canView = canViewBriefFormSubmissions({
     accountType,
@@ -298,18 +171,17 @@ export default function BriefFormSubmissions() {
               <tbody className="divide-y divide-slate-800/80">
                 {submissions.map((row) => (
                   <tr key={row.id} className="bg-slate-950/20 hover:bg-slate-900/50">
-                    <td className="px-4 py-3 text-slate-300">{formatSubmittedAt(row.createdAt)}</td>
+                    <td className="px-4 py-3 text-slate-300">{formatBriefFormSubmittedAt(row.createdAt)}</td>
                     <td className="px-4 py-3 font-semibold text-white">{getBriefFormLabel(row.formType)}</td>
                     <td className="px-4 py-3 text-slate-300">{row.submitterEmail || '—'}</td>
                     <td className="px-4 py-3 capitalize text-slate-400">{row.source || 'public'}</td>
                     <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => setSelected(row)}
-                        className="rounded-lg border border-orange-500/30 bg-orange-500/10 px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-orange-300 transition hover:bg-orange-500/20"
+                      <Link
+                        href={`/dashboard/brief-forms/submissions/${row.id}`}
+                        className="inline-flex rounded-lg border border-orange-500/30 bg-orange-500/10 px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-orange-300 transition hover:bg-orange-500/20"
                       >
                         View
-                      </button>
+                      </Link>
                     </td>
                   </tr>
                 ))}
@@ -318,8 +190,6 @@ export default function BriefFormSubmissions() {
           </div>
         )}
       </div>
-
-      {selected ? <SubmissionDetailModal row={selected} onClose={() => setSelected(null)} /> : null}
     </section>
   )
 }

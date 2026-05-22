@@ -135,6 +135,47 @@ if ($method === 'POST') {
 }
 
 if ($method === 'GET') {
+    $submissionId = (int) ($_GET['id'] ?? 0);
+    if ($submissionId > 0) {
+        try {
+            $stmt = $pdo->prepare(
+                'SELECT id, form_type, payload, submitter_email, submitted_by_auth_id, source, created_at
+                 FROM brief_form_submissions
+                 WHERE id = :id
+                 LIMIT 1'
+            );
+            $stmt->execute([':id' => $submissionId]);
+            $row = $stmt->fetch();
+
+            if (!$row) {
+                echo json_encode(['submission' => null]);
+                exit;
+            }
+
+            $payload = $row['payload'];
+            if (is_string($payload)) {
+                $decoded = json_decode($payload, true);
+                $payload = is_array($decoded) ? $decoded : [];
+            }
+
+            echo json_encode([
+                'submission' => [
+                    'id' => (int) $row['id'],
+                    'formType' => $row['form_type'],
+                    'payload' => $payload,
+                    'submitterEmail' => $row['submitter_email'],
+                    'submittedByAuthId' => $row['submitted_by_auth_id'],
+                    'source' => $row['source'],
+                    'createdAt' => $row['created_at'],
+                ],
+            ]);
+        } catch (Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['error' => 'Could not load submission.']);
+        }
+        exit;
+    }
+
     $formType = trim((string) ($_GET['formType'] ?? ''));
     $limit = (int) ($_GET['limit'] ?? 50);
     if ($limit < 1) {
