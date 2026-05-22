@@ -7,6 +7,7 @@ import { canViewBriefFormSubmissions } from '@/lib/brief-form-submissions-access
 import { getBriefFormLabel } from '@/lib/brief-form-labels'
 import { BRIEF_FORM_TYPES, type BriefFormType } from '@/lib/brief-form-types'
 import type { BriefFormSubmissionRow } from '@/lib/cpanel-brief-forms-bridge'
+import { downloadBriefFormSubmissionPdf } from '@/lib/brief-form-pdf'
 import { useSessionContext } from '@/context/SessionContext'
 
 type PayloadValue = string | string[]
@@ -36,10 +37,23 @@ function SubmissionDetailModal({
   row: BriefFormSubmissionRow
   onClose: () => void
 }) {
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
+
   const entries = useMemo(() => {
     const payload = row.payload || {}
     return Object.entries(payload).sort(([a], [b]) => a.localeCompare(b))
   }, [row.payload])
+
+  const handleDownloadPdf = async () => {
+    setDownloadingPdf(true)
+    try {
+      await downloadBriefFormSubmissionPdf(row)
+    } catch {
+      window.alert('Could not generate PDF. Please try again.')
+    } finally {
+      setDownloadingPdf(false)
+    }
+  }
 
   return (
     <div
@@ -63,13 +77,23 @@ function SubmissionDetailModal({
             </h2>
             <p className="mt-1 text-sm text-slate-400">{formatSubmittedAt(row.createdAt)}</p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-xl border border-slate-700 px-3 py-1.5 text-sm font-semibold text-slate-300 transition hover:bg-slate-800"
-          >
-            Close
-          </button>
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => void handleDownloadPdf()}
+              disabled={downloadingPdf}
+              className="rounded-xl border border-orange-500/40 bg-orange-500/10 px-3 py-1.5 text-sm font-semibold text-orange-300 transition hover:bg-orange-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {downloadingPdf ? 'Preparing PDF…' : 'Download PDF'}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-xl border border-slate-700 px-3 py-1.5 text-sm font-semibold text-slate-300 transition hover:bg-slate-800"
+            >
+              Close
+            </button>
+          </div>
         </div>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-6 py-5">
@@ -213,6 +237,7 @@ export default function BriefFormSubmissions() {
             <h1 className="mt-4 text-3xl font-black tracking-[-0.04em] text-white">Brief Form Submissions</h1>
             <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-400">
               Client responses from public links and dashboard brief forms. Visible to admin and sales staff only.
+              PDF downloads omit client contact details (name, email, phone).
             </p>
           </div>
 
