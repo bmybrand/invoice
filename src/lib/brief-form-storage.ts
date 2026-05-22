@@ -111,7 +111,13 @@ export async function getBriefFormSubmissionById(
   }
 
   if (isCpanelBridgeConfigured()) {
-    return getBriefFormByIdViaCpanelBridge(id)
+    const fromBridge = await getBriefFormByIdViaCpanelBridge(id)
+    if (fromBridge) {
+      return fromBridge
+    }
+
+    const fromList = await listBriefFormSubmissions({ limit: 200 })
+    return fromList.find((row) => Number(row.id) === id) ?? null
   }
 
   if (!isMysqlConfigured()) {

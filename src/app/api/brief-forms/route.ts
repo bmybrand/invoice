@@ -4,6 +4,7 @@ import { cookies } from 'next/headers'
 import { extractSubmitterEmail } from '@/lib/brief-form-serialize'
 import { isBriefFormType, type BriefFormType } from '@/lib/brief-form-types'
 import {
+  getBriefFormSubmissionById,
   isBriefFormStorageConfigured,
   listBriefFormSubmissions,
   saveBriefFormSubmission,
@@ -157,8 +158,36 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url)
+  const idParam = (searchParams.get('id') || '').trim()
   const formTypeParam = (searchParams.get('formType') || '').trim()
   const limit = Math.min(Math.max(Number(searchParams.get('limit') || 50), 1), 200)
+
+  if (idParam) {
+    const id = Number(idParam)
+    if (!Number.isFinite(id) || id <= 0) {
+      return NextResponse.json({ error: 'Invalid submission id.' }, { status: 400 })
+    }
+
+    try {
+      const submission = await getBriefFormSubmissionById(id)
+      if (!submission) {
+        return NextResponse.json({ error: 'Submission not found.' }, { status: 404 })
+      }
+
+      return NextResponse.json({ submission })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Database error'
+      console.error('[brief-forms] get by id failed:', message)
+      const hint = briefFormStorageSetupHint()
+      return NextResponse.json(
+        {
+          error: briefFormClientError(error, 'Could not load submission.'),
+          hint,
+        },
+        { status: 500 }
+      )
+    }
+  }
 
   let formType: BriefFormType | undefined
   if (formTypeParam) {

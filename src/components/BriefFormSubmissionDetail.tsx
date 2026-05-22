@@ -38,9 +38,39 @@ export default function BriefFormSubmissionDetail() {
     return Object.entries(submission.payload).sort(([a], [b]) => a.localeCompare(b))
   }, [submission?.payload])
 
+  const findInList = useCallback(
+    async (authToken: string): Promise<BriefFormSubmissionRow | null> => {
+      const listRes = await fetch('/api/brief-forms?limit=200', {
+        headers: { Authorization: `Bearer ${authToken}` },
+      })
+      const listData = (await listRes.json().catch(() => null)) as
+        | { submissions?: BriefFormSubmissionRow[]; error?: string }
+        | null
+
+      if (!listRes.ok) {
+        return null
+      }
+
+      return listData?.submissions?.find((row) => Number(row.id) === submissionId) ?? null
+    },
+    [submissionId]
+  )
+
   const loadSubmission = useCallback(async () => {
-    if (!token || !canView || !Number.isFinite(submissionId) || submissionId <= 0) {
+    if (!Number.isFinite(submissionId) || submissionId <= 0) {
       setLoading(false)
+      setError('Invalid submission link.')
+      return
+    }
+
+    if (!profileLoaded) {
+      return
+    }
+
+    if (!token || !canView) {
+      setLoading(false)
+      setSubmission(null)
+      setError('')
       return
     }
 
@@ -48,38 +78,41 @@ export default function BriefFormSubmissionDetail() {
     setError('')
 
     try {
-      const response = await fetch(`/api/brief-forms/${submissionId}`, {
+      const response = await fetch(`/api/brief-forms?id=${submissionId}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       const data = (await response.json().catch(() => null)) as
         | { submission?: BriefFormSubmissionRow; error?: string; hint?: string | null }
         | null
 
-      if (!response.ok) {
-        setSubmission(null)
-        const parts = [data?.error || 'Could not load submission.']
-        if (data?.hint) {
-          parts.push(data.hint)
-        }
-        setError(parts.join(' '))
+      if (response.ok && data?.submission) {
+        setSubmission(data.submission)
         return
       }
 
-      setSubmission(data?.submission ?? null)
+      const fromList = await findInList(token)
+      if (fromList) {
+        setSubmission(fromList)
+        return
+      }
+
+      setSubmission(null)
+      const parts = [data?.error || 'Submission not found.']
+      if (data?.hint) {
+        parts.push(data.hint)
+      }
+      setError(parts.join(' '))
     } catch {
       setSubmission(null)
       setError('Could not load submission.')
     } finally {
       setLoading(false)
     }
-  }, [canView, submissionId, token])
+  }, [canView, findInList, profileLoaded, submissionId, token])
 
   useEffect(() => {
-    if (!profileLoaded) {
-      return
-    }
     void loadSubmission()
-  }, [loadSubmission, profileLoaded])
+  }, [loadSubmission])
 
   const handleDownloadPdf = async () => {
     if (!submission) {
