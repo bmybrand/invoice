@@ -1,7 +1,24 @@
 import type { BriefFormSubmissionRow } from '@/lib/cpanel-brief-forms-bridge'
 import { getBriefFormLabel } from '@/lib/brief-form-labels'
+import type { jsPDF } from 'jspdf'
 
 type PayloadValue = string | string[]
+
+const BRAND = {
+  slate900: [15, 23, 42] as const,
+  slate800: [30, 41, 59] as const,
+  slate600: [71, 85, 105] as const,
+  slate500: [100, 116, 139] as const,
+  slate200: [226, 232, 240] as const,
+  slate100: [241, 245, 249] as const,
+  slate50: [248, 250, 252] as const,
+  orange500: [249, 115, 22] as const,
+  white: [255, 255, 255] as const,
+}
+
+const LOGO_PATH = '/bmybrand-B.svg'
+const HEADER_HEIGHT_MM = 22
+const FOOTER_HEIGHT_MM = 10
 
 const CLIENT_INFO_KEY_EXACT = new Set([
   'client_name',
@@ -84,112 +101,239 @@ function sanitizeFilenamePart(value: string): string {
   return value.replace(/[^a-z0-9-_]+/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
 }
 
+async function loadBrandLogoDataUrl(): Promise<string | null> {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas')
+        const width = img.naturalWidth || 120
+        const height = img.naturalHeight || 120
+        const maxSide = 200
+        const scale = Math.min(1, maxSide / Math.max(width, height))
+        canvas.width = Math.max(1, Math.round(width * scale))
+        canvas.height = Math.max(1, Math.round(height * scale))
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          resolve(null)
+          return
+        }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+        resolve(canvas.toDataURL('image/png'))
+      } catch {
+        resolve(null)
+      }
+    }
+    img.onerror = () => resolve(null)
+    img.src = `${window.location.origin}${LOGO_PATH}`
+  })
+}
+
+type PdfLayout = {
+  pdf: jsPDF
+  pageWidth: number
+  pageHeight: number
+  marginX: number
+  contentTop: number
+  contentBottom: number
+  contentWidth: number
+  logoDataUrl: string | null
+  formLabel: string
+}
+
+function drawPageHeader(layout: PdfLayout) {
+  const { pdf, pageWidth, marginX, logoDataUrl, formLabel } = layout
+
+  pdf.setFillColor(...BRAND.slate900)
+  pdf.rect(0, 0, pageWidth, HEADER_HEIGHT_MM, 'F')
+
+  const logoSize = 11
+  const logoY = (HEADER_HEIGHT_MM - logoSize) / 2
+
+  if (logoDataUrl) {
+    pdf.addImage(logoDataUrl, 'PNG', marginX, logoY, logoSize, logoSize)
+  }
+
+  pdf.setFont('helvetica', 'bold')
+  pdf.setFontSize(11)
+  pdf.setTextColor(...BRAND.white)
+  pdf.text('BMYBrand', marginX + (logoDataUrl ? logoSize + 4 : 0), HEADER_HEIGHT_MM / 2 + 1.5)
+
+  pdf.setFont('helvetica', 'normal')
+  pdf.setFontSize(9)
+  pdf.setTextColor(...BRAND.orange500)
+  pdf.text(formLabel, pageWidth - marginX, HEADER_HEIGHT_MM / 2 + 1.5, { align: 'right' })
+
+  pdf.setFillColor(...BRAND.orange500)
+  pdf.rect(0, HEADER_HEIGHT_MM - 0.8, pageWidth, 0.8, 'F')
+}
+
+function drawPageFooter(layout: PdfLayout, pageNumber: number, totalPages: number) {
+  const { pdf, pageWidth, pageHeight, marginX } = layout
+  const footerY = pageHeight - FOOTER_HEIGHT_MM + 4
+
+  pdf.setDrawColor(...BRAND.slate200)
+  pdf.setLineWidth(0.2)
+  pdf.line(marginX, footerY - 2, pageWidth - marginX, footerY - 2)
+
+  pdf.setFont('helvetica', 'normal')
+  pdf.setFontSize(8)
+  pdf.setTextColor(...BRAND.slate500)
+  pdf.text('BMYBrand — Brief form intake (client contact details omitted)', marginX, footerY + 2)
+  pdf.text(`Page ${pageNumber} of ${totalPages}`, pageWidth - marginX, footerY + 2, { align: 'right' })
+}
+
+function addPage(layout: PdfLayout) {
+  layout.pdf.addPage()
+  drawPageHeader(layout)
+}
+
+function ensureSpace(layout: PdfLayout, needed: number, y: number): number {
+  if (y + needed <= layout.contentBottom) {
+    return y
+  }
+  addPage(layout)
+  return layout.contentTop
+}
+
+function drawMetaCard(
+  layout: PdfLayout,
+  y: number,
+  row: BriefFormSubmissionRow
+): number {
+  const { pdf, marginX, contentWidth } = layout
+  const cardHeight = 22
+  y = ensureSpace(layout, cardHeight + 4, y)
+
+  pdf.setFillColor(...BRAND.slate50)
+  pdf.setDrawColor(...BRAND.slate200)
+  pdf.setLineWidth(0.3)
+  pdf.roundedRect(marginX, y, contentWidth, cardHeight, 2, 2, 'FD')
+
+  pdf.setFont('helvetica', 'bold')
+  pdf.setFontSize(14)
+  pdf.setTextColor(...BRAND.slate800)
+  pdf.text(getBriefFormLabel(row.formType), marginX + 4, y + 8)
+
+  pdf.setFont('helvetica', 'normal')
+  pdf.setFontSize(9)
+  pdf.setTextColor(...BRAND.slate600)
+  pdf.text(`Submission #${row.id}`, marginX + 4, y + 14)
+  pdf.text(`Submitted: ${formatSubmittedAt(row.createdAt)}`, marginX + 4, y + 19)
+  pdf.text(`Source: ${(row.source || 'public').replace(/^\w/, (c) => c.toUpperCase())}`, marginX + contentWidth / 2, y + 19)
+
+  return y + cardHeight + 6
+}
+
+function drawResponsesSection(
+  layout: PdfLayout,
+  y: number,
+  entries: Array<{ label: string; value: string }>
+): number {
+  const { pdf, marginX, contentWidth } = layout
+  const lineHeight = 4.8
+
+  y = ensureSpace(layout, 12, y)
+
+  pdf.setFont('helvetica', 'bold')
+  pdf.setFontSize(10)
+  pdf.setTextColor(...BRAND.orange500)
+  pdf.text('RESPONSES', marginX, y)
+  y += 3
+
+  pdf.setFillColor(...BRAND.orange500)
+  pdf.rect(marginX, y, 18, 0.8, 'F')
+  y += 5
+
+  if (entries.length === 0) {
+    y = ensureSpace(layout, 8, y)
+    pdf.setFont('helvetica', 'italic')
+    pdf.setFontSize(9)
+    pdf.setTextColor(...BRAND.slate500)
+    pdf.text('No project fields recorded (client contact details are excluded).', marginX, y)
+    return y + 6
+  }
+
+  for (const entry of entries) {
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(8)
+    const labelLines = pdf.splitTextToSize(entry.label.toUpperCase(), contentWidth - 8)
+    const labelHeight = labelLines.length * 3.6 + 2
+
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(10)
+    const valueLines = pdf.splitTextToSize(entry.value, contentWidth - 8)
+    const valueHeight = valueLines.length * lineHeight
+    const blockHeight = labelHeight + valueHeight + 8
+
+    y = ensureSpace(layout, blockHeight, y)
+
+    pdf.setFillColor(...BRAND.white)
+    pdf.setDrawColor(...BRAND.slate200)
+    pdf.setLineWidth(0.25)
+    pdf.roundedRect(marginX, y, contentWidth, blockHeight, 1.5, 1.5, 'FD')
+
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(8)
+    pdf.setTextColor(...BRAND.slate500)
+    pdf.text(labelLines, marginX + 4, y + 5)
+
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(10)
+    pdf.setTextColor(...BRAND.slate800)
+    pdf.text(valueLines, marginX + 4, y + 5 + labelHeight)
+
+    y += blockHeight + 3
+  }
+
+  return y
+}
+
 export async function downloadBriefFormSubmissionPdf(row: BriefFormSubmissionRow): Promise<void> {
-  const { jsPDF } = await import('jspdf')
+  const [{ jsPDF }] = await Promise.all([import('jspdf')])
+  const logoDataUrl = await loadBrandLogoDataUrl()
+  const formLabel = getBriefFormLabel(row.formType)
 
   const pdf = new jsPDF('p', 'mm', 'a4')
   const pageWidth = pdf.internal.pageSize.getWidth()
   const pageHeight = pdf.internal.pageSize.getHeight()
   const marginX = 14
-  const marginTop = 16
-  const marginBottom = 16
-  const contentWidth = pageWidth - marginX * 2
-  const lineHeight = 5
-  let y = marginTop
 
-  const ensureSpace = (needed: number) => {
-    if (y + needed <= pageHeight - marginBottom) {
-      return
-    }
-    pdf.addPage()
-    y = marginTop
+  const layout: PdfLayout = {
+    pdf,
+    pageWidth,
+    pageHeight,
+    marginX,
+    contentTop: HEADER_HEIGHT_MM + 8,
+    contentBottom: pageHeight - FOOTER_HEIGHT_MM - 4,
+    contentWidth: pageWidth - marginX * 2,
+    logoDataUrl,
+    formLabel,
   }
 
-  const drawHeader = () => {
-    pdf.setFillColor(15, 23, 42)
-    pdf.rect(0, 0, pageWidth, 12, 'F')
-    pdf.setFont('helvetica', 'bold')
-    pdf.setFontSize(11)
-    pdf.setTextColor(255, 255, 255)
-    pdf.text('BMYBrand', marginX, 8)
-    pdf.setTextColor(249, 115, 22)
-    pdf.text('Brief Form', pageWidth - marginX, 8, { align: 'right' })
-    y = 20
-  }
+  pdf.setFillColor(...BRAND.slate100)
+  pdf.rect(0, HEADER_HEIGHT_MM, pageWidth, pageHeight - HEADER_HEIGHT_MM, 'F')
 
-  drawHeader()
+  drawPageHeader(layout)
 
-  pdf.setTextColor(30, 41, 59)
-  pdf.setFont('helvetica', 'bold')
-  pdf.setFontSize(16)
-  ensureSpace(12)
-  pdf.text(getBriefFormLabel(row.formType), marginX, y)
-  y += 8
-
-  pdf.setFont('helvetica', 'normal')
-  pdf.setFontSize(10)
-  pdf.setTextColor(71, 85, 105)
-  ensureSpace(8)
-  pdf.text(`Submission #${row.id}`, marginX, y)
-  y += lineHeight
-  pdf.text(`Submitted: ${formatSubmittedAt(row.createdAt)}`, marginX, y)
-  y += lineHeight + 4
-
-  pdf.setDrawColor(226, 232, 240)
-  pdf.line(marginX, y, pageWidth - marginX, y)
-  y += 8
+  let y = layout.contentTop
+  y = drawMetaCard(layout, y, row)
 
   const entries = getBriefFormPdfEntries(row.payload || {})
+  drawResponsesSection(layout, y, entries)
 
-  pdf.setFont('helvetica', 'bold')
-  pdf.setFontSize(11)
-  pdf.setTextColor(51, 65, 85)
-  ensureSpace(8)
-  pdf.text('Responses', marginX, y)
-  y += 7
-
-  if (entries.length === 0) {
-    pdf.setFont('helvetica', 'italic')
-    pdf.setFontSize(10)
-    pdf.setTextColor(100, 116, 139)
-    ensureSpace(6)
-    pdf.text('No non-client fields recorded for this submission.', marginX, y)
-  } else {
-    for (const entry of entries) {
-      pdf.setFont('helvetica', 'bold')
-      pdf.setFontSize(9)
-      pdf.setTextColor(100, 116, 139)
-      const labelLines = pdf.splitTextToSize(entry.label.toUpperCase(), contentWidth)
-      const labelHeight = labelLines.length * 4 + 2
-
-      pdf.setFont('helvetica', 'normal')
-      pdf.setFontSize(10)
-      pdf.setTextColor(30, 41, 59)
-      const valueLines = pdf.splitTextToSize(entry.value, contentWidth)
-      const valueHeight = valueLines.length * lineHeight
-      const blockHeight = labelHeight + valueHeight + 6
-
-      ensureSpace(blockHeight)
-
-      pdf.setFont('helvetica', 'bold')
-      pdf.setFontSize(9)
-      pdf.setTextColor(100, 116, 139)
-      pdf.text(labelLines, marginX, y)
-      y += labelHeight
-
-      pdf.setFont('helvetica', 'normal')
-      pdf.setFontSize(10)
-      pdf.setTextColor(30, 41, 59)
-      pdf.text(valueLines, marginX, y)
-      y += valueHeight + 6
-    }
+  const totalPages = pdf.getNumberOfPages()
+  for (let page = 1; page <= totalPages; page += 1) {
+    pdf.setPage(page)
+    drawPageFooter(layout, page, totalPages)
   }
 
-  const filename = [
-    'brief-form',
-    sanitizeFilenamePart(row.formType),
-    String(row.id),
-  ]
+  const filename = ['brief-form', sanitizeFilenamePart(row.formType), String(row.id)]
     .filter(Boolean)
     .join('-')
     .concat('.pdf')
