@@ -1,5 +1,6 @@
 import type { BriefFormType } from '@/lib/brief-form-types'
 import {
+  getBriefFormByIdViaCpanelBridge,
   isCpanelBridgeConfigured,
   listBriefFormsViaCpanelBridge,
   saveBriefFormViaCpanelBridge,
@@ -68,7 +69,8 @@ export async function listBriefFormSubmissions(input: {
   }
 
   const pool = getMysqlPool()
-  const params: Record<string, string | number> = { limit: input.limit }
+  const limit = Math.min(Math.max(Math.trunc(input.limit), 1), 200)
+  const params: Record<string, string> = {}
 
   let sql = `SELECT id, form_type, payload, submitter_email, submitted_by_auth_id, source, created_at
              FROM brief_form_submissions`
@@ -78,11 +80,16 @@ export async function listBriefFormSubmissions(input: {
     params.formType = input.formType
   }
 
-  sql += ' ORDER BY created_at DESC LIMIT :limit'
+  // LIMIT cannot use a bound placeholder with mysql2 named placeholders on all hosts.
+  sql += ` ORDER BY created_at DESC LIMIT ${limit}`
 
   const [rows] = await pool.execute<RowDataPacket[]>(sql, params)
 
-  return rows.map((row) => ({
+  return rows.map((row) => mapMysqlSubmissionRow(row))
+}
+
+function mapMysqlSubmissionRow(row: RowDataPacket): BriefFormSubmissionRow {
+  return {
     id: Number(row.id),
     formType: String(row.form_type),
     payload:
@@ -93,5 +100,39 @@ export async function listBriefFormSubmissions(input: {
     submittedByAuthId: row.submitted_by_auth_id ? String(row.submitted_by_auth_id) : null,
     source: String(row.source),
     createdAt: String(row.created_at),
-  }))
+  }
+}
+
+export async function getBriefFormSubmissionById(
+  id: number
+): Promise<BriefFormSubmissionRow | null> {
+  if (!Number.isFinite(id) || id <= 0) {
+    return null
+  }
+
+  if (isCpanelBridgeConfigured()) {
+    const fromBridge = await getBriefFormByIdViaCpanelBridge(id)
+    if (fromBridge) {
+      return fromBridge
+    }
+
+    const fromList = await listBriefFormSubmissions({ limit: 200 })
+    return fromList.find((row) => Number(row.id) === id) ?? null
+  }
+
+  if (!isMysqlConfigured()) {
+    throw new Error('Brief form storage is not configured.')
+  }
+
+  const pool = getMysqlPool()
+  const [rows] = await pool.execute<RowDataPacket[]>(
+    `SELECT id, form_type, payload, submitter_email, submitted_by_auth_id, source, created_at
+     FROM brief_form_submissions
+     WHERE id = :id
+     LIMIT 1`,
+    { id }
+  )
+
+  const row = rows[0]
+  return row ? mapMysqlSubmissionRow(row) : null
 }

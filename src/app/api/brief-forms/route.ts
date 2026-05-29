@@ -4,11 +4,13 @@ import { cookies } from 'next/headers'
 import { extractSubmitterEmail } from '@/lib/brief-form-serialize'
 import { isBriefFormType, type BriefFormType } from '@/lib/brief-form-types'
 import {
+  getBriefFormSubmissionById,
   isBriefFormStorageConfigured,
   listBriefFormSubmissions,
   saveBriefFormSubmission,
 } from '@/lib/brief-form-storage'
-import { requireAdminOrSuperAdmin } from '@/lib/server-admin-auth'
+import { briefFormClientError, briefFormStorageSetupHint } from '@/lib/brief-form-errors'
+import { requireBriefFormSubmissionsViewer } from '@/lib/server-brief-form-submissions-auth'
 
 type SubmissionPayload = Record<string, string | string[]>
 
@@ -125,15 +127,22 @@ export async function POST(request: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Database error'
     console.error('[brief-forms] insert failed:', message)
+    const hint = briefFormStorageSetupHint()
     return NextResponse.json(
-      { error: 'Could not save submission. Check cPanel bridge or MySQL configuration.' },
+      {
+        error: briefFormClientError(
+          error,
+          'Could not save submission. Check cPanel bridge or MySQL configuration.'
+        ),
+        hint,
+      },
       { status: 500 }
     )
   }
 }
 
 export async function GET(request: Request) {
-  const auth = await requireAdminOrSuperAdmin(request)
+  const auth = await requireBriefFormSubmissionsViewer(request)
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
@@ -149,8 +158,36 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url)
+  const idParam = (searchParams.get('id') || '').trim()
   const formTypeParam = (searchParams.get('formType') || '').trim()
   const limit = Math.min(Math.max(Number(searchParams.get('limit') || 50), 1), 200)
+
+  if (idParam) {
+    const id = Number(idParam)
+    if (!Number.isFinite(id) || id <= 0) {
+      return NextResponse.json({ error: 'Invalid submission id.' }, { status: 400 })
+    }
+
+    try {
+      const submission = await getBriefFormSubmissionById(id)
+      if (!submission) {
+        return NextResponse.json({ error: 'Submission not found.' }, { status: 404 })
+      }
+
+      return NextResponse.json({ submission })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Database error'
+      console.error('[brief-forms] get by id failed:', message)
+      const hint = briefFormStorageSetupHint()
+      return NextResponse.json(
+        {
+          error: briefFormClientError(error, 'Could not load submission.'),
+          hint,
+        },
+        { status: 500 }
+      )
+    }
+  }
 
   let formType: BriefFormType | undefined
   if (formTypeParam) {
@@ -170,6 +207,13 @@ export async function GET(request: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Database error'
     console.error('[brief-forms] list failed:', message)
-    return NextResponse.json({ error: 'Could not load submissions.' }, { status: 500 })
+    const hint = briefFormStorageSetupHint()
+    return NextResponse.json(
+      {
+        error: briefFormClientError(error, 'Could not load submissions.'),
+        hint,
+      },
+      { status: 500 }
+    )
   }
 }

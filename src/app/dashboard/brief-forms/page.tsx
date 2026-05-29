@@ -2,6 +2,8 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
+import { useDashboardProfile } from '@/components/DashboardLayout'
+import { canViewBriefFormSubmissions } from '@/lib/brief-form-submissions-access'
 
 const briefFormOptions = [
   {
@@ -55,6 +57,14 @@ function ArrowIcon() {
 }
 
 export default function BriefFormsPage() {
+  const { accountType, displayRole, displayDepartment, profileLoaded } = useDashboardProfile()
+  const showSubmissions = profileLoaded &&
+    canViewBriefFormSubmissions({
+      accountType,
+      role: displayRole,
+      department: displayDepartment,
+    })
+
   return (
     <section className="relative overflow-hidden rounded-[2rem] border border-slate-800 bg-[#0f172a]/95">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(249,115,22,0.16),transparent_32%)]" />
@@ -74,6 +84,15 @@ export default function BriefFormsPage() {
               Start the right intake flow for each service line. The SEO, Website, Logo Design, Graphic
               Design, and Video Animation questionnaires are live now.
             </p>
+            {showSubmissions ? (
+              <Link
+                href="/dashboard/brief-forms/submissions"
+                className="mt-6 inline-flex items-center gap-2 rounded-2xl border border-orange-500/30 bg-orange-500/10 px-4 py-2.5 text-sm font-bold text-orange-300 transition hover:bg-orange-500/20"
+              >
+                View client submissions
+                <ArrowIcon />
+              </Link>
+            ) : null}
           </div>
 
           <div className="w-full max-w-[240px]">

@@ -101,3 +101,45 @@ export async function listBriefFormsViaCpanelBridge(input: {
 
   return data?.submissions ?? []
 }
+
+function findSubmissionById(
+  rows: BriefFormSubmissionRow[],
+  id: number
+): BriefFormSubmissionRow | null {
+  return rows.find((row) => Number(row.id) === id) ?? null
+}
+
+export async function getBriefFormByIdViaCpanelBridge(
+  id: number
+): Promise<BriefFormSubmissionRow | null> {
+  const params = new URLSearchParams()
+  params.set('id', String(id))
+
+  const response = await bridgeFetch(`?${params.toString()}`, { method: 'GET' })
+  const data = (await response.json().catch(() => null)) as
+    | {
+        submission?: BriefFormSubmissionRow | null
+        submissions?: BriefFormSubmissionRow[]
+        error?: string
+      }
+    | null
+
+  if (!response.ok) {
+    throw new Error(data?.error || 'cPanel bridge could not load the submission.')
+  }
+
+  if (data?.submission) {
+    return data.submission
+  }
+
+  // Older bridge PHP without ?id= support returns a list instead.
+  if (data?.submissions?.length) {
+    const match = findSubmissionById(data.submissions, id)
+    if (match) {
+      return match
+    }
+  }
+
+  const rows = await listBriefFormsViaCpanelBridge({ limit: 200 })
+  return findSubmissionById(rows, id)
+}
