@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Plus_Jakarta_Sans } from 'next/font/google'
 import { useDashboardProfile } from '@/components/DashboardLayout'
 import { useSessionContext } from '@/context/SessionContext'
+import { supabase } from '@/lib/supabase'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 const PAGE_SIZE = 8
@@ -154,6 +155,45 @@ export default function Leads() {
 
     return () => {
       window.clearTimeout(timeoutId)
+    }
+  }, [accountType, fetchLeads, profileLoaded])
+
+  useEffect(() => {
+    if (!profileLoaded || accountType !== 'employee') return
+
+    let refreshTimeoutId: number | null = null
+
+    const scheduleRefresh = () => {
+      if (refreshTimeoutId !== null) {
+        window.clearTimeout(refreshTimeoutId)
+      }
+
+      refreshTimeoutId = window.setTimeout(() => {
+        void fetchLeads()
+      }, 150)
+    }
+
+    const channel = supabase
+      .channel('dashboard-leads-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'leads',
+        },
+        () => {
+          scheduleRefresh()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      if (refreshTimeoutId !== null) {
+        window.clearTimeout(refreshTimeoutId)
+      }
+      void channel.unsubscribe()
+      void supabase.removeChannel(channel)
     }
   }, [accountType, fetchLeads, profileLoaded])
 
