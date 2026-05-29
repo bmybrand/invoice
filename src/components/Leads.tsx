@@ -7,6 +7,15 @@ import { useSessionContext } from '@/context/SessionContext'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 const PAGE_SIZE = 8
+const CONTACT_SERVICE_GROUP = new Set([
+  'Website Development',
+  'Brand Identity & Design',
+  'ecommerce',
+  'Digital Marketing',
+])
+const CONTACT_TAB_LABEL = 'Contact'
+const CUSTOM_QUOTE_TAB_LABEL = 'Custom Quote Request'
+const NEWSLETTER_TAB_LABEL = 'Newsletter Subscription'
 
 type LeadRow = {
   id: number
@@ -18,6 +27,7 @@ type LeadRow = {
   phone: string | null
   service: string | null
   message: string | null
+  form_type: string | null
 }
 
 function SearchIcon({ className = 'h-4 w-4' }: { className?: string }) {
@@ -75,6 +85,20 @@ function formatAccessPage(value: string | null) {
   if (cleaned.length === 0) return 'Home'
 
   return cleaned[cleaned.length - 1]
+}
+
+function getLeadTabLabel(lead: Pick<LeadRow, 'form_type' | 'service'>) {
+  const formType = (lead.form_type || '').trim().toLowerCase()
+  if (formType === 'newsletter_subscription') return NEWSLETTER_TAB_LABEL
+  if (formType === 'custom_quote_request') return CUSTOM_QUOTE_TAB_LABEL
+  if (formType === 'contact') return CONTACT_TAB_LABEL
+
+  const service = (lead.service || '').trim()
+  if (!service) return ''
+  if (CONTACT_SERVICE_GROUP.has(service)) return CONTACT_TAB_LABEL
+  if (service === NEWSLETTER_TAB_LABEL) return NEWSLETTER_TAB_LABEL
+  if (service === CUSTOM_QUOTE_TAB_LABEL) return CUSTOM_QUOTE_TAB_LABEL
+  return service
 }
 
 export default function Leads() {
@@ -137,20 +161,21 @@ export default function Leads() {
     return Array.from(
       new Set(
         leads
-          .map((lead) => (lead.service || '').trim())
+          .map((lead) => getLeadTabLabel(lead))
           .filter(Boolean)
       )
     ).sort((left, right) => left.localeCompare(right))
   }, [leads])
   const effectiveActiveService =
     activeService && serviceTabs.includes(activeService) ? activeService : (serviceTabs[0] ?? '')
-  const isNewsletterSubscription = effectiveActiveService === 'Newsletter Subscription'
+  const isNewsletterSubscription = effectiveActiveService === NEWSLETTER_TAB_LABEL
+  const isContactTab = effectiveActiveService === CONTACT_TAB_LABEL
 
   const filteredLeads = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
 
     return leads.filter((lead) => {
-      const service = (lead.service || '').trim()
+      const service = getLeadTabLabel(lead)
       const matchesService = !effectiveActiveService || service === effectiveActiveService
       if (!matchesService) return false
       if (!query) return true
@@ -162,6 +187,7 @@ export default function Leads() {
         lead.last_name,
         lead.email,
         lead.phone,
+        lead.form_type,
         lead.service,
         lead.message,
       ]
@@ -265,6 +291,11 @@ export default function Leads() {
                     <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Phone</span>
                   </th>
                 ) : null}
+                {isContactTab ? (
+                  <th className="px-4 sm:px-6 py-4 text-left">
+                    <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Service</span>
+                  </th>
+                ) : null}
                 <th className="px-4 sm:px-6 py-4 text-left">
                   <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Access Page</span>
                 </th>
@@ -281,19 +312,19 @@ export default function Leads() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={isNewsletterSubscription ? 5 : 7} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
+                  <td colSpan={isNewsletterSubscription ? 5 : isContactTab ? 8 : 7} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
                     Loading leads...
                   </td>
                 </tr>
               ) : error ? (
                 <tr>
-                  <td colSpan={isNewsletterSubscription ? 5 : 7} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-red-300 text-sm">
+                  <td colSpan={isNewsletterSubscription ? 5 : isContactTab ? 8 : 7} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-red-300 text-sm">
                     {error}
                   </td>
                 </tr>
               ) : paginatedLeads.length === 0 ? (
                 <tr>
-                  <td colSpan={isNewsletterSubscription ? 5 : 7} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
+                  <td colSpan={isNewsletterSubscription ? 5 : isContactTab ? 8 : 7} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
                     {searchQuery.trim() ? 'No matching leads' : 'No leads found.'}
                   </td>
                 </tr>
@@ -331,6 +362,13 @@ export default function Leads() {
                       <td className="px-4 sm:px-6 py-4 min-w-0">
                         <span className="text-slate-300 text-sm truncate block whitespace-nowrap" title={lead.phone || '-'}>
                           {lead.phone || '-'}
+                        </span>
+                      </td>
+                    ) : null}
+                    {isContactTab ? (
+                      <td className="px-4 sm:px-6 py-4 min-w-0">
+                        <span className="text-slate-300 text-sm truncate block whitespace-nowrap" title={lead.service || '-'}>
+                          {lead.service || '-'}
                         </span>
                       </td>
                     ) : null}
