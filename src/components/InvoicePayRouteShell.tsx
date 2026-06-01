@@ -52,26 +52,36 @@ export default function InvoicePayRouteShell({ invoiceId, invoiceToken }: { invo
       } | null = null
       let error: { message?: string } | null = null
 
-      if (invoiceToken) {
-        const response = await fetch(`/api/public/invoice?token=${encodeURIComponent(invoiceToken)}`)
-        const payload = (await response.json().catch(() => null)) as {
-          invoice?: {
-            service?: unknown
-            status?: string | null
-            brand_name?: string | null
-            email?: string | null
-            phone?: string | null
-            payable_amount?: number | string | null
-          }
-          error?: string
-        } | null
-
-        if (!response.ok || !payload?.invoice) {
-          error = { message: payload?.error ?? 'Failed to fetch invoice' }
-        } else {
-          data = payload.invoice
+      // Public access uses id-only
+      const response = await fetch(`/api/public/invoice?id=${encodeURIComponent(String(invoiceId))}`)
+      const payload = (await response.json().catch(() => null)) as {
+        invoice?: {
+          service?: unknown
+          status?: string | null
+          brand_name?: string | null
+          email?: string | null
+          phone?: string | null
+          payable_amount?: number | string | null
         }
+        error?: string
+      } | null
+
+      if (!response.ok || !payload?.invoice) {
+        error = { message: payload?.error ?? 'Failed to fetch invoice' }
       } else {
+        data = payload.invoice
+      }
+
+      // else branch removed; we no longer branch on invoiceToken
+      
+      
+      
+      
+      
+      
+      
+      
+      
         const result = await supabase
           .from('invoices')
           .select('service, status, brand_name, email, phone, payable_amount')
@@ -88,7 +98,7 @@ export default function InvoicePayRouteShell({ invoiceId, invoiceToken }: { invo
       }
 
       const normalizedStatus = (data.status || '').toLowerCase()
-      const invoiceUrl = invoiceToken ? `/invoice?token=${encodeURIComponent(invoiceToken)}` : `/invoice?id=${invoiceId}`
+      const invoiceUrl = `/invoice?id=${invoiceId}`
       if (normalizedStatus.includes('paid') || normalizedStatus.includes('completed')) {
         router.replace(invoiceUrl)
         return
@@ -152,7 +162,7 @@ export default function InvoicePayRouteShell({ invoiceId, invoiceToken }: { invo
             <h1 className="text-xl font-bold text-white mb-2">Pay Invoice</h1>
             <button
               type="button"
-              onClick={() => router.push(invoiceToken ? `/invoice?token=${encodeURIComponent(invoiceToken)}` : `/invoice?id=${invoiceId}`)}
+              onClick={() => router.push(`/invoice?id=${invoiceId}`)}
               className="text-sm font-medium text-slate-400 hover:text-white"
             >
               â† Back to Invoice
@@ -176,7 +186,7 @@ export default function InvoicePayRouteShell({ invoiceId, invoiceToken }: { invo
       <div className="border-b border-slate-700 px-4 py-4 sm:px-6">
         <button
           type="button"
-          onClick={() => router.push(invoiceToken ? `/invoice?token=${encodeURIComponent(invoiceToken)}` : `/invoice?id=${invoiceId}`)}
+          onClick={() => router.push(`/invoice?id=${invoiceId}`)}
           className="text-sm font-medium text-slate-400 hover:text-white"
         >
           â† Back to Invoice

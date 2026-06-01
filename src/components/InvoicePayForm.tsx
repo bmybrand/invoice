@@ -298,9 +298,7 @@ function PaymentFormInner({
   const [submittedPaymentStatus, setSubmittedPaymentStatus] = useState<'succeeded' | 'processing'>('processing')
   const [submitLocked, setSubmitLocked] = useState(false)
 
-  const invoiceUrl = invoiceToken
-    ? `/invoice?token=${encodeURIComponent(invoiceToken)}`
-    : `/invoice?id=${invoiceId}`
+  const invoiceUrl = `/invoice?id=${invoiceId}`
 
   useEffect(() => {
     if (!paymentSubmitted) return
@@ -361,7 +359,7 @@ function PaymentFormInner({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           invoiceId,
-          token: invoiceToken,
+          token: null,
           fullName,
           phoneNumber,
           emailAddress,

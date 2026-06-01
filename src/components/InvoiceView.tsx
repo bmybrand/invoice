@@ -58,8 +58,8 @@ export default function InvoiceView({ invoiceId, invoiceToken, publicView = fals
       let invoiceError: { message?: string } | null = null
       let brandError: { message?: string } | null = null
 
-      if (publicView && invoiceToken) {
-        const response = await fetch(`/api/public/invoice?token=${encodeURIComponent(invoiceToken)}`)
+      if (publicView) {
+        const response = await fetch(`/api/public/invoice?id=${encodeURIComponent(String(invoiceId))}`)
         const payload = (await response.json().catch(() => null)) as {
           invoice?: Record<string, unknown>
           brands?: BrandOption[]

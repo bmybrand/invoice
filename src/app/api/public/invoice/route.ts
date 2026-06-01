@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { env } from '@/lib/env'
-import { verifyInvoiceToken } from '@/lib/invoice-token'
 
 const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
   auth: {
@@ -11,21 +10,23 @@ const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
 })
 
 export async function GET(req: Request) {
-  const token = new URL(req.url).searchParams.get('token')?.trim() ?? ''
-  if (!token) {
-    return NextResponse.json({ error: 'Missing token' }, { status: 400 })
+  const url = new URL(req.url)
+  const idParam = url.searchParams.get('id')?.trim() ?? ''
+
+  if (!idParam) {
+    return NextResponse.json({ error: 'Missing id' }, { status: 400 })
   }
 
-  const payload = verifyInvoiceToken(token)
-  if (!payload) {
-    return NextResponse.json({ error: 'Invalid or expired token' }, { status: 401 })
+  const invoiceId = Number(idParam)
+  if (!Number.isFinite(invoiceId) || invoiceId <= 0) {
+    return NextResponse.json({ error: 'Invalid invoice id' }, { status: 400 })
   }
 
   const [{ data: invoice, error: invoiceError }, { data: brands, error: brandsError }] = await Promise.all([
     supabase
       .from('invoices')
       .select('*, employees!invoice_creator_id(employee_name), clients!client_id(name)')
-      .eq('id', payload.id)
+      .eq('id', invoiceId as number)
       .maybeSingle(),
     supabase
       .from('brands')

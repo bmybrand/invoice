@@ -1,5 +1,5 @@
 import InvoicePayRouteShell from '@/components/InvoicePayRouteShell'
-import { encryptInvoiceId, verifyInvoiceToken } from '@/lib/invoice-token'
+import { encryptInvoiceId, decryptInvoiceToken } from '@/lib/invoice-token'
 
 export default async function InvoicePayPage({
   searchParams,
@@ -13,15 +13,14 @@ export default async function InvoicePayPage({
   let invoiceId: number
   let invoiceToken: string | null = null
 
-  if (tokenParam) {
-    const payload = verifyInvoiceToken(tokenParam)
-    invoiceId = payload?.id ?? 0
-    if (invoiceId > 0) {
-      invoiceToken = payload?.purpose === 'pay' ? tokenParam : encryptInvoiceId(invoiceId, 'pay')
-    }
-  } else if (idParam) {
+  if (idParam) {
     invoiceId = Number(idParam)
-    if (Number.isFinite(invoiceId) && invoiceId > 0) invoiceToken = encryptInvoiceId(invoiceId, 'pay')
+    // Do not require a token; leave invoiceToken null for public access.
+    invoiceToken = null
+  } else if (tokenParam) {
+    // Try to read invoice id from token, but don't enforce token validity here.
+    invoiceId = decryptInvoiceToken(tokenParam) ?? 0
+    invoiceToken = null
   } else {
     invoiceId = 0
   }

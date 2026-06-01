@@ -95,13 +95,3 @@ export function decryptInvoiceToken(token: string, expectedPurpose?: InvoiceToke
   return payload.id
 }
 
-export function getInvoiceLink(invoiceId: number, payment?: string): string {
-  const token = encryptInvoiceId(invoiceId, 'view')
-  const base = `/invoice?token=${encodeURIComponent(token)}`
-  return payment ? `${base}&payment=${encodeURIComponent(payment)}` : base
-}
-
-export function getInvoicePayLink(invoiceId: number): string {
-  const token = encryptInvoiceId(invoiceId, 'pay')
-  return `/invoice/pay?token=${encodeURIComponent(token)}`
-}
