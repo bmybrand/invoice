@@ -1,7 +1,9 @@
 'use client'
 
 import { useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import { useClientDashboardData } from '@/context/ClientDashboardDataContext'
+import { getInvoiceLink as getSignedInvoiceLink } from '@/app/actions/invoice-link'
 import {
   ResponsiveContainer,
   PieChart,
@@ -116,6 +118,7 @@ function daysUntil(dateString?: string | null) {
 }
 
 export default function ClientDashboardPage() {
+  const router = useRouter()
   const { client, clientEmail, invoices, payments, loading, error, refetch } =
     useClientDashboardData() ?? {
       client: null,
@@ -590,12 +593,17 @@ export default function ClientDashboardPage() {
                             </span>
                           </td>
                           <td className="px-4 py-4 text-right">
-                            <a
-                              href={`/invoice?id=${invoice.id}`}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void getSignedInvoiceLink(invoice.id).then((path) => {
+                                  router.push(path)
+                                })
+                              }}
                               className="inline-flex rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-white transition hover:bg-slate-700"
                             >
                               View
-                            </a>
+                            </button>
                           </td>
                         </tr>
                       )
@@ -640,12 +648,17 @@ export default function ClientDashboardPage() {
                       Invoice #{payment.invoice_id ?? '--'}
                     </p>
                     {payment.invoice_id ? (
-                      <a
-                        href={`/invoice?id=${payment.invoice_id}`}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void getSignedInvoiceLink(payment.invoice_id).then((path) => {
+                            router.push(path)
+                          })
+                        }}
                         className="text-xs font-semibold text-orange-400 hover:text-orange-300"
                       >
                         View Invoice
-                      </a>
+                      </button>
                     ) : (
                       <span className="text-xs text-slate-500">—</span>
                     )}

@@ -1,15 +1,16 @@
 'use server'
 
-export async function getInvoiceToken(_: number): Promise<string | null> {
-  // Token generation removed — keep function for compatibility but return null.
-  return null
+import { encryptInvoiceId, getInvoiceLink as getLink, getInvoicePayLink as getPayLink } from '@/lib/invoice-token'
+
+export async function getInvoiceToken(invoiceId: number): Promise<string | null> {
+  if (!Number.isFinite(invoiceId) || invoiceId <= 0) return null
+  return encryptInvoiceId(invoiceId)
 }
 
 export async function getInvoiceLink(invoiceId: number, payment?: string): Promise<string> {
-  const base = `/invoice?id=${invoiceId}`
-  return payment ? `${base}&payment=${encodeURIComponent(payment)}` : base
+  return getLink(invoiceId, payment)
 }
 
 export async function getInvoicePayLink(invoiceId: number): Promise<string> {
-  return `/invoice/pay?id=${invoiceId}`
+  return getPayLink(invoiceId)
 }

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { logFetchError } from '@/lib/fetch-error'
+import { getInvoiceLink as getSignedInvoiceLink } from '@/app/actions/invoice-link'
 import { InvoiceDocument } from '@/components/Invoice'
 import InvoicePayForm from '@/components/InvoicePayForm'
 
@@ -31,7 +32,17 @@ type InvoiceRow = {
   invoice_type: string
 }
 
-export default function InvoiceView({ invoiceId, invoiceToken, publicView = false }: { invoiceId: number; invoiceToken: string | null; publicView?: boolean }) {
+export default function InvoiceView({
+  invoiceId,
+  invoiceToken,
+  publicView = false,
+  tokenExpired = false,
+}: {
+  invoiceId: number
+  invoiceToken: string | null
+  publicView?: boolean
+  tokenExpired?: boolean
+}) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const paymentParam = searchParams.get('payment')
@@ -43,6 +54,8 @@ export default function InvoiceView({ invoiceId, invoiceToken, publicView = fals
   const [brands, setBrands] = useState<BrandOption[]>([])
   const [paymentCompletedLocally, setPaymentCompletedLocally] = useState(false)
   const [downloadingPdf, setDownloadingPdf] = useState(false)
+  const [renewingToken, setRenewingToken] = useState(false)
+  const [renewMessage, setRenewMessage] = useState<string | null>(null)
   const autoDownloadTriggeredRef = useRef(false)
 
   useEffect(() => {
@@ -58,11 +71,12 @@ export default function InvoiceView({ invoiceId, invoiceToken, publicView = fals
       let invoiceError: { message?: string } | null = null
       let brandError: { message?: string } | null = null
 
-      if (publicView) {
-        const response = await fetch(`/api/public/invoice?id=${encodeURIComponent(String(invoiceId))}`)
+      if (publicView && invoiceToken) {
+        const response = await fetch(`/api/public/invoice?token=${encodeURIComponent(invoiceToken)}`)
         const payload = (await response.json().catch(() => null)) as {
           invoice?: Record<string, unknown>
           brands?: BrandOption[]
+          tokenExpired?: boolean
           error?: string
         } | null
 
@@ -72,6 +86,8 @@ export default function InvoiceView({ invoiceId, invoiceToken, publicView = fals
           invoiceData = payload.invoice
           brandData = payload.brands ?? []
         }
+      } else if (publicView) {
+        invoiceError = { message: 'Missing invoice token' }
       } else {
         const result = await Promise.all([
           supabase.from('invoices').select('*, employees!invoice_creator_id(employee_name), clients!client_id(name)').eq('id', invoiceId).maybeSingle(),
@@ -123,7 +139,7 @@ export default function InvoiceView({ invoiceId, invoiceToken, publicView = fals
     }
 
     fetchData()
-  }, [invoiceId, invoiceToken, publicView])
+  }, [invoiceId, invoiceToken, publicView, tokenExpired])
 
   const brandMeta = useMemo(() => {
     if (!invoice) return null
@@ -139,7 +155,27 @@ export default function InvoiceView({ invoiceId, invoiceToken, publicView = fals
   const remainingAmount = Math.max(grandTotal - payableAmount, 0)
   const showPayableDetails = invoice?.payable_amount != null
   const amountToPay = showPayableDetails && payableAmount > 0 ? payableAmount : grandTotal
-  const shouldShowPaymentForm = !isPaid && !isProcessing
+  const shouldShowPaymentForm = !tokenExpired && !isPaid && !isProcessing
+
+  const handleRenewToken = useCallback(async () => {
+    if (renewingToken || !Number.isFinite(invoiceId) || invoiceId <= 0) return
+
+    setRenewingToken(true)
+    setRenewMessage(null)
+
+    try {
+      const invoicePath = await getSignedInvoiceLink(invoiceId)
+      const renewedInvoiceUrl = `${window.location.origin}${invoicePath}`
+      await navigator.clipboard.writeText(renewedInvoiceUrl)
+      window.location.assign(renewedInvoiceUrl)
+      setRenewMessage('A fresh invoice link has been copied and opened. It is valid for the next 30 days.')
+    } catch (error) {
+      console.error('Failed to renew invoice token', error)
+      setRenewMessage('Failed to renew the invoice link.')
+    } finally {
+      setRenewingToken(false)
+    }
+  }, [invoiceId, renewingToken])
 
   const handleDownloadPdf = useCallback(async () => {
     if (!canDownloadPdf || downloadingPdf || !invoice) return
@@ -350,6 +386,35 @@ export default function InvoiceView({ invoiceId, invoiceToken, publicView = fals
 
   return (
     <div id="invoice-view-root" className={publicView ? 'space-y-4 print:space-y-0 p-4 sm:p-6 print:p-0 print:m-0' : 'p-4 sm:p-6 space-y-4 print:space-y-0 print:p-0 print:m-0'}>
+      {publicView && tokenExpired && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
+          <p className="text-sm font-semibold text-amber-800">Token expired</p>
+          <p className="mt-1 text-sm text-amber-700">
+            This invoice link has expired. You can still review the invoice, but payment is disabled. Please ask an employee for a new payment link.
+          </p>
+        </div>
+      )}
+      {!publicView && tokenExpired && (
+        <div className="no-print rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-amber-400">Token expired</p>
+              <p className="mt-1 text-xs text-slate-400">
+                This customer link has expired. Only employees can renew it for the next 30 days.
+              </p>
+              {renewMessage ? <p className="mt-2 text-xs text-slate-300">{renewMessage}</p> : null}
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleRenewToken()}
+              disabled={renewingToken}
+              className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-300"
+            >
+              {renewingToken ? 'Renewing...' : 'Renew Link'}
+            </button>
+          </div>
+        </div>
+      )}
       {(showPaymentCompleteBanner || paymentCompletedLocally) && (
         <div className="no-print mb-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
           <p className="text-sm font-semibold text-emerald-400">Payment complete</p>

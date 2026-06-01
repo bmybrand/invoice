@@ -5,7 +5,15 @@ import { supabase } from '@/lib/supabase'
 import { DashboardLayout } from '@/components/DashboardLayout'
 import InvoiceView from '@/components/InvoiceView'
 
-export default function InvoiceRouteShell({ invoiceId, invoiceToken }: { invoiceId: number; invoiceToken: string | null }) {
+export default function InvoiceRouteShell({
+  invoiceId,
+  invoiceToken,
+  tokenExpired = false,
+}: {
+  invoiceId: number
+  invoiceToken: string | null
+  tokenExpired?: boolean
+}) {
   const [resolved, setResolved] = useState(false)
   const [isEmployee, setIsEmployee] = useState(false)
 
@@ -46,7 +54,7 @@ export default function InvoiceRouteShell({ invoiceId, invoiceToken }: { invoice
           <h1 className="text-xl font-bold text-white mb-2">Invoice</h1>
         </div>
         <Suspense fallback={<div className="p-6 text-sm text-slate-400">Loading invoice...</div>}>
-          <InvoiceView invoiceId={invoiceId} invoiceToken={invoiceToken} publicView={false} />
+          <InvoiceView invoiceId={invoiceId} invoiceToken={invoiceToken} publicView={false} tokenExpired={tokenExpired} />
         </Suspense>
       </DashboardLayout>
     )
@@ -55,7 +63,7 @@ export default function InvoiceRouteShell({ invoiceId, invoiceToken }: { invoice
   return (
     <div className="min-h-screen bg-white">
       <Suspense fallback={<div className="min-h-screen bg-white p-6 text-sm text-slate-500">Loading invoice...</div>}>
-        <InvoiceView invoiceId={invoiceId} invoiceToken={invoiceToken} publicView />
+        <InvoiceView invoiceId={invoiceId} invoiceToken={invoiceToken} publicView tokenExpired={tokenExpired} />
       </Suspense>
     </div>
   )

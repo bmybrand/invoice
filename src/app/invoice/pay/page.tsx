@@ -1,5 +1,5 @@
 import InvoicePayRouteShell from '@/components/InvoicePayRouteShell'
-import { encryptInvoiceId, decryptInvoiceToken } from '@/lib/invoice-token'
+import { readInvoiceToken } from '@/lib/invoice-token'
 
 export default async function InvoicePayPage({
   searchParams,
@@ -8,19 +8,26 @@ export default async function InvoicePayPage({
 }) {
   const resolvedParams = searchParams instanceof Promise ? await searchParams : searchParams
   const tokenParam = resolvedParams?.token
-  const idParam = resolvedParams?.id
 
   let invoiceId: number
-  let invoiceToken: string | null = null
+  let invoiceToken: string | null = tokenParam ?? null
+  let tokenExpired = false
+  let tokenExpiresAt: number | null = null
 
-  if (idParam) {
-    invoiceId = Number(idParam)
-    // Do not require a token; leave invoiceToken null for public access.
-    invoiceToken = null
-  } else if (tokenParam) {
-    // Try to read invoice id from token, but don't enforce token validity here.
-    invoiceId = decryptInvoiceToken(tokenParam) ?? 0
-    invoiceToken = null
+  if (tokenParam) {
+    const activePayload = readInvoiceToken(tokenParam)
+    if (activePayload) {
+      invoiceId = activePayload.id
+      tokenExpiresAt = activePayload.exp
+    } else {
+      const expiredPayload = readInvoiceToken(tokenParam, { allowExpired: true })
+      invoiceId = expiredPayload?.id ?? 0
+      tokenExpired = !!expiredPayload
+      tokenExpiresAt = expiredPayload?.exp ?? null
+      if (tokenExpired) {
+        invoiceToken = null
+      }
+    }
   } else {
     invoiceId = 0
   }
@@ -33,5 +40,12 @@ export default async function InvoicePayPage({
     )
   }
 
-  return <InvoicePayRouteShell invoiceId={invoiceId} invoiceToken={invoiceToken} />
+  return (
+    <InvoicePayRouteShell
+      invoiceId={invoiceId}
+      invoiceToken={invoiceToken}
+      tokenExpired={tokenExpired}
+      tokenExpiresAt={tokenExpiresAt}
+    />
+  )
 }

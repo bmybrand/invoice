@@ -1,16 +1,65 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { DashboardLayout } from '@/components/DashboardLayout'
+import { logFetchError } from '@/lib/fetch-error'
 import InvoicePayForm from '@/components/InvoicePayForm'
 
-export default function InvoicePayRouteShell({ invoiceId, invoiceToken }: { invoiceId: number; invoiceToken: string | null }) {
+type InvoicePaymentSummary = {
+  grandTotal: number
+  brand_name?: string
+  email?: string
+  phone?: string
+}
+
+export default function InvoicePayRouteShell({
+  invoiceId,
+  invoiceToken,
+  tokenExpired = false,
+  tokenExpiresAt = null,
+}: {
+  invoiceId: number
+  invoiceToken: string | null
+  tokenExpired?: boolean
+  tokenExpiresAt?: number | null
+}) {
   const router = useRouter()
   const [resolved, setResolved] = useState(false)
   const [isEmployee, setIsEmployee] = useState(false)
-  const [invoice, setInvoice] = useState<{ grandTotal: number; brand_name?: string; email?: string; phone?: string } | null>(null)
+  const [invoice, setInvoice] = useState<InvoicePaymentSummary | null>(null)
+  const [accessError, setAccessError] = useState<string | null>(null)
+  const [liveTokenExpired, setLiveTokenExpired] = useState(() =>
+    tokenExpiresAt != null ? Date.now() >= tokenExpiresAt * 1000 : false
+  )
+
+  const publicInvoiceUrl = useMemo(() => {
+    if (!invoiceToken) return null
+    return `/invoice?token=${encodeURIComponent(invoiceToken)}`
+  }, [invoiceToken])
+
+  useEffect(() => {
+    if (tokenExpiresAt == null) {
+      setLiveTokenExpired(false)
+      return
+    }
+
+    const remainingMs = tokenExpiresAt * 1000 - Date.now()
+    if (remainingMs <= 0) {
+      setLiveTokenExpired(true)
+      return
+    }
+
+    setLiveTokenExpired(false)
+    const timeoutId = window.setTimeout(() => {
+      setLiveTokenExpired(true)
+      setInvoice(null)
+      setAccessError('Token expired')
+    }, remainingMs)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [tokenExpiresAt])
 
   useEffect(() => {
     async function resolveViewer() {
@@ -35,12 +84,20 @@ export default function InvoicePayRouteShell({ invoiceId, invoiceToken }: { invo
       setResolved(true)
     }
 
-    resolveViewer()
+    void resolveViewer()
   }, [])
 
   useEffect(() => {
     async function fetchInvoice() {
-      if (!Number.isFinite(invoiceId) || invoiceId <= 0) return
+      if (!resolved || !Number.isFinite(invoiceId) || invoiceId <= 0) return
+
+      setAccessError(null)
+
+      if (!isEmployee && (tokenExpired || liveTokenExpired)) {
+        setInvoice(null)
+        setAccessError('Token expired')
+        return
+      }
 
       let data: {
         service?: unknown
@@ -52,36 +109,7 @@ export default function InvoicePayRouteShell({ invoiceId, invoiceToken }: { invo
       } | null = null
       let error: { message?: string } | null = null
 
-      // Public access uses id-only
-      const response = await fetch(`/api/public/invoice?id=${encodeURIComponent(String(invoiceId))}`)
-      const payload = (await response.json().catch(() => null)) as {
-        invoice?: {
-          service?: unknown
-          status?: string | null
-          brand_name?: string | null
-          email?: string | null
-          phone?: string | null
-          payable_amount?: number | string | null
-        }
-        error?: string
-      } | null
-
-      if (!response.ok || !payload?.invoice) {
-        error = { message: payload?.error ?? 'Failed to fetch invoice' }
-      } else {
-        data = payload.invoice
-      }
-
-      // else branch removed; we no longer branch on invoiceToken
-      
-      
-      
-      
-      
-      
-      
-      
-      
+      if (isEmployee) {
         const result = await supabase
           .from('invoices')
           .select('service, status, brand_name, email, phone, payable_amount')
@@ -90,22 +118,48 @@ export default function InvoicePayRouteShell({ invoiceId, invoiceToken }: { invo
 
         data = result.data
         error = result.error
+      } else if (invoiceToken) {
+        const response = await fetch(`/api/public/invoice?token=${encodeURIComponent(invoiceToken)}`)
+        const payload = (await response.json().catch(() => null)) as {
+          invoice?: {
+            service?: unknown
+            status?: string | null
+            brand_name?: string | null
+            email?: string | null
+            phone?: string | null
+            payable_amount?: number | string | null
+          }
+          error?: string
+        } | null
+
+        if (!response.ok || !payload?.invoice) {
+          error = { message: payload?.error ?? 'Failed to fetch invoice' }
+        } else {
+          data = payload.invoice
+        }
+      } else {
+        setInvoice(null)
+        setAccessError('Missing invoice token')
+        return
       }
 
       if (error || !data) {
+        if (error) logFetchError('Failed to fetch invoice for payment', error)
         setInvoice(null)
+        setAccessError(error?.message ?? 'Invoice not found or already paid.')
         return
       }
 
       const normalizedStatus = (data.status || '').toLowerCase()
-      const invoiceUrl = `/invoice?id=${invoiceId}`
-      if (normalizedStatus.includes('paid') || normalizedStatus.includes('completed')) {
-        router.replace(invoiceUrl)
-        return
-      }
-      if (normalizedStatus.includes('processing')) {
-        router.replace(`${invoiceUrl}&payment=processing`)
-        return
+      if (!isEmployee && publicInvoiceUrl) {
+        if (normalizedStatus.includes('paid') || normalizedStatus.includes('completed')) {
+          router.replace(`${publicInvoiceUrl}&payment=success`)
+          return
+        }
+        if (normalizedStatus.includes('processing')) {
+          router.replace(`${publicInvoiceUrl}&payment=processing`)
+          return
+        }
       }
 
       const services = Array.isArray(data.service) ? data.service : []
@@ -116,16 +170,17 @@ export default function InvoicePayRouteShell({ invoiceId, invoiceToken }: { invo
       )
       const payableAmount = data.payable_amount != null ? Math.min(Number(data.payable_amount), grandTotal) : null
       const amountToPay = payableAmount != null && payableAmount > 0 ? payableAmount : grandTotal
+
       setInvoice({
         grandTotal: amountToPay,
-        brand_name: data.brand_name as string,
-        email: (data.email as string) ?? '',
-        phone: (data.phone as string) ?? '',
+        brand_name: data.brand_name ?? '',
+        email: data.email ?? '',
+        phone: data.phone ?? '',
       })
     }
 
-    fetchInvoice()
-  }, [invoiceId, invoiceToken, router])
+    void fetchInvoice()
+  }, [invoiceId, invoiceToken, isEmployee, liveTokenExpired, publicInvoiceUrl, resolved, router, tokenExpired])
 
   if (!resolved) {
     return (
@@ -136,36 +191,46 @@ export default function InvoicePayRouteShell({ invoiceId, invoiceToken }: { invo
   }
 
   if (!invoice) {
-    return (
+    const message =
+      accessError === 'Token expired'
+        ? 'This payment link has expired. Ask an employee for a new link.'
+        : accessError ?? 'Invoice not found or already paid.'
+
+    const content = (
       <div className="flex min-h-screen items-center justify-center bg-gray-900 p-6">
-        <div className="text-center">
-          <p className="text-sm text-slate-400">Invoice not found or already paid.</p>
+        <div className="max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 text-center">
+          <p className="text-sm font-semibold text-white">
+            {accessError === 'Token expired' ? 'Token expired' : 'Payment link unavailable'}
+          </p>
+          <p className="mt-2 text-sm text-slate-400">{message}</p>
           <button
             type="button"
-            onClick={() => router.push('/dashboard/invoices')}
+            onClick={() => router.push(isEmployee ? '/dashboard/invoices' : publicInvoiceUrl ?? '/')}
             className="mt-4 rounded-xl bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700"
           >
-            Back to Invoices
+            {isEmployee ? 'Back to Invoices' : 'Back'}
           </button>
         </div>
       </div>
     )
+
+    return isEmployee ? <DashboardLayout>{content}</DashboardLayout> : content
   }
 
-  const invoiceTitle = invoice.brand_name ? `${invoice.brand_name} â€“ Payment` : undefined
+  const invoiceTitle = invoice.brand_name ? `${invoice.brand_name} - Payment` : undefined
 
   if (isEmployee) {
     return (
       <DashboardLayout>
         <div className="min-h-screen bg-gray-900">
           <div className="border-b border-slate-700 px-4 py-4 sm:px-6">
-            <h1 className="text-xl font-bold text-white mb-2">Pay Invoice</h1>
+            <h1 className="mb-2 text-xl font-bold text-white">Pay Invoice</h1>
             <button
               type="button"
               onClick={() => router.push(`/invoice?id=${invoiceId}`)}
               className="text-sm font-medium text-slate-400 hover:text-white"
             >
-              â† Back to Invoice
+              Back to Invoice
             </button>
           </div>
           <InvoicePayForm
@@ -186,10 +251,10 @@ export default function InvoicePayRouteShell({ invoiceId, invoiceToken }: { invo
       <div className="border-b border-slate-700 px-4 py-4 sm:px-6">
         <button
           type="button"
-          onClick={() => router.push(`/invoice?id=${invoiceId}`)}
+          onClick={() => router.push(publicInvoiceUrl ?? '/')}
           className="text-sm font-medium text-slate-400 hover:text-white"
         >
-          â† Back to Invoice
+          Back to Invoice
         </button>
       </div>
       <InvoicePayForm

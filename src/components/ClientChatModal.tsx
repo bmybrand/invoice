@@ -8,7 +8,7 @@ import { useRouter } from 'next/navigation'
 import { Plus_Jakarta_Sans } from 'next/font/google'
 import { supabase } from '@/lib/supabase'
 import { logFetchError } from '@/lib/fetch-error'
-import { getInvoicePath } from '@/lib/invoice-paths'
+import { getInvoiceLink as getSignedInvoiceLink } from '@/app/actions/invoice-link'
 import { useDashboardProfile } from '@/components/DashboardLayout'
 import { useSessionContext } from '@/context/SessionContext'
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock'
@@ -2159,10 +2159,12 @@ export function ClientChatModal({
                 <button
                   key={invoice.id}
                   type="button"
-                    onClick={() => {
-                      onClose()
-                      router.push(getInvoicePath(invoice.id))
-                    }}
+                  onClick={() => {
+                    onClose()
+                    void getSignedInvoiceLink(invoice.id).then((path) => {
+                      router.push(path)
+                    })
+                  }}
                   className="w-full rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-3 text-left transition hover:border-slate-700 hover:bg-slate-900"
                 >
                   <div className="flex items-start justify-between gap-2">

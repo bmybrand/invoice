@@ -12,7 +12,6 @@ import { formatInvoiceCode } from '@/lib/invoice-code'
 import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
 import { logFetchError } from '@/lib/fetch-error'
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock'
-import { getInvoicePath } from '@/lib/invoice-paths'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
@@ -1141,8 +1140,9 @@ export default function Invoice() {
     setOpenActionMenu({ id, top, left })
   }
 
-  function openInvoiceRecord(invoiceId: number) {
-    router.push(getInvoicePath(invoiceId))
+  async function openInvoiceRecord(invoiceId: number) {
+    const encryptedPath = await getSignedInvoiceLink(invoiceId)
+    router.push(encryptedPath)
   }
 
   function validateServiceLines(lines: ServiceLine[]): { valid: boolean; message: string } {
@@ -1405,7 +1405,9 @@ export default function Invoice() {
     void getSignedInvoiceLink(inv.id).then((signedLink) => {
       setEditInvoiceUrl(`${window.location.origin}${signedLink}`)
     }).catch(() => {
-      setEditInvoiceUrl(`${window.location.origin}${getInvoicePath(inv.id)}`)
+      void getSignedInvoiceLink(inv.id).then((signedLink) => {
+        setEditInvoiceUrl(`${window.location.origin}${signedLink}`)
+      })
     })
     setEditUrlCopied(false)
     setEditError(null)

@@ -1,4 +1,4 @@
-import { verifyInvoiceToken, type InvoiceTokenPurpose } from '@/lib/invoice-token'
+import { readInvoiceToken, type InvoiceTokenPurpose } from '@/lib/invoice-token'
 
 type BoundInvoiceAccessSuccess = {
   ok: true
@@ -17,8 +17,48 @@ export function requireBoundInvoiceToken(
   invoiceId: number,
   purpose: InvoiceTokenPurpose = 'pay'
 ): BoundInvoiceAccessResult {
-  // Token checks are disabled temporarily to avoid blocking public access.
-  // Returning success unconditionally lets payment-related endpoints proceed by invoice id.
-  // NOTE: Re-enable and tighten checks before deploying to production.
+  const normalizedToken = token?.trim() ?? ''
+  if (!normalizedToken) {
+    return {
+      ok: false,
+      status: 401,
+      error: 'Missing invoice token',
+    }
+  }
+
+  const payload = readInvoiceToken(normalizedToken)
+  if (!payload) {
+    const expiredPayload = readInvoiceToken(normalizedToken, { allowExpired: true })
+    return {
+      ok: false,
+      status: 401,
+      error: expiredPayload ? 'Token expired' : 'Invalid invoice token',
+    }
+  }
+
+  if (payload.id !== invoiceId) {
+    return {
+      ok: false,
+      status: 403,
+      error: 'Invoice token does not match this invoice',
+    }
+  }
+
+  if (purpose === 'view' && payload.purpose !== 'view') {
+    return {
+      ok: false,
+      status: 403,
+      error: 'Invoice token is not valid for viewing',
+    }
+  }
+
+  if (purpose === 'pay' && payload.purpose !== 'pay' && payload.purpose !== 'view') {
+    return {
+      ok: false,
+      status: 403,
+      error: 'Invoice token is not valid for payment',
+    }
+  }
+
   return { ok: true }
 }

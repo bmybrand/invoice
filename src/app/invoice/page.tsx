@@ -1,4 +1,5 @@
 import InvoiceRouteShell from '@/components/InvoiceRouteShell'
+import { decryptInvoiceToken, readInvoiceToken } from '@/lib/invoice-token'
 
 export default async function PublicInvoicePage({
   searchParams,
@@ -6,15 +7,21 @@ export default async function PublicInvoicePage({
   searchParams?: Promise<{ id?: string; token?: string }> | { id?: string; token?: string }
 }) {
   const resolvedParams = searchParams instanceof Promise ? await searchParams : searchParams
-  const idParam = resolvedParams?.id
+  const tokenParam = resolvedParams?.token
 
   let invoiceId: number
-  let invoiceToken: string | null = null
+  let invoiceToken: string | null = tokenParam ?? null
+  let tokenExpired = false
 
-  // Only allow access by ?id= for public invoices. Token support removed.
-  if (idParam) {
-    invoiceId = Number(idParam)
-    invoiceToken = null
+  if (tokenParam) {
+    const activeInvoiceId = decryptInvoiceToken(tokenParam)
+    if (activeInvoiceId) {
+      invoiceId = activeInvoiceId
+    } else {
+      const expiredPayload = readInvoiceToken(tokenParam, { allowExpired: true })
+      invoiceId = expiredPayload?.id ?? 0
+      tokenExpired = !!expiredPayload
+    }
   } else {
     invoiceId = 0
   }
@@ -28,6 +35,6 @@ export default async function PublicInvoicePage({
   }
 
   return (
-    <InvoiceRouteShell invoiceId={invoiceId} invoiceToken={invoiceToken} />
+    <InvoiceRouteShell invoiceId={invoiceId} invoiceToken={invoiceToken} tokenExpired={tokenExpired} />
   )
 }

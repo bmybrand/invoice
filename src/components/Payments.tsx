@@ -9,9 +9,9 @@ import { useDashboardProfile } from '@/components/DashboardLayout'
 import { InvoiceDocument } from '@/components/Invoice'
 import { useClientDashboardData } from '@/context/ClientDashboardDataContext'
 import { formatInvoiceCode } from '@/lib/invoice-code'
-import { getInvoicePath } from '@/lib/invoice-paths'
 import { logFetchError } from '@/lib/fetch-error'
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock'
+import { getInvoiceLink as getSignedInvoiceLink } from '@/app/actions/invoice-link'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
@@ -745,9 +745,9 @@ export default function Payments() {
   const allPagePaidSelected =
     selectablePagePaymentIds.length > 0 && selectablePagePaymentIds.every((id) => selectedPaymentIds.includes(id))
 
-  function openPaymentInvoice(invoiceId: number | null) {
+  async function openPaymentInvoice(invoiceId: number | null) {
     if (invoiceId == null) return
-    router.push(getInvoicePath(invoiceId))
+    router.push(await getSignedInvoiceLink(invoiceId))
   }
 
   function togglePaymentSelection(paymentId: number, checked: boolean) {

@@ -9,6 +9,11 @@ type InvoiceTokenPayload = {
   purpose: InvoiceTokenPurpose
 }
 
+type ReadInvoiceTokenOptions = {
+  allowExpired?: boolean
+  expectedPurpose?: InvoiceTokenPurpose
+}
+
 const DEFAULT_TTL_SECONDS = 60 * 60 * 24 * 30
 
 function b64urlEncode(buffer: Buffer): string {
@@ -27,7 +32,7 @@ function signPayload(payload: InvoiceTokenPayload): string {
   return `${body}.${signature}`
 }
 
-export function verifyInvoiceToken(token: string): InvoiceTokenPayload | null {
+export function readInvoiceToken(token: string, options: ReadInvoiceTokenOptions = {}): InvoiceTokenPayload | null {
   try {
     const [body, signature] = token.split('.')
     if (!body || !signature) {
@@ -58,7 +63,11 @@ export function verifyInvoiceToken(token: string): InvoiceTokenPayload | null {
       return null
     }
 
-    if (exp < Math.floor(Date.now() / 1000)) {
+    if (options.expectedPurpose && purpose !== options.expectedPurpose) {
+      return null
+    }
+
+    if (!options.allowExpired && exp < Math.floor(Date.now() / 1000)) {
       return null
     }
 
@@ -70,6 +79,10 @@ export function verifyInvoiceToken(token: string): InvoiceTokenPayload | null {
   } catch {
     return null
   }
+}
+
+export function verifyInvoiceToken(token: string): InvoiceTokenPayload | null {
+  return readInvoiceToken(token)
 }
 
 export function encryptInvoiceId(
@@ -85,13 +98,18 @@ export function encryptInvoiceId(
 }
 
 export function decryptInvoiceToken(token: string, expectedPurpose?: InvoiceTokenPurpose): number | null {
-  const payload = verifyInvoiceToken(token)
-  if (!payload) {
-    return null
-  }
-  if (expectedPurpose && payload.purpose !== expectedPurpose) {
-    return null
-  }
+  const payload = readInvoiceToken(token, { expectedPurpose })
+  if (!payload) return null
   return payload.id
 }
 
+export function getInvoiceLink(invoiceId: number, payment?: string): string {
+  const token = encryptInvoiceId(invoiceId, 'view')
+  const base = `/invoice?token=${encodeURIComponent(token)}`
+  return payment ? `${base}&payment=${encodeURIComponent(payment)}` : base
+}
+
+export function getInvoicePayLink(invoiceId: number): string {
+  const token = encryptInvoiceId(invoiceId, 'pay')
+  return `/invoice/pay?token=${encodeURIComponent(token)}`
+}
