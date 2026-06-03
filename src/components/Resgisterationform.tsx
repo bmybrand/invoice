@@ -155,6 +155,7 @@ export function RegisterForm() {
     }
 
     const user = data.user
+    const accessToken = data.session?.access_token?.trim() || ''
 
     if (user) {
       const { error: requestError } = await supabase.from('clients').insert([
@@ -173,6 +174,19 @@ export function RegisterForm() {
         setLoading(false)
         setError(requestError.message)
         return
+      }
+
+      if (accessToken) {
+        try {
+          await fetch('/api/clients/registration-requests/notify', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          })
+        } catch {
+          // Registration should not fail if the admin notification email cannot be sent.
+        }
       }
     }
 
