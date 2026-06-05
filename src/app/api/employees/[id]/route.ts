@@ -236,16 +236,6 @@ export async function POST(
     )
   }
 
-  // Delete auth user first
-  const { error: authDeleteError } = await supabase.auth.admin.deleteUser(row.auth_id)
-  if (authDeleteError) {
-    return NextResponse.json(
-      { error: `Auth user deletion failed: ${authDeleteError.message}` },
-      { status: 500 }
-    )
-  }
-
-  // Only delete employee row if auth deletion succeeded
   const { error: deleteError } = await supabase
     .from('employees')
     .delete()
@@ -253,6 +243,14 @@ export async function POST(
 
   if (deleteError) {
     return NextResponse.json({ error: deleteError.message || 'Failed to permanently delete employee' }, { status: 500 })
+  }
+
+  const { error: authDeleteError } = await supabase.auth.admin.deleteUser(row.auth_id)
+  if (authDeleteError) {
+    return NextResponse.json(
+      { error: `Employee row deleted but auth cleanup failed: ${authDeleteError.message}` },
+      { status: 500 }
+    )
   }
 
   return NextResponse.json({ ok: true })
