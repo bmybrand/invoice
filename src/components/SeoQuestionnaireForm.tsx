@@ -1,12 +1,11 @@
 'use client'
 
-import { useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import type { BriefFormPrefill } from '@/lib/brief-form-prefill'
 import { canSubmitBriefForm } from '@/lib/brief-form-access'
 import { useBriefFormSubmit } from '@/lib/use-brief-form-submit'
-import { BriefFormCopySection, BriefFormSubmitBar } from '@/components/brief-forms/BriefFormActions'
+import { BriefFormCopyButton, BriefFormCopySection, BriefFormSubmitBar } from '@/components/brief-forms/BriefFormActions'
 
 type Option = {
   value: string
@@ -287,17 +286,20 @@ export default function SeoQuestionnaireForm({
           </div>
 
           {backHref && backLabel ? (
-            <Link
-              href={backHref}
-              className={`inline-flex items-center gap-2 self-start rounded-2xl px-4 py-3 text-sm font-semibold transition ${
-                publicView
-                  ? 'border border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:text-slate-950'
-                  : 'border border-slate-700 bg-slate-900/70 text-slate-300 hover:border-slate-600 hover:text-white'
-              }`}
-            >
-              <BackIcon />
-              {backLabel}
-            </Link>
+            <div className="flex flex-wrap items-center gap-2 self-start">
+              <BriefFormCopyButton formType="seo-questionnaire" publicView={publicView} />
+              <Link
+                href={backHref}
+                className={`inline-flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+                  publicView
+                    ? 'border border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:text-slate-950'
+                    : 'border border-slate-700 bg-slate-900/70 text-slate-300 hover:border-slate-600 hover:text-white'
+                }`}
+              >
+                <BackIcon />
+                {backLabel}
+              </Link>
+            </div>
           ) : null}
         </div>
       </div>

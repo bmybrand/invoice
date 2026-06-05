@@ -6,6 +6,51 @@ import { getBriefFormPublicUrl } from '@/lib/brief-form-public-url'
 
 type CopyState = 'idle' | 'copied' | 'error'
 
+function CopyIcon() {
+  return (
+    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <rect x="8" y="8" width="10" height="11" rx="2" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16 8V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h1" />
+    </svg>
+  )
+}
+
+export function BriefFormCopyButton({
+  formType,
+  publicView = false,
+}: {
+  formType: BriefFormType
+  publicView?: boolean
+}) {
+  const [copyState, setCopyState] = useState<CopyState>('idle')
+
+  async function handleCopyLink() {
+    try {
+      await navigator.clipboard.writeText(getBriefFormPublicUrl(formType))
+      setCopyState('copied')
+      window.setTimeout(() => setCopyState('idle'), 2000)
+    } catch {
+      setCopyState('error')
+      window.setTimeout(() => setCopyState('idle'), 2000)
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopyLink}
+      className={`inline-flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+        publicView
+          ? 'border border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:text-slate-950'
+          : 'border border-slate-700 bg-slate-900/70 text-slate-300 hover:border-slate-600 hover:text-white'
+      }`}
+    >
+      <CopyIcon />
+      {copyState === 'copied' ? 'Copied' : copyState === 'error' ? 'Copy Failed' : 'Copy Link'}
+    </button>
+  )
+}
+
 export function BriefFormCopySection({ formType }: { formType: BriefFormType }) {
   const [copyState, setCopyState] = useState<CopyState>('idle')
 
