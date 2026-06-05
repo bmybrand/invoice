@@ -2,7 +2,9 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
+import { useState } from 'react'
 import { useDashboardProfile } from '@/components/DashboardLayout'
+import { getBriefFormPublicUrl } from '@/lib/brief-form-public-url'
 import { canViewBriefFormSubmissions } from '@/lib/brief-form-submissions-access'
 
 const briefFormOptions = [
@@ -12,6 +14,7 @@ const briefFormOptions = [
     accent: 'from-orange-500/22 via-amber-500/10 to-transparent',
     tag: 'Growth',
     href: '/dashboard/brief-forms/seo-questionnaire',
+    formType: 'seo-questionnaire',
     status: 'Ready',
   },
   {
@@ -20,6 +23,7 @@ const briefFormOptions = [
     accent: 'from-sky-500/18 via-cyan-500/8 to-transparent',
     tag: 'Digital',
     href: '/dashboard/brief-forms/website',
+    formType: 'website',
     status: 'Ready',
   },
   {
@@ -28,6 +32,7 @@ const briefFormOptions = [
     accent: 'from-fuchsia-500/18 via-pink-500/8 to-transparent',
     tag: 'Identity',
     href: '/dashboard/brief-forms/logo-design',
+    formType: 'logo-design',
     status: 'Ready',
   },
   {
@@ -36,6 +41,7 @@ const briefFormOptions = [
     accent: 'from-violet-500/18 via-indigo-500/8 to-transparent',
     tag: 'Creative',
     href: '/dashboard/brief-forms/graphic-design',
+    formType: 'graphic-design',
     status: 'Ready',
   },
   {
@@ -44,9 +50,10 @@ const briefFormOptions = [
     accent: 'from-emerald-500/18 via-teal-500/8 to-transparent',
     tag: 'Motion',
     href: '/dashboard/brief-forms/video-animation',
+    formType: 'video-animation',
     status: 'Ready',
   },
-]
+] as const
 
 function ArrowIcon() {
   return (
@@ -56,7 +63,17 @@ function ArrowIcon() {
   )
 }
 
+function CopyIcon() {
+  return (
+    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <rect x="8" y="8" width="10" height="11" rx="2" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16 8V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h1" />
+    </svg>
+  )
+}
+
 export default function BriefFormsPage() {
+  const [copiedForm, setCopiedForm] = useState<string | null>(null)
   const { accountType, displayRole, displayDepartment, profileLoaded } = useDashboardProfile()
   const showSubmissions = profileLoaded &&
     canViewBriefFormSubmissions({
@@ -64,6 +81,16 @@ export default function BriefFormsPage() {
       role: displayRole,
       department: displayDepartment,
     })
+
+  async function handleCopyLink(formType: (typeof briefFormOptions)[number]['formType']) {
+    try {
+      await navigator.clipboard.writeText(getBriefFormPublicUrl(formType))
+      setCopiedForm(formType)
+      window.setTimeout(() => setCopiedForm((current) => current === formType ? null : current), 2000)
+    } catch {
+      setCopiedForm(null)
+    }
+  }
 
   return (
     <section className="relative overflow-hidden rounded-[2rem] border border-slate-800 bg-[#0f172a]/95">
@@ -115,8 +142,11 @@ export default function BriefFormsPage() {
 
         <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
           {briefFormOptions.map((option, index) => {
-            const cardContent = (
-              <>
+            return (
+              <div
+                key={option.title}
+                className="group relative overflow-hidden rounded-[1.6rem] border border-slate-800 bg-[#111827] p-5 text-left transition duration-200 hover:-translate-y-0.5 hover:border-slate-700 hover:bg-[#131d33]"
+              >
                 <div className={`absolute inset-0 bg-linear-to-br ${option.accent} opacity-90`} />
                 <div className="absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-white/12 to-transparent" />
 
@@ -147,35 +177,31 @@ export default function BriefFormsPage() {
                     </p>
                   </div>
 
-                  <div className="mt-6 flex items-center justify-between rounded-2xl border border-white/6 bg-slate-950/35 px-4 py-3 text-sm">
-                    <span className="font-semibold text-slate-300">
-                      {option.href ? 'Open brief form' : 'Coming next'}
-                    </span>
-                    <span className={`text-orange-300 transition-transform duration-200 ${option.href ? 'group-hover:translate-x-1' : ''}`}>
-                      <ArrowIcon />
-                    </span>
+                  <div className="mt-6 flex items-stretch gap-2">
+                    <Link
+                      href={option.href}
+                      className="flex min-w-0 flex-1 items-center justify-between rounded-2xl border border-white/6 bg-slate-950/35 px-4 py-3 text-sm transition hover:border-orange-400/25 hover:bg-slate-950/55"
+                    >
+                      <span className="font-semibold text-slate-300">Open brief form</span>
+                      <span className="text-orange-300 transition-transform duration-200 group-hover:translate-x-1">
+                        <ArrowIcon />
+                      </span>
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => void handleCopyLink(option.formType)}
+                      aria-label={`Copy public link for ${option.title}`}
+                      title={copiedForm === option.formType ? 'Copied!' : 'Copy public link'}
+                      className={`flex w-12 shrink-0 items-center justify-center rounded-2xl border bg-slate-950/35 transition ${
+                        copiedForm === option.formType
+                          ? 'border-emerald-400/30 text-emerald-300'
+                          : 'border-white/6 text-orange-300 hover:border-orange-400/30 hover:bg-slate-950/55'
+                      }`}
+                    >
+                      <CopyIcon />
+                    </button>
                   </div>
                 </div>
-              </>
-            )
-
-            const cardClassName = `group relative overflow-hidden rounded-[1.6rem] border border-slate-800 bg-[#111827] p-5 text-left transition duration-200 ${
-              option.href
-                ? 'cursor-pointer hover:-translate-y-0.5 hover:border-slate-700 hover:bg-[#131d33]'
-                : 'cursor-default opacity-85'
-            }`
-
-            if (option.href) {
-              return (
-                <Link key={option.title} href={option.href} className={cardClassName}>
-                  {cardContent}
-                </Link>
-              )
-            }
-
-            return (
-              <div key={option.title} className={cardClassName}>
-                {cardContent}
               </div>
             )
           })}
