@@ -5,14 +5,13 @@ import "./globals.css";
 import { SessionProvider } from '@/context/SessionContext';
 
 const configuredSiteUrl = process.env.NEXT_PUBLIC_SITE_URL
-  ?? process.env.NEXT_PUBLIC_BRIEF_FORMS_PUBLIC_BASE_URL
   ?? process.env.VERCEL_PROJECT_PRODUCTION_URL
   ?? process.env.VERCEL_URL
-  ?? "bmybrand.vercel.app";
+  ?? "localhost:3000";
 
 const siteUrl = configuredSiteUrl.startsWith("http")
   ? configuredSiteUrl
-  : `https://${configuredSiteUrl}`;
+  : `${configuredSiteUrl.startsWith("localhost") ? "http" : "https"}://${configuredSiteUrl}`;
 
 const siteDescription =
   "Bmybrand's invoice portal helps clients and the company manage invoices, payments, projects, and account information in one secure place.";
