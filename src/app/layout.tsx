@@ -17,7 +17,7 @@ const siteUrl = configuredSiteUrl.startsWith("http")
 const siteDescription =
   "Bmybrand's invoice portal helps clients and the company manage invoices, payments, projects, and account information in one secure place.";
 
-const socialPreviewUrl = new URL("/bmybrand-invoice-portal-preview-v2.png", siteUrl).toString();
+const socialPreviewUrl = new URL("/Social%20preview%20image%202.png?v=2", siteUrl).toString();
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
