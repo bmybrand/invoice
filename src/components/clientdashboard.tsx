@@ -651,7 +651,10 @@ export default function ClientDashboardPage() {
                       <button
                         type="button"
                         onClick={() => {
-                          void getSignedInvoiceLink(payment.invoice_id).then((path) => {
+                          const invoiceId = payment.invoice_id
+                          if (invoiceId == null) return
+
+                          void getSignedInvoiceLink(invoiceId).then((path) => {
                             router.push(path)
                           })
                         }}
