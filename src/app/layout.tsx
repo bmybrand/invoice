@@ -17,8 +17,6 @@ const siteUrl = configuredSiteUrl.startsWith("http")
 const siteDescription =
   "Bmybrand's invoice portal helps clients and the company manage invoices, payments, projects, and account information in one secure place.";
 
-const socialPreviewUrl = new URL("/Social%20preview%20image%202.png", siteUrl).toString();
-
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -45,7 +43,7 @@ export const metadata: Metadata = {
     description: siteDescription,
     images: [
       {
-        url: socialPreviewUrl,
+        url: "/bmybrand-social-preview.png",
         width: 1200,
         height: 630,
         alt: "Bmybrand client invoice portal",
@@ -56,7 +54,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Bmybrand | Client Invoice Portal",
     description: siteDescription,
-    images: [socialPreviewUrl],
+    images: ["/bmybrand-social-preview.png"],
   },
 };
 
