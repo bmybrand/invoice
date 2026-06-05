@@ -835,7 +835,7 @@ export default function Invoice() {
         email: (row.email as string) ?? '',
         service: services,
         phone: (row.phone as string) ?? '',
-        amount: ((row.amount as string) ?? '').trim() || subtotal.toFixed(2),
+        amount: String(row.amount ?? '').trim() || subtotal.toFixed(2),
         status: (row.status as string) ?? 'Pending',
         payable_amount: row.payable_amount == null ? null : Number(row.payable_amount),
         paid_amount: Number((paidAmountByInvoiceId.get(invoiceId) ?? 0).toFixed(2)),
