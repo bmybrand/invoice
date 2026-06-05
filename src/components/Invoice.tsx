@@ -360,10 +360,12 @@ function isSettledInvoiceStatus(status: string): boolean {
   return normalized.includes('paid') || normalized.includes('completed')
 }
 
-function isInvoicePaid(inv: Pick<InvoiceRow, 'status' | 'amount' | 'paid_amount'>): boolean {
+function isInvoicePaid(inv: Pick<InvoiceRow, 'status' | 'amount' | 'payable_amount' | 'paid_amount'>): boolean {
   if (isSettledInvoiceStatus(inv.status)) return true
-  const totalAmount = parseAmountValue(inv.amount)
-  return totalAmount > 0 && inv.paid_amount >= totalAmount
+  const requiredAmount = inv.payable_amount != null && inv.payable_amount > 0
+    ? inv.payable_amount
+    : parseAmountValue(inv.amount)
+  return requiredAmount > 0 && inv.paid_amount >= requiredAmount
 }
 
 function sanitizeCurrencyInput(value: string): string {

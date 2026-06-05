@@ -421,6 +421,16 @@ function PaymentFormInner({
     const paymentStatus = paymentIntent?.status ?? 'processing'
 
     if (paymentStatus === 'succeeded') {
+      await fetch('/api/payments/reconcile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          invoiceId,
+          paymentIntentId: paymentIntent.id,
+          token: invoiceToken ?? null,
+        }),
+      }).catch(() => undefined)
+
       setSubmittedPaymentStatus('succeeded')
       setPaymentSubmittedTitle('Payment submitted successfully')
       setPaymentSubmittedMessage('Your payment has been confirmed. Invoice status will update shortly.')
