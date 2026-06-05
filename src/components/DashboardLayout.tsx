@@ -411,7 +411,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   const profileObjectUrlRef = useRef<string | null>(null)
   const profileLoadInFlightRef = useRef(false)
-  const profileLoadQueuedRef = useRef(false)
 
   const resetDashboardProfile = useCallback((nextProfileLoaded: boolean) => {
     setCurrentUserAuthId(null)
@@ -451,7 +450,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   const loadProfile = useCallback(async () => {
     if (profileLoadInFlightRef.current) {
-      profileLoadQueuedRef.current = true
       return
     }
 
@@ -565,10 +563,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       }
     } finally {
       profileLoadInFlightRef.current = false
-      if (profileLoadQueuedRef.current) {
-        profileLoadQueuedRef.current = false
-        void loadProfile()
-      }
     }
   }, [redirectToLoginHard, resetDashboardProfile, router, sessionUser, token])
 

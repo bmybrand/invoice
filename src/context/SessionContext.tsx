@@ -1,5 +1,5 @@
 "use client";
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import type { Session, User } from '@supabase/supabase-js'
 import { syncServerAuthSession } from '@/lib/auth-session-sync'
 import { supabase } from '@/lib/supabase';
@@ -29,6 +29,19 @@ export const SessionProvider = ({ children }: { children: React.ReactNode }) => 
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const lastSyncedAccessTokenRef = useRef<string | null | undefined>(undefined);
+
+  const syncSessionInBackground = useCallback((session: Session | null) => {
+    const accessToken = session?.access_token ?? null
+    if (lastSyncedAccessTokenRef.current === accessToken) return
+
+    lastSyncedAccessTokenRef.current = accessToken
+    void syncServerAuthSession(session).catch(() => {
+      if (lastSyncedAccessTokenRef.current === accessToken) {
+        lastSyncedAccessTokenRef.current = undefined
+      }
+    })
+  }, [])
 
   const refreshSession = useCallback(async () => {
     setLoading(true);
@@ -39,13 +52,13 @@ export const SessionProvider = ({ children }: { children: React.ReactNode }) => 
       setSession(session);
       setToken(session?.access_token || null);
       setUser(session?.user || null);
-      await syncServerAuthSession(session).catch(() => {})
+      syncSessionInBackground(session)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to fetch session'
       setSession(null);
       setUser(null);
       setToken(null);
-      await syncServerAuthSession(null).catch(() => {})
+      syncSessionInBackground(null)
       if (isInvalidRefreshTokenError(message)) {
         await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
         setError(null);
@@ -55,7 +68,7 @@ export const SessionProvider = ({ children }: { children: React.ReactNode }) => 
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [syncSessionInBackground]);
 
   useEffect(() => {
     refreshSession();
@@ -65,12 +78,12 @@ export const SessionProvider = ({ children }: { children: React.ReactNode }) => 
       setUser(session?.user || null);
       setError(null);
       setLoading(false);
-      void syncServerAuthSession(session).catch(() => {})
+      syncSessionInBackground(session)
     });
     return () => {
       listener?.subscription.unsubscribe();
     };
-  }, [refreshSession]);
+  }, [refreshSession, syncSessionInBackground]);
 
   return (
     <SessionContext.Provider value={{ session, user, token, refreshSession, loading, error }}>
