@@ -727,6 +727,8 @@ export default function Invoice() {
     const isClient = accountType === 'client'
     const clientId = clientData?.client?.id ?? null
 
+    if (!token) return
+
     if (isClient && clientData?.loading) return
 
     if (isClient && !clientId) {
@@ -758,42 +760,17 @@ export default function Invoice() {
     if (!isBackgroundRefresh && !hasScopedInvoiceCache) {
       setInvoicesLoading(true)
     }
-    const invoiceSelectWithBrandId = `
-      id, invoice_date, invoice_creator_id, client_id, brand_id, client_name, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, created_at,
-      employees!invoice_creator_id(employee_name),
-      clients!client_id(name)
-    `
-    const invoiceSelectLegacy = `
-      id, invoice_date, invoice_creator_id, client_id, client_name, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, created_at,
-      employees!invoice_creator_id(employee_name),
-      clients!client_id(name)
-    `
-
-    const applyInvoiceFilters = <T,>(query: T) => {
-      let nextQuery = query as T & {
-        eq: (column: string, value: unknown) => typeof nextQuery
-      }
-
-      if (isClient && clientId) {
-        nextQuery = nextQuery.eq('client_id', clientId)
-      } else if (routeClientId != null) {
-        nextQuery = nextQuery.eq('client_id', routeClientId)
-      } else if (isUserRole && currentEmployeeId != null) {
-        nextQuery = nextQuery.eq('invoice_creator_id', currentEmployeeId)
-      }
-
-      return nextQuery
+    const params = new URLSearchParams()
+    if (routeClientId != null) params.set('clientId', String(routeClientId))
+    const response = await fetch(`/api/invoices${params.size ? `?${params.toString()}` : ''}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const result = (await response.json().catch(() => ({}))) as {
+      invoices?: Record<string, unknown>[]
+      error?: string
     }
-
-    let { data, error }: { data: Record<string, unknown>[] | null; error: { message?: string | null } | null } = await applyInvoiceFilters(
-      supabase.from('invoices').select(invoiceSelectWithBrandId).order('created_at', { ascending: false })
-    ) as unknown as { data: Record<string, unknown>[] | null; error: { message?: string | null } | null }
-
-    if (error && isMissingBrandIdColumnError(error)) {
-      ;({ data, error } = await applyInvoiceFilters(
-        supabase.from('invoices').select(invoiceSelectLegacy).order('created_at', { ascending: false })
-      ) as unknown as { data: Record<string, unknown>[] | null; error: { message?: string | null } | null })
-    }
+    const data = result.invoices ?? null
+    const error = response.ok ? null : { message: result.error || 'Failed to load invoices' }
 
     if (!isBackgroundRefresh) {
       setInvoicesLoading(false)
@@ -873,7 +850,7 @@ export default function Invoice() {
       }
       return next
     })
-  }, [accountType, clientData?.client?.id, clientData?.loading, currentEmployeeId, currentUserAuthId, hasScopedInvoiceCache, isUserRole, profileLoaded, routeClientId])
+  }, [accountType, clientData?.client?.id, clientData?.loading, currentEmployeeId, currentUserAuthId, hasScopedInvoiceCache, isUserRole, profileLoaded, routeClientId, token])
 
   const fetchEmployees = useCallback(async () => {
     const { data, error } = await supabase
