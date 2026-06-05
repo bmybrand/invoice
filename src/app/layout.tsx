@@ -4,9 +4,15 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { SessionProvider } from '@/context/SessionContext';
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
+const configuredSiteUrl = process.env.NEXT_PUBLIC_SITE_URL
   ?? process.env.NEXT_PUBLIC_BRIEF_FORMS_PUBLIC_BASE_URL
-  ?? "https://bmybrand.vercel.app";
+  ?? process.env.VERCEL_PROJECT_PRODUCTION_URL
+  ?? process.env.VERCEL_URL
+  ?? "bmybrand.vercel.app";
+
+const siteUrl = configuredSiteUrl.startsWith("http")
+  ? configuredSiteUrl
+  : `https://${configuredSiteUrl}`;
 
 const siteDescription =
   "Bmybrand's invoice portal helps clients and the company manage invoices, payments, projects, and account information in one secure place.";
@@ -31,6 +37,7 @@ export const metadata: Metadata = {
   applicationName: "Bmybrand",
   openGraph: {
     type: "website",
+    url: siteUrl,
     siteName: "Bmybrand",
     title: "Bmybrand | Client Invoice Portal",
     description: siteDescription,
