@@ -6,10 +6,25 @@ function required(name: string): string {
   return value
 }
 
+function requiredAny(...names: string[]): string {
+  for (const name of names) {
+    const value = process.env[name]?.trim()
+    if (value) return value
+  }
+
+  throw new Error(`Missing required env var: ${names.join(' or ')}`)
+}
+
+const supabasePublishableKey = requiredAny(
+  'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY',
+  'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY',
+  'NEXT_PUBLIC_SUPABASE_ANON_KEY'
+)
+
 export const env = {
   SUPABASE_URL: required('NEXT_PUBLIC_SUPABASE_URL'),
-  SUPABASE_ANON_KEY: required('NEXT_PUBLIC_SUPABASE_ANON_KEY'),
-  SUPABASE_PUBLISHABLE_DEFAULT_KEY: required('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY'),
+  SUPABASE_ANON_KEY: supabasePublishableKey,
+  SUPABASE_PUBLISHABLE_DEFAULT_KEY: supabasePublishableKey,
   SUPABASE_SERVICE_ROLE_KEY: required('SUPABASE_SERVICE_ROLE_KEY'),
   STRIPE_SECRET_KEY: required('STRIPE_SECRET_KEY'),
   STRIPE_WEBHOOK_SECRET: required('STRIPE_WEBHOOK_SECRET'),

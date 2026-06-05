@@ -24,7 +24,10 @@ export async function PATCH(
   const email = body?.email != null ? String(body.email).trim().toLowerCase() : null
   const password = typeof body?.password === 'string' ? body.password.trim() : ''
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
+  const publishableKey =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
   if (password.length > 0 && password.length < 8) {
     return NextResponse.json({ error: 'Password must be at least 8 characters long' }, { status: 400 })

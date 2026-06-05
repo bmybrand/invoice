@@ -21,7 +21,10 @@ function normalizeRole(value: string | null | undefined): string {
 
 export async function requireAdminOrSuperAdmin(request: Request): Promise<AdminAuthResult> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
+  const publishableKey =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   const authHeader = request.headers.get('authorization') || ''
   const token = authHeader.replace(/^Bearer\s+/i, '').trim()

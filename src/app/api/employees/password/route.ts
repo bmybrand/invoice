@@ -2,7 +2,10 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { applyRateLimit, getRateLimitIdentity } from '@/lib/rate-limit'
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
+const publishableKey =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 const verificationClient = supabaseUrl && publishableKey
   ? createClient(supabaseUrl, publishableKey, {
       auth: { persistSession: false, autoRefreshToken: false },
@@ -40,7 +43,10 @@ export async function POST(request: Request) {
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
+  const publishableKey =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
   if (!supabaseUrl || !publishableKey) {
     return NextResponse.json({ error: 'Server not configured for password verification' }, { status: 503 })
