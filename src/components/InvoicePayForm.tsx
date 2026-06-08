@@ -315,7 +315,7 @@ function PaymentFormInner({
       if (!embedded) {
         router.replace(`${invoiceUrl}&payment=processing`)
       }
-    }, 1600)
+    }, submittedPaymentStatus === 'succeeded' ? 450 : 900)
 
     return () => window.clearTimeout(timeoutId)
   }, [embedded, invoiceUrl, onPaymentSuccess, paymentSubmitted, router, submittedPaymentStatus])
@@ -421,7 +421,7 @@ function PaymentFormInner({
     const paymentStatus = paymentIntent?.status ?? 'processing'
 
     if (paymentStatus === 'succeeded') {
-      await fetch('/api/payments/reconcile', {
+      void fetch('/api/payments/reconcile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -433,7 +433,7 @@ function PaymentFormInner({
 
       setSubmittedPaymentStatus('succeeded')
       setPaymentSubmittedTitle('Payment submitted successfully')
-      setPaymentSubmittedMessage('Your payment has been confirmed. Invoice status will update shortly.')
+      setPaymentSubmittedMessage('Your payment has been confirmed.')
     } else {
       setSubmittedPaymentStatus('processing')
       setPaymentSubmittedTitle('Your payment is being processed')
