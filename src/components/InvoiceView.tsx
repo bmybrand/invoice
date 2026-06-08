@@ -58,88 +58,90 @@ export default function InvoiceView({
   const [renewMessage, setRenewMessage] = useState<string | null>(null)
   const autoDownloadTriggeredRef = useRef(false)
 
-  useEffect(() => {
-    async function fetchData() {
-      if (!Number.isFinite(invoiceId) || invoiceId <= 0) {
-        setLoading(false)
-        setInvoice(null)
-        return
-      }
-
-      let invoiceData: Record<string, unknown> | null = null
-      let brandData: BrandOption[] = []
-      let invoiceError: { message?: string } | null = null
-      let brandError: { message?: string } | null = null
-
-      if (publicView && invoiceToken) {
-        const response = await fetch(`/api/public/invoice?token=${encodeURIComponent(invoiceToken)}`)
-        const payload = (await response.json().catch(() => null)) as {
-          invoice?: Record<string, unknown>
-          brands?: BrandOption[]
-          tokenExpired?: boolean
-          error?: string
-        } | null
-
-        if (!response.ok || !payload?.invoice) {
-          invoiceError = { message: payload?.error ?? 'Failed to fetch invoice' }
-        } else {
-          invoiceData = payload.invoice
-          brandData = payload.brands ?? []
-        }
-      } else if (publicView) {
-        invoiceError = { message: 'Missing invoice token' }
-      } else {
-        const result = await Promise.all([
-          supabase.from('invoices').select('*, employees!invoice_creator_id(employee_name), clients!client_id(name)').eq('id', invoiceId).maybeSingle(),
-          supabase.from('brands').select('id, brand_name, brand_url, logo_url').neq('isdeleted', true).order('brand_name'),
-        ])
-
-        invoiceData = (result[0].data as Record<string, unknown> | null) ?? null
-        invoiceError = result[0].error
-        brandData = (result[1].data as BrandOption[] | null) ?? []
-        brandError = result[1].error
-      }
-
-      if (brandError) logFetchError('Failed to fetch brands', brandError)
-      setBrands(brandData)
-
-      if (invoiceError || !invoiceData) {
-        if (invoiceError) logFetchError('Failed to fetch invoice', invoiceError)
-        setInvoice(null)
-        setLoading(false)
-        return
-      }
-
-      const emp = invoiceData.employees as { employee_name?: string } | { employee_name?: string }[] | null
-      const empObj = Array.isArray(emp) ? emp[0] : emp
-      const clientObj = invoiceData.clients as { name?: string } | { name?: string }[] | null
-      const relatedClientName = (Array.isArray(clientObj) ? clientObj[0] : clientObj)?.name ?? ''
-      const storedClientName = typeof invoiceData.client_name === 'string' ? invoiceData.client_name : ''
-      const clientName = storedClientName || relatedClientName
-      const serviceRaw = invoiceData.service
-      const normalizedServices = Array.isArray(serviceRaw) ? serviceRaw : []
-
-      setInvoice({
-        id: (invoiceData.id as number) ?? 0,
-        invoice_date: (invoiceData.invoice_date as string) ?? '',
-        invoice_creator_id: (invoiceData.invoice_creator_id as number) ?? 0,
-        invoice_creator: empObj?.employee_name ?? '--',
-        client_id: (invoiceData.client_id as number) ?? null,
-        client_name: clientName,
-        brand_name: (invoiceData.brand_name as string) ?? '',
-        email: (invoiceData.email as string) ?? '',
-        service: normalizedServices as InvoiceRow['service'],
-        phone: (invoiceData.phone as string) ?? '',
-        amount: (invoiceData.amount as string) ?? '',
-        status: (invoiceData.status as string) ?? 'Pending',
-        payable_amount: invoiceData.payable_amount == null ? null : Number(invoiceData.payable_amount),
-        invoice_type: (invoiceData.invoice_type as string) ?? 'Standard',
-      })
+  const loadInvoice = useCallback(async () => {
+    if (!Number.isFinite(invoiceId) || invoiceId <= 0) {
       setLoading(false)
+      setInvoice(null)
+      return
     }
 
-    fetchData()
-  }, [invoiceId, invoiceToken, publicView, tokenExpired])
+    let invoiceData: Record<string, unknown> | null = null
+    let brandData: BrandOption[] = []
+    let invoiceError: { message?: string } | null = null
+    let brandError: { message?: string } | null = null
+
+    if (publicView && invoiceToken) {
+      const response = await fetch(`/api/public/invoice?token=${encodeURIComponent(invoiceToken)}`, {
+        cache: 'no-store',
+      })
+      const payload = (await response.json().catch(() => null)) as {
+        invoice?: Record<string, unknown>
+        brands?: BrandOption[]
+        tokenExpired?: boolean
+        error?: string
+      } | null
+
+      if (!response.ok || !payload?.invoice) {
+        invoiceError = { message: payload?.error ?? 'Failed to fetch invoice' }
+      } else {
+        invoiceData = payload.invoice
+        brandData = payload.brands ?? []
+      }
+    } else if (publicView) {
+      invoiceError = { message: 'Missing invoice token' }
+    } else {
+      const result = await Promise.all([
+        supabase.from('invoices').select('*, employees!invoice_creator_id(employee_name), clients!client_id(name)').eq('id', invoiceId).maybeSingle(),
+        supabase.from('brands').select('id, brand_name, brand_url, logo_url').neq('isdeleted', true).order('brand_name'),
+      ])
+
+      invoiceData = (result[0].data as Record<string, unknown> | null) ?? null
+      invoiceError = result[0].error
+      brandData = (result[1].data as BrandOption[] | null) ?? []
+      brandError = result[1].error
+    }
+
+    if (brandError) logFetchError('Failed to fetch brands', brandError)
+    setBrands(brandData)
+
+    if (invoiceError || !invoiceData) {
+      if (invoiceError) logFetchError('Failed to fetch invoice', invoiceError)
+      setInvoice(null)
+      setLoading(false)
+      return
+    }
+
+    const emp = invoiceData.employees as { employee_name?: string } | { employee_name?: string }[] | null
+    const empObj = Array.isArray(emp) ? emp[0] : emp
+    const clientObj = invoiceData.clients as { name?: string } | { name?: string }[] | null
+    const relatedClientName = (Array.isArray(clientObj) ? clientObj[0] : clientObj)?.name ?? ''
+    const storedClientName = typeof invoiceData.client_name === 'string' ? invoiceData.client_name : ''
+    const clientName = storedClientName || relatedClientName
+    const serviceRaw = invoiceData.service
+    const normalizedServices = Array.isArray(serviceRaw) ? serviceRaw : []
+
+    setInvoice({
+      id: (invoiceData.id as number) ?? 0,
+      invoice_date: (invoiceData.invoice_date as string) ?? '',
+      invoice_creator_id: (invoiceData.invoice_creator_id as number) ?? 0,
+      invoice_creator: empObj?.employee_name ?? '--',
+      client_id: (invoiceData.client_id as number) ?? null,
+      client_name: clientName,
+      brand_name: (invoiceData.brand_name as string) ?? '',
+      email: (invoiceData.email as string) ?? '',
+      service: normalizedServices as InvoiceRow['service'],
+      phone: (invoiceData.phone as string) ?? '',
+      amount: (invoiceData.amount as string) ?? '',
+      status: (invoiceData.status as string) ?? 'Pending',
+      payable_amount: invoiceData.payable_amount == null ? null : Number(invoiceData.payable_amount),
+      invoice_type: (invoiceData.invoice_type as string) ?? 'Standard',
+    })
+    setLoading(false)
+  }, [invoiceId, invoiceToken, publicView])
+
+  useEffect(() => {
+    void loadInvoice()
+  }, [loadInvoice, tokenExpired])
 
   const brandMeta = useMemo(() => {
     if (!invoice) return null
@@ -457,7 +459,7 @@ export default function InvoiceView({
               embedded
               onPaymentSuccess={() => {
                 setPaymentCompletedLocally(true)
-                setInvoice((current) => (current ? { ...current, status: 'Paid' } : current))
+                void loadInvoice()
               }}
             />
           ) : null}

@@ -421,15 +421,23 @@ function PaymentFormInner({
     const paymentStatus = paymentIntent?.status ?? 'processing'
 
     if (paymentStatus === 'succeeded') {
-      void fetch('/api/payments/reconcile', {
+      const reconcileResponse = await fetch('/api/payments/reconcile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        keepalive: true,
         body: JSON.stringify({
           invoiceId,
           paymentIntentId: paymentIntent.id,
           token: invoiceToken ?? null,
         }),
-      }).catch(() => undefined)
+      })
+      const reconcilePayload = (await reconcileResponse.json().catch(() => ({}))) as { error?: string }
+      if (!reconcileResponse.ok) {
+        submitLockRef.current = false
+        setPaying(false)
+        setPaymentError(reconcilePayload.error || 'Payment was captured, but invoice status could not be updated yet.')
+        return
+      }
 
       setSubmittedPaymentStatus('succeeded')
       setPaymentSubmittedTitle('Payment submitted successfully')
