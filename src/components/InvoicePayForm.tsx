@@ -440,8 +440,8 @@ function PaymentFormInner({
       }
 
       setSubmittedPaymentStatus('succeeded')
-      setPaymentSubmittedTitle('Payment submitted successfully')
-      setPaymentSubmittedMessage('Your payment has been confirmed.')
+      setPaymentSubmittedTitle('Transaction successful')
+      setPaymentSubmittedMessage('Your payment has been confirmed and the invoice has been updated.')
     } else {
       setSubmittedPaymentStatus('processing')
       setPaymentSubmittedTitle('Your payment is being processed')
