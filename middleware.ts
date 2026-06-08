@@ -37,10 +37,15 @@ function isProtectedApiMutation(pathname: string, method: string) {
     '/api/auth/session',
     '/api/create-payment-intent',
     '/api/create-checkout-session',
+    '/api/payments/reconcile',
     '/api/webhooks/stripe',
   ]
 
-  if (pathname === '/api/create-payment-intent' || pathname === '/api/create-checkout-session') {
+  if (
+    pathname === '/api/create-payment-intent' ||
+    pathname === '/api/create-checkout-session' ||
+    pathname === '/api/payments/reconcile'
+  ) {
     return false
   }
 
