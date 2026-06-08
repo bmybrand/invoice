@@ -1,13 +1,11 @@
 import { NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { findMatchingStripeGatewayForAmount, getInvoicePaymentContext } from '@/lib/server-stripe-gateways'
-import { requireBoundInvoiceToken } from '@/lib/server-invoice-access'
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as {
     invoiceId?: number | string
     paymentIntentId?: string
-    token?: string | null
   } | null
   const invoiceId = Number(body?.invoiceId)
   const paymentIntentId = String(body?.paymentIntentId ?? '').trim()
@@ -31,11 +29,6 @@ export async function POST(request: Request) {
 
   if (paymentIntent.metadata?.invoice_id !== String(invoiceId)) {
     return NextResponse.json({ error: 'Payment does not belong to this invoice' }, { status: 403 })
-  }
-
-  const access = requireBoundInvoiceToken(typeof body?.token === 'string' ? body.token : null, invoiceId, 'pay')
-  if (!access.ok && paymentIntent.status !== 'succeeded') {
-    return NextResponse.json({ error: access.error }, { status: access.status })
   }
 
   const transactionId =
