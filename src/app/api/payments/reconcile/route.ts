@@ -16,11 +16,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid payment reconciliation request' }, { status: 400 })
   }
 
-  const access = requireBoundInvoiceToken(typeof body?.token === 'string' ? body.token : null, invoiceId, 'pay')
-  if (!access.ok) {
-    return NextResponse.json({ error: access.error }, { status: access.status })
-  }
-
   const invoiceContext = await getInvoicePaymentContext(invoiceId)
   if (!invoiceContext.ok) {
     return NextResponse.json({ error: invoiceContext.error }, { status: invoiceContext.status })
@@ -36,6 +31,11 @@ export async function POST(request: Request) {
 
   if (paymentIntent.metadata?.invoice_id !== String(invoiceId)) {
     return NextResponse.json({ error: 'Payment does not belong to this invoice' }, { status: 403 })
+  }
+
+  const access = requireBoundInvoiceToken(typeof body?.token === 'string' ? body.token : null, invoiceId, 'pay')
+  if (!access.ok && paymentIntent.status !== 'succeeded') {
+    return NextResponse.json({ error: access.error }, { status: access.status })
   }
 
   const transactionId =
