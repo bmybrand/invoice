@@ -645,11 +645,23 @@ export default function Invoice() {
 
   useBodyScrollLock(Boolean(showAddModal || editingInvoice || deletingInvoice))
 
+  async function resolveAccessToken() {
+    const accessToken = token?.trim() || ''
+    if (accessToken) return accessToken
+
+    const { data, error } = await supabase.auth.getSession()
+    if (error) {
+      return ''
+    }
+
+    return data.session?.access_token?.trim() || ''
+  }
+
   async function validateGatewayAmountForInvoice(amount: number): Promise<{
     error: string | null
     gateways: GatewayLimitInfo[]
   }> {
-    const accessToken = token?.trim() || ''
+    const accessToken = await resolveAccessToken()
     if (!accessToken) {
       return {
         error: 'Authentication required to validate payment gateway limits.',
