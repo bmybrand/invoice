@@ -29,7 +29,7 @@ function LockIcon() {
 export function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { user: sessionUser, loading: sessionLoading } = useSessionContext()
+  const { user: sessionUser, loading: sessionLoading, refreshSession } = useSessionContext()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -72,6 +72,7 @@ export function LoginForm() {
           if (data.session) {
             await syncServerAuthSession(data.session)
           }
+          await refreshSession()
           signedIn = true
           break
         }
