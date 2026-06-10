@@ -420,6 +420,7 @@ export function InvoiceDocument({
     normalizedStatus.includes('paid') || normalizedStatus.includes('completed')
       ? 'Paid Amount'
       : 'Payable Amount'
+  const showBmyFooter = isBmyBrand(invoice.brand_name)
 
   return (
     <div id={rootId} className="relative flex min-h-[1120px] flex-col overflow-visible bg-white shadow-xl md:min-h-[1280px] print:min-h-0 print:overflow-visible">
@@ -574,9 +575,11 @@ export function InvoiceDocument({
       ) : null}
       </div>
 
-      <div id="invoice-print-footer" className="invoice-footer-contact mt-auto shrink-0 relative z-10 border-t border-slate-200 bg-slate-50 px-10 py-6 text-sm text-slate-500">
-        +1(555) 000-1234 | www.studioshodwe.com | 456 DesignBlvd, Creative City, NY
-      </div>
+      {showBmyFooter ? (
+        <div id="invoice-print-footer" className="invoice-footer-contact mt-auto shrink-0 relative z-10 border-t border-slate-200 bg-slate-50 px-10 py-6 text-sm text-slate-500">
+          +14695011401 | www.bmybrand.com | PO BOX 605 Allen, TX 75013
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -2276,9 +2279,11 @@ export default function Invoice() {
                           </div>
                         </div>
 
-                        <div className="border-t border-slate-200 bg-slate-50 px-10 py-6 text-sm text-slate-500">
-                          +1(555) 000-1234 | www.studioshodwe.com | 456 DesignBlvd, Creative City, NY
-                        </div>
+                        {isBmyBrand(addBrand) ? (
+                          <div className="border-t border-slate-200 bg-slate-50 px-10 py-6 text-sm text-slate-500">
+                            +14695011401 | www.bmybrand.com | PO BOX 605 Allen, TX 75013
+                          </div>
+                        ) : null}
                       </>
                     )
                   })()}
@@ -2626,9 +2631,11 @@ export default function Invoice() {
                           </div>
                         </div>
 
-                        <div className="border-t border-slate-200 bg-slate-50 px-10 py-6 text-sm text-slate-500">
-                          +1(555) 000-1234 | www.studioshodwe.com | 456 DesignBlvd, Creative City, NY
-                        </div>
+                        {isBmyBrand(editBrand) ? (
+                          <div className="border-t border-slate-200 bg-slate-50 px-10 py-6 text-sm text-slate-500">
+                            +14695011401 | www.bmybrand.com | PO BOX 605 Allen, TX 75013
+                          </div>
+                        ) : null}
                       </>
                     )
                   })()}
