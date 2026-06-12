@@ -380,12 +380,31 @@ const allNavItems: Array<{ label: string; href: string }> = [
   { label: 'Settings', href: '/dashboard/settings' },
 ]
 
+const SIDEBAR_EXPANDED_PX = 256
+const SIDEBAR_COLLAPSED_PX = 80
+
+function getSidebarToggleLeft(collapsed: boolean): string {
+  const width = collapsed ? SIDEBAR_COLLAPSED_PX : SIDEBAR_EXPANDED_PX
+  return `${width - 22}px`
+}
+
+function shouldDefaultSidebarCollapsed(): boolean {
+  if (typeof window === 'undefined') {
+    return false
+  }
+
+  const width = window.innerWidth
+  // Laptops / small desktops: start collapsed so content is not clipped.
+  return width >= 768 && width < 1280
+}
+
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
   const { user: sessionUser, token, loading: sessionLoading } = useSessionContext()
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const sidebarPreferenceSetRef = useRef(false)
   const [displayName, setDisplayName] = useState('')
   const [displayRole, setDisplayRole] = useState('')
   const [displayDepartment, setDisplayDepartment] = useState('')
@@ -411,6 +430,23 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   const profileObjectUrlRef = useRef<string | null>(null)
   const profileLoadInFlightRef = useRef(false)
+
+  useEffect(() => {
+    setSidebarCollapsed(shouldDefaultSidebarCollapsed())
+  }, [])
+
+  const handleSidebarToggle = useCallback(() => {
+    sidebarPreferenceSetRef.current = true
+    setSidebarCollapsed((prev) => !prev)
+  }, [])
+
+  const sidebarAsideClass = sidebarCollapsed
+    ? 'w-12 sm:w-14 md:w-20'
+    : 'w-full max-w-[16rem] md:w-64'
+
+  const mainOffsetClass = sidebarCollapsed
+    ? 'pl-12 sm:pl-14 md:pl-20'
+    : 'pl-12 sm:pl-14 md:pl-64'
 
   const resetDashboardProfile = useCallback((nextProfileLoaded: boolean) => {
     setCurrentUserAuthId(null)
@@ -1083,7 +1119,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         />
 
         <aside
-          className={`fixed left-0 top-0 z-20 flex h-screen flex-col border-r border-slate-800 bg-[#0b1323] transition-[width] duration-200 ease-out xl:sticky xl:left-auto xl:top-0 xl:z-auto xl:shrink-0 ${sidebarCollapsed ? 'w-12 sm:w-14 md:w-20' : 'w-full md:w-64'}`}
+          className={`fixed left-0 top-0 z-20 flex h-screen flex-col border-r border-slate-800 bg-[#0b1323] transition-[width] duration-200 ease-out lg:sticky lg:left-auto lg:top-0 lg:z-auto lg:shrink-0 ${sidebarAsideClass}`}
         >
           <div
             className={`flex items-center gap-2 overflow-hidden py-6 md:py-8 ${
@@ -1196,10 +1232,10 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
         <button
           type="button"
-          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          className="no-print print:!hidden fixed bottom-[98px] z-30 flex h-11 w-11 items-center justify-center rounded-full border border-slate-700/70 bg-[#16233a] text-slate-300 shadow-[0_10px_24px_rgba(2,8,23,0.35)] transition-[left,background-color,border-color,color,box-shadow] duration-200 ease-out hover:border-slate-500 hover:bg-[#1b2c49] hover:text-white"
+          onClick={handleSidebarToggle}
+          className="no-print print:!hidden fixed bottom-[98px] z-30 flex h-11 w-11 items-center justify-center rounded-full border border-slate-700/70 bg-[#16233a] text-slate-300 shadow-[0_10px_24px_rgba(2,8,23,0.35)] transition-[left,background-color,border-color,color,box-shadow] duration-200 ease-out hover:border-slate-500 hover:bg-[#1b2c49] hover:text-white lg:bottom-6"
           style={{
-            left: sidebarCollapsed ? 'calc(5rem - 22px)' : 'calc(16rem - 22px)',
+            left: getSidebarToggleLeft(sidebarCollapsed),
           }}
           aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
@@ -1210,9 +1246,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
         <div
           id="dashboard-main-shell"
-          className="relative flex min-w-0 flex-1 flex-col overflow-x-visible overflow-y-hidden bg-gray-900 pl-12 sm:pl-14 md:pl-20 xl:pl-0"
+          className={`relative flex min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-hidden bg-gray-900 transition-[padding-left] duration-200 ease-out lg:pl-0 ${mainOffsetClass}`}
         >
-          <header className="absolute left-0 top-0 z-10 flex h-20 w-full items-center justify-between gap-4 border-b border-slate-800 bg-gray-900 pl-12 pr-4 backdrop-blur-md sm:pl-14 sm:pr-6 md:pl-20 md:pr-8 xl:px-8">
+          <header className={`absolute left-0 top-0 z-10 flex h-20 w-full items-center justify-between gap-4 border-b border-slate-800 bg-gray-900 pr-4 backdrop-blur-md transition-[padding-left] duration-200 ease-out sm:pr-6 md:pr-8 lg:px-8 ${mainOffsetClass} lg:!pl-8`}>
             <div className="flex min-w-0 flex-1 items-center gap-3 pl-2 sm:gap-4 sm:pl-0">
               <GlobalDashboardSearch
                 accountType={accountType}
