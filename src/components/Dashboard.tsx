@@ -59,6 +59,7 @@ type InvoiceMetricRow = {
   id: number
   invoice_creator_id: number | null
   invoice_type: string | null
+  currency: string | null
 }
 
 type EmployeeMetricRow = {
@@ -175,6 +176,7 @@ const createEmptySnapshot = (): DashboardSnapshot => ({
 })
 
 let dashboardSnapshotCache: DashboardScopedCache | null = null
+const CAD_TO_USD_RATE = 0.72
 
 function isSuccessfulPaymentStatus(value: string | null | undefined): boolean {
   const normalized = (value || '').trim().toLowerCase()
@@ -381,6 +383,13 @@ export function Dashboard() {
         return Number.isFinite(parsed) ? parsed : 0
       }
 
+      const getPaymentAmountInUsd = (row: PaymentSubmissionMetricRow) => {
+        const amount = getPaymentAmount(row)
+        const invoice = invoiceMap.get(Number(row.invoice_id ?? 0))
+        const currency = String(invoice?.currency ?? '').trim().toUpperCase()
+        return currency === 'CAD' ? amount * CAD_TO_USD_RATE : amount
+      }
+
       const successfulPayments = allPayments.filter(
         (row) => isSuccessfulPaymentStatus(row.payment_status) && Number(row.invoice_id) > 0
       )
@@ -397,7 +406,7 @@ export function Dashboard() {
       if (invoiceIds.length > 0) {
         const { data: invoiceData, error: invoiceError } = await supabase
           .from('invoices')
-          .select('id, invoice_creator_id, invoice_type')
+          .select('id, invoice_creator_id, invoice_type, currency')
           .in('id', invoiceIds)
 
         if (invoiceError) {
@@ -436,7 +445,7 @@ export function Dashboard() {
         const creatorId = Number(invoice?.invoice_creator_id ?? 0)
         if (!creatorId) continue
         const creatorName = employeeMap.get(creatorId)?.employee_name?.trim() || '--'
-        const invoiceAmount = getPaymentAmount(row)
+        const invoiceAmount = getPaymentAmountInUsd(row)
         const existing = totalsByCreator.get(creatorId)
         if (existing) {
           existing.total += invoiceAmount
@@ -465,7 +474,7 @@ export function Dashboard() {
       }
 
       const sumAmounts = (rows: PaymentSubmissionMetricRow[]) =>
-        rows.reduce((sum, row) => sum + getPaymentAmount(row), 0)
+        rows.reduce((sum, row) => sum + getPaymentAmountInUsd(row), 0)
 
       const currentDayPaid = successfulPayments.filter((row) => String(row.created_at ?? '').slice(0, 10) === todayIso)
       const currentMonthPaid = successfulPayments.filter((row) => String(row.created_at ?? '').slice(0, 7) === currentMonth)

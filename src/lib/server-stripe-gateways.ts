@@ -6,6 +6,7 @@ type InvoiceRow = {
   payable_amount: string | number | null
   service: unknown
   status: string | null
+  currency: string | null
 }
 
 type PaymentGatewayRow = Record<string, unknown>
@@ -28,6 +29,7 @@ type InvoicePaymentContext =
       supabase: SupabaseClient
       invoice: InvoiceRow
       amount: number
+      currency: 'usd' | 'cad'
     }
   | {
       ok: false
@@ -101,6 +103,10 @@ function resolveInvoiceAmount(invoice: InvoiceRow): number | null {
 
   const servicesTotal = computeServicesTotal(invoice.service)
   return servicesTotal > 0 ? servicesTotal : null
+}
+
+function resolveInvoiceCurrency(invoice: InvoiceRow): 'usd' | 'cad' {
+  return normalizeString(invoice.currency).toUpperCase() === 'CAD' ? 'cad' : 'usd'
 }
 
 function isActiveGateway(status: string): boolean {
@@ -189,7 +195,7 @@ export async function getInvoicePaymentContext(invoiceId: number): Promise<Invoi
 
   const { data, error } = await supabase
     .from('invoices')
-    .select('id, amount, payable_amount, service, status')
+    .select('id, amount, payable_amount, service, status, currency')
     .eq('id', invoiceId)
     .maybeSingle()
 
@@ -208,7 +214,7 @@ export async function getInvoicePaymentContext(invoiceId: number): Promise<Invoi
     return { ok: false, status: 400, error: 'Invoice amount is invalid' }
   }
 
-  return { ok: true, supabase, invoice, amount }
+  return { ok: true, supabase, invoice, amount, currency: resolveInvoiceCurrency(invoice) }
 }
 
 export async function findMatchingStripeGatewayForAmount(

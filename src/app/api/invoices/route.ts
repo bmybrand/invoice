@@ -79,8 +79,18 @@ export async function GET(request: Request) {
   }
 
   const requestedClientId = Number(new URL(request.url).searchParams.get('clientId'))
+  const invoiceSelectWithBrandIdAndCurrency = `
+    id, invoice_date, invoice_creator_id, client_id, brand_id, client_name, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, currency, created_at,
+    employees!invoice_creator_id(employee_name),
+    clients!client_id(name)
+  `
   const invoiceSelectWithBrandId = `
     id, invoice_date, invoice_creator_id, client_id, brand_id, client_name, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, created_at,
+    employees!invoice_creator_id(employee_name),
+    clients!client_id(name)
+  `
+  const invoiceSelectWithCurrency = `
+    id, invoice_date, invoice_creator_id, client_id, client_name, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, currency, created_at,
     employees!invoice_creator_id(employee_name),
     clients!client_id(name)
   `
@@ -103,12 +113,32 @@ export async function GET(request: Request) {
   }
 
   const firstResult = await applyAccessFilter(
-    serviceClient.from('invoices').select(invoiceSelectWithBrandId).order('created_at', { ascending: false })
+    serviceClient.from('invoices').select(invoiceSelectWithBrandIdAndCurrency).order('created_at', { ascending: false })
   )
   let data = firstResult.data as Record<string, unknown>[] | null
   let error = firstResult.error as { message: string } | null
 
   if (error && error.message.toLowerCase().includes('brand_id') && error.message.toLowerCase().includes('does not exist')) {
+    const currencyResult = await applyAccessFilter(
+      serviceClient.from('invoices').select(invoiceSelectWithCurrency).order('created_at', { ascending: false })
+    )
+    data = currencyResult.data as Record<string, unknown>[] | null
+    error = currencyResult.error as { message: string } | null
+  }
+
+  if (error && error.message.toLowerCase().includes('currency') && error.message.toLowerCase().includes('does not exist')) {
+    const brandResult = await applyAccessFilter(
+      serviceClient.from('invoices').select(invoiceSelectWithBrandId).order('created_at', { ascending: false })
+    )
+    data = brandResult.data as Record<string, unknown>[] | null
+    error = brandResult.error as { message: string } | null
+  }
+
+  if (
+    error &&
+    (error.message.toLowerCase().includes('brand_id') || error.message.toLowerCase().includes('currency')) &&
+    error.message.toLowerCase().includes('does not exist')
+  ) {
     const legacyResult = await applyAccessFilter(
       serviceClient.from('invoices').select(invoiceSelectLegacy).order('created_at', { ascending: false })
     )

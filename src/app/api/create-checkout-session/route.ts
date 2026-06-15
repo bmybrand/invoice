@@ -55,7 +55,7 @@ export async function POST(req: Request) {
       line_items: [
         {
           price_data: {
-            currency: 'usd',
+            currency: invoiceContext.currency,
             product_data: {
               name: `Invoice #${parsedInvoiceId}`,
               description: 'Invoice payment',

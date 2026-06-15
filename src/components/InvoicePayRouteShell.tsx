@@ -9,9 +9,14 @@ import InvoicePayForm from '@/components/InvoicePayForm'
 
 type InvoicePaymentSummary = {
   grandTotal: number
+  currency: 'USD' | 'CAD'
   brand_name?: string
   email?: string
   phone?: string
+}
+
+function normalizeInvoiceCurrency(value: unknown): 'USD' | 'CAD' {
+  return String(value ?? '').trim().toUpperCase() === 'CAD' ? 'CAD' : 'USD'
 }
 
 export default function InvoicePayRouteShell({
@@ -106,13 +111,14 @@ export default function InvoicePayRouteShell({
         email?: string | null
         phone?: string | null
         payable_amount?: number | string | null
+        currency?: string | null
       } | null = null
       let error: { message?: string } | null = null
 
       if (isEmployee) {
         const result = await supabase
           .from('invoices')
-          .select('service, status, brand_name, email, phone, payable_amount')
+          .select('service, status, brand_name, email, phone, payable_amount, currency')
           .eq('id', invoiceId)
           .maybeSingle()
 
@@ -128,6 +134,7 @@ export default function InvoicePayRouteShell({
             email?: string | null
             phone?: string | null
             payable_amount?: number | string | null
+            currency?: string | null
           }
           error?: string
         } | null
@@ -173,6 +180,7 @@ export default function InvoicePayRouteShell({
 
       setInvoice({
         grandTotal: amountToPay,
+        currency: normalizeInvoiceCurrency(data.currency),
         brand_name: data.brand_name ?? '',
         email: data.email ?? '',
         phone: data.phone ?? '',
@@ -238,9 +246,10 @@ export default function InvoicePayRouteShell({
             invoiceToken={invoiceToken}
             grandTotal={invoice.grandTotal}
             invoiceTitle={invoiceTitle}
-            initialEmail={invoice.email}
-            initialPhone={invoice.phone}
-          />
+          initialEmail={invoice.email}
+          initialPhone={invoice.phone}
+          currency={invoice.currency}
+        />
         </div>
       </DashboardLayout>
     )

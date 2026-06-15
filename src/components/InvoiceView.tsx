@@ -30,6 +30,11 @@ type InvoiceRow = {
   status: string
   payable_amount: number | null
   invoice_type: string
+  currency: 'USD' | 'CAD'
+}
+
+function normalizeInvoiceCurrency(value: unknown): 'USD' | 'CAD' {
+  return String(value ?? '').trim().toUpperCase() === 'CAD' ? 'CAD' : 'USD'
 }
 
 export default function InvoiceView({
@@ -135,6 +140,7 @@ export default function InvoiceView({
       status: (invoiceData.status as string) ?? 'Pending',
       payable_amount: invoiceData.payable_amount == null ? null : Number(invoiceData.payable_amount),
       invoice_type: (invoiceData.invoice_type as string) ?? 'Standard',
+      currency: normalizeInvoiceCurrency(invoiceData.currency),
     })
     setLoading(false)
   }, [invoiceId, invoiceToken, publicView])
@@ -456,6 +462,7 @@ export default function InvoiceView({
               grandTotal={amountToPay}
               initialEmail={invoice.email}
               initialPhone={invoice.phone}
+              currency={invoice.currency}
               embedded
               onPaymentSuccess={() => {
                 setPaymentCompletedLocally(true)

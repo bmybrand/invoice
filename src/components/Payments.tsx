@@ -41,12 +41,14 @@ type PaymentSubmissionRow = {
     invoice_creator_id?: number | null
     brand_name?: string | null
     status?: string | null
+    currency?: string | null
     employees?: { employee_name?: string | null } | Array<{ employee_name?: string | null }> | null
   } | Array<{
     id?: number | null
     invoice_creator_id?: number | null
     brand_name?: string | null
     status?: string | null
+    currency?: string | null
     employees?: { employee_name?: string | null } | Array<{ employee_name?: string | null }> | null
   }> | null
 }
@@ -58,6 +60,7 @@ type PaymentRow = {
   customer: string
   email: string
   amount: number
+  currency: BulkInvoiceCurrency
   phone: string
   paymentMethod: string
   stripeTransactionId: string
@@ -81,6 +84,8 @@ type BulkBrandOption = {
   logo_url: string
 }
 
+type BulkInvoiceCurrency = 'USD' | 'CAD'
+
 type BulkInvoiceRow = {
   id: number
   invoice_date: string
@@ -97,6 +102,11 @@ type BulkInvoiceRow = {
   payable_amount: number | null
   paid_amount: number
   invoice_type: string
+  currency: BulkInvoiceCurrency
+}
+
+function normalizeBulkInvoiceCurrency(value: unknown): BulkInvoiceCurrency {
+  return String(value ?? '').trim().toUpperCase() === 'CAD' ? 'CAD' : 'USD'
 }
 
 type BulkRenderPayload = {
@@ -108,6 +118,7 @@ type UserInvoiceMetaRow = {
   id: number
   invoice_creator_id: number | null
   brand_name: string | null
+  currency: string | null
   employees?: { employee_name?: string | null } | Array<{ employee_name?: string | null }> | null
 }
 
@@ -187,10 +198,10 @@ function getPaymentStatusStyle(status: PaymentRow['status']): string {
   return 'border-slate-500/20 bg-slate-500/10 text-slate-400'
 }
 
-function formatAmount(value: number): string {
+function formatAmount(value: number, currency: BulkInvoiceCurrency = 'USD'): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency: 'USD',
+    currency,
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value)
@@ -330,7 +341,23 @@ export default function Payments() {
 
         let paymentsQuery = supabase
           .from('payment_submissions')
-          .select('id, invoice_id, full_name, phone, email, amount_paid, payment_method, payment_status, stripe_payment_intent_id, stripe_transaction_id, created_at')
+          .select(`
+            id,
+            invoice_id,
+            full_name,
+            phone,
+            email,
+            amount_paid,
+            payment_method,
+            payment_status,
+            stripe_payment_intent_id,
+            stripe_transaction_id,
+            created_at,
+            invoices (
+              id,
+              currency
+            )
+          `)
           .order('created_at', { ascending: false })
 
         if (invoiceIds.length > 0) {
@@ -356,21 +383,26 @@ export default function Payments() {
           return
         }
 
-        const nextRows = (((data as PaymentSubmissionRow[] | null) ?? []).map((row) => ({
-          id: Number(row.id),
-          invoiceId: row.invoice_id == null ? null : Number(row.invoice_id),
-          invoiceCreator: '--',
-          customer: (row.full_name || '').trim() || 'Customer',
-          email: (row.email || '').trim() || '--',
-          amount: Number(row.amount_paid ?? 0) || 0,
-          phone: (row.phone || '').trim() || '--',
-          paymentMethod: (row.payment_method || '').trim() || '--',
-          stripeTransactionId: (row.stripe_transaction_id || row.stripe_payment_intent_id || '').trim() || '--',
-          source: 'Client portal',
-          createdAt: formatDateTime(row.created_at),
-          rawCreatedAt: row.created_at ?? null,
-          status: getPaymentStatusLabel(row.payment_status),
-        })) as PaymentRow[])
+        const nextRows = (((data as PaymentSubmissionRow[] | null) ?? []).map((row) => {
+          const invoiceMeta = Array.isArray(row.invoices) ? row.invoices[0] ?? null : row.invoices ?? null
+
+          return {
+            id: Number(row.id),
+            invoiceId: row.invoice_id == null ? null : Number(row.invoice_id),
+            invoiceCreator: '--',
+            customer: (row.full_name || '').trim() || 'Customer',
+            email: (row.email || '').trim() || '--',
+            amount: Number(row.amount_paid ?? 0) || 0,
+            currency: normalizeBulkInvoiceCurrency(invoiceMeta?.currency),
+            phone: (row.phone || '').trim() || '--',
+            paymentMethod: (row.payment_method || '').trim() || '--',
+            stripeTransactionId: (row.stripe_transaction_id || row.stripe_payment_intent_id || '').trim() || '--',
+            source: 'Client portal',
+            createdAt: formatDateTime(row.created_at),
+            rawCreatedAt: row.created_at ?? null,
+            status: getPaymentStatusLabel(row.payment_status),
+          }
+        }) as PaymentRow[])
 
         if (active) {
           setPayments(nextRows)
@@ -389,6 +421,7 @@ export default function Payments() {
             id,
             invoice_creator_id,
             brand_name,
+            currency,
             employees (
               employee_name
             )
@@ -412,6 +445,7 @@ export default function Payments() {
                 id: row.id,
                 invoice_creator_id: row.invoice_creator_id,
                 brand_name: row.brand_name,
+                currency: row.currency,
                 employees: row.employees ?? null,
               })
             })
@@ -464,6 +498,7 @@ export default function Payments() {
               invoice_creator_id,
               brand_name,
               status,
+              currency,
               employees (
                 employee_name
               )
@@ -497,6 +532,7 @@ export default function Payments() {
           customer: (row.full_name || '').trim() || 'Customer',
           email: (row.email || '').trim() || '--',
           amount: Number(row.amount_paid ?? 0) || 0,
+          currency: normalizeBulkInvoiceCurrency(invoiceMeta?.currency),
           phone: (row.phone || '').trim() || '--',
           paymentMethod: (row.payment_method || '').trim() || '--',
           stripeTransactionId: (row.stripe_transaction_id || row.stripe_payment_intent_id || '').trim() || '--',
@@ -859,6 +895,7 @@ export default function Payments() {
         payable_amount: row.payable_amount == null ? null : Number(row.payable_amount),
         paid_amount: Number(row.paid_amount ?? 0),
         invoice_type: String(row.invoice_type ?? 'Standard'),
+        currency: normalizeBulkInvoiceCurrency(row.currency),
       }
 
       byId.set(invoiceId, {
@@ -1264,9 +1301,9 @@ export default function Payments() {
                   <div className="min-w-0 px-4 py-4 sm:px-6">
                     <span
                       className="block truncate whitespace-nowrap text-sm font-semibold text-white"
-                      title={formatAmount(payment.amount)}
+                      title={formatAmount(payment.amount, payment.currency)}
                     >
-                      {formatAmount(payment.amount)}
+                      {formatAmount(payment.amount, payment.currency)}
                     </span>
                   </div>
                   <div className="min-w-0 px-4 py-4 sm:px-6">
@@ -1579,7 +1616,7 @@ export default function Payments() {
                             {payment.invoiceId == null ? '--' : `#${formatInvoiceCode(payment.invoiceId)}`} • {payment.customer}
                           </p>
                           <p className="mt-1 truncate text-xs text-slate-400">
-                            {payment.email} • {formatAmount(payment.amount)} • {payment.createdAt}
+                            {payment.email} • {formatAmount(payment.amount, payment.currency)} • {payment.createdAt}
                           </p>
                         </div>
                         {downloadMode === 'selected' ? (

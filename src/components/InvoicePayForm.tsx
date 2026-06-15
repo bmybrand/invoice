@@ -49,6 +49,21 @@ const COUNTRY_OPTIONS = [
   { code: 'IN', label: 'India' },
 ] as const
 
+type InvoiceCurrency = 'USD' | 'CAD'
+
+function normalizeInvoiceCurrency(value: unknown): InvoiceCurrency {
+  return String(value ?? '').trim().toUpperCase() === 'CAD' ? 'CAD' : 'USD'
+}
+
+function formatCurrencyAmount(amount: number, currency: InvoiceCurrency): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number.isFinite(amount) ? amount : 0)
+}
+
 function normalizeCountryCode(value: string): string {
   return value.trim().toUpperCase()
 }
@@ -230,6 +245,7 @@ type InvoicePayFormProps = {
   invoiceId: number
   invoiceToken?: string | null
   grandTotal: number
+  currency?: InvoiceCurrency
   invoiceTitle?: string
   initialEmail?: string
   initialPhone?: string
@@ -241,6 +257,7 @@ function PaymentFormInner({
   invoiceId,
   invoiceToken,
   grandTotal,
+  currency,
   fullName,
   setFullName,
   phoneNumber,
@@ -264,6 +281,7 @@ function PaymentFormInner({
   invoiceId: number
   invoiceToken?: string | null
   grandTotal: number
+  currency: InvoiceCurrency
   fullName: string
   setFullName: (value: string) => void
   phoneNumber: string
@@ -601,7 +619,7 @@ function PaymentFormInner({
       )}
       <div className="flex items-center justify-between gap-4 border-t border-[#22375a] pt-6">
         <p className="text-[20px] font-bold text-white sm:text-[22px]">
-          Total: ${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          Total: {formatCurrencyAmount(grandTotal, currency)}
         </p>
         <button
           type="submit"
@@ -619,12 +637,14 @@ export default function InvoicePayForm({
   invoiceId,
   invoiceToken,
   grandTotal,
+  currency = 'USD',
   invoiceTitle,
   initialEmail = '',
   initialPhone = '',
   embedded = false,
   onPaymentSuccess,
 }: InvoicePayFormProps) {
+  const invoiceCurrency = normalizeInvoiceCurrency(currency)
   const [fullName, setFullName] = useState('')
   const [phoneNumber, setPhoneNumber] = useState(initialPhone)
   const [emailAddress, setEmailAddress] = useState(initialEmail)
@@ -730,6 +750,7 @@ export default function InvoicePayForm({
             invoiceId={invoiceId}
             invoiceToken={invoiceToken}
             grandTotal={grandTotal}
+            currency={invoiceCurrency}
             fullName={fullName}
             setFullName={setFullName}
             phoneNumber={phoneNumber}

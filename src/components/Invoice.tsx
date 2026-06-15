@@ -48,11 +48,16 @@ type InvoiceRow = {
   payable_amount: number | null
   paid_amount: number
   invoice_type: string
+  currency: InvoiceCurrency
 }
 
 function isMissingBrandIdColumnError(error: { message?: string | null } | null | undefined) {
+  return isMissingColumnError(error, 'brand_id')
+}
+
+function isMissingColumnError(error: { message?: string | null } | null | undefined, column: string) {
   const message = (error?.message || '').toLowerCase()
-  return message.includes('brand_id') && message.includes('does not exist')
+  return message.includes(column.toLowerCase()) && message.includes('does not exist')
 }
 
 type InvoiceWithServiceField = InvoiceRow & {
@@ -197,6 +202,56 @@ function getStatusStyle(status: string): string {
 function parseAmountValue(amount: string): number {
   const n = Number((amount || '').replace(/[^0-9.-]/g, ''))
   return Number.isFinite(n) ? n : 0
+}
+
+const INVOICE_CURRENCY_OPTIONS = [
+  { value: 'USD', label: 'USD - US Dollar', prefix: '$' },
+  { value: 'CAD', label: 'CAD - Canadian Dollar', prefix: 'CA$' },
+] as const
+
+type InvoiceCurrency = (typeof INVOICE_CURRENCY_OPTIONS)[number]['value']
+
+function normalizeInvoiceCurrency(value: unknown): InvoiceCurrency {
+  const normalized = String(value ?? '').trim().toUpperCase()
+  return normalized === 'CAD' ? 'CAD' : 'USD'
+}
+
+function formatCurrencyAmount(amount: number, currency: InvoiceCurrency): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number.isFinite(amount) ? amount : 0)
+}
+
+function CurrencyPrefixSelect({
+  id,
+  value,
+  onChange,
+}: {
+  id: string
+  value: InvoiceCurrency
+  onChange: (value: InvoiceCurrency) => void
+}) {
+  const widthClass = value === 'CAD' ? 'w-[72px]' : 'w-[46px]'
+
+  return (
+    <span className="relative inline-flex shrink-0 items-center">
+      <select
+        id={id}
+        value={value}
+        onChange={(e) => onChange(normalizeInvoiceCurrency(e.target.value))}
+        aria-label="Currency"
+        className={`h-9 ${widthClass} appearance-none rounded-md bg-transparent py-0 pl-0 pr-6 text-xl font-black text-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20`}
+      >
+        {INVOICE_CURRENCY_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>{option.prefix}</option>
+        ))}
+      </select>
+      <ChevronDownIcon className="pointer-events-none absolute right-2 h-3.5 w-3.5 text-slate-500" />
+    </span>
+  )
 }
 
 function toServiceLines(value: unknown): ServiceLine[] {
@@ -415,6 +470,7 @@ export function InvoiceDocument({
   const subTotal = servicesSubtotal(serviceLines)
   const grandTotal = subTotal
   const invoiceType = invoice.invoice_type || 'Standard'
+  const invoiceCurrency = normalizeInvoiceCurrency(invoice.currency)
   const normalizedStatus = (invoice.status || '').toLowerCase()
   const payableSummaryLabel =
     normalizedStatus.includes('paid') || normalizedStatus.includes('completed')
@@ -514,7 +570,7 @@ export function InvoiceDocument({
             <div key={`view-service-${idx}`} className="invoice-services-row grid grid-cols-[72px_1fr_160px] border-t border-slate-100 px-4 py-4 text-sm">
               <span className="text-slate-700">{String(idx + 1).padStart(2, '0')}</span>
               <span className="text-slate-800">{line.description || 'Service'}</span>
-              <span className="text-right text-slate-700">{line.price || '$0.00'}</span>
+              <span className="text-right text-slate-700">{formatCurrencyAmount(parseAmountValue(line.price), invoiceCurrency)}</span>
             </div>
           ))
         )}
@@ -546,20 +602,20 @@ export function InvoiceDocument({
               onKeyDown={onGrandTotalClick ? (e) => e.key === 'Enter' && onGrandTotalClick() : undefined}
             >
               <span className="text-slate-600">Total</span>
-              <span className="font-medium text-slate-700">${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              <span className="font-medium text-slate-700">{formatCurrencyAmount(grandTotal, invoiceCurrency)}</span>
             </div>
             {showPayableSummary ? (
               <>
                 <div className="rounded-xl bg-orange-600 p-4 text-white">
                   <span className="block text-xs font-bold uppercase tracking-wide text-orange-100">{payableSummaryLabel}</span>
                   <p className="mt-2 text-2xl font-black">
-                    ${(payableAmount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {formatCurrencyAmount(payableAmount ?? 0, invoiceCurrency)}
                   </p>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-600">Remaining</span>
                   <span className="font-medium text-slate-700">
-                    ${(remainingAmount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {formatCurrencyAmount(remainingAmount ?? 0, invoiceCurrency)}
                   </span>
                 </div>
               </>
@@ -615,6 +671,7 @@ export default function Invoice() {
   const [addStatus, setAddStatus] = useState('Pending')
   const [addPayableAmount, setAddPayableAmount] = useState('')
   const [addInvoiceType, setAddInvoiceType] = useState<string>(INVOICE_TYPE_OPTIONS[0])
+  const [addCurrency, setAddCurrency] = useState<InvoiceCurrency>('USD')
   const [savedAddInvoiceId, setSavedAddInvoiceId] = useState<number | null>(null)
   const [savedAddInvoiceUrl, setSavedAddInvoiceUrl] = useState('')
   const [addUrlCopied, setAddUrlCopied] = useState(false)
@@ -633,6 +690,7 @@ export default function Invoice() {
   const [editPayableAmount, setEditPayableAmount] = useState('')
   const [editPaidAmountTotal, setEditPaidAmountTotal] = useState(0)
   const [editInvoiceType, setEditInvoiceType] = useState<string>(INVOICE_TYPE_OPTIONS[0])
+  const [editCurrency, setEditCurrency] = useState<InvoiceCurrency>('USD')
   const [editInvoiceUrl, setEditInvoiceUrl] = useState('')
   const [editUrlCopied, setEditUrlCopied] = useState(false)
   const [editLoading, setEditLoading] = useState(false)
@@ -857,6 +915,7 @@ export default function Invoice() {
         payable_amount: row.payable_amount == null ? null : Number(row.payable_amount),
         paid_amount: Number((paidAmountByInvoiceId.get(invoiceId) ?? 0).toFixed(2)),
         invoice_type: (row.invoice_type as string) ?? INVOICE_TYPE_OPTIONS[0],
+        currency: normalizeInvoiceCurrency(row.currency),
       }
     })
     setInvoices((prev) => {
@@ -1296,11 +1355,12 @@ export default function Invoice() {
         status: addStatus,
         payable_amount: payableAmount > 0 ? Number(payableAmount.toFixed(2)) : null,
         invoice_type: addInvoiceType,
+        currency: addCurrency,
       })
       .select('id')
       .single()
 
-    if (insertError && isMissingBrandIdColumnError(insertError)) {
+    if (insertError && (isMissingBrandIdColumnError(insertError) || isMissingColumnError(insertError, 'currency'))) {
       ;({ data: insertedInvoice, error: insertError } = await supabase
         .from('invoices')
         .insert({
@@ -1356,6 +1416,7 @@ export default function Invoice() {
     setAddStatus('Pending')
     setAddPayableAmount('')
     setAddInvoiceType(INVOICE_TYPE_OPTIONS[0])
+    setAddCurrency('USD')
     setSavedAddInvoiceId(null)
     setSavedAddInvoiceUrl('')
     setAddUrlCopied(false)
@@ -1395,6 +1456,7 @@ export default function Invoice() {
     setEditPayableAmount(inv.payable_amount == null ? '' : String(inv.payable_amount))
     setEditPaidAmountTotal(inv.paid_amount || 0)
     setEditInvoiceType(inv.invoice_type || INVOICE_TYPE_OPTIONS[0])
+    setEditCurrency(normalizeInvoiceCurrency(inv.currency))
     setEditInvoiceUrl('')
     void getSignedInvoiceLink(inv.id).then((signedLink) => {
       setEditInvoiceUrl(`${window.location.origin}${signedLink}`)
@@ -1491,10 +1553,11 @@ export default function Invoice() {
         status: editStatus,
         payable_amount: payableAmount > 0 ? Number(payableAmount.toFixed(2)) : null,
         invoice_type: editInvoiceType,
+        currency: editCurrency,
       })
       .eq('id', editingInvoice.id)
 
-    if (error && isMissingBrandIdColumnError(error)) {
+    if (error && (isMissingBrandIdColumnError(error) || isMissingColumnError(error, 'currency'))) {
       ;({ error } = await supabase
         .from('invoices')
         .update({
@@ -1826,9 +1889,9 @@ export default function Invoice() {
                   <div className="px-4 sm:px-6 py-4 min-w-0">
                     <span
                       className="block truncate whitespace-nowrap text-white text-sm font-semibold"
-                      title={`$${parseAmountValue(inv.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                      title={formatCurrencyAmount(parseAmountValue(inv.amount), normalizeInvoiceCurrency(inv.currency))}
                     >
-                      ${parseAmountValue(inv.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {formatCurrencyAmount(parseAmountValue(inv.amount), normalizeInvoiceCurrency(inv.currency))}
                     </span>
                   </div>
                   <div className="px-4 sm:px-6 py-4 min-w-0">
@@ -2247,16 +2310,19 @@ export default function Invoice() {
                             <div className="space-y-2 text-sm">
                               <div className="flex justify-between">
                                 <span className="text-slate-600">Total</span>
-                                <span className="font-medium text-slate-700">${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                <span className="flex items-center gap-2 font-medium text-slate-700">
+                                  {!isAdvanceUnpaidStatus(addStatus) && (
+                                    <CurrencyPrefixSelect id="add-currency-total" value={addCurrency} onChange={setAddCurrency} />
+                                  )}
+                                  {formatCurrencyAmount(grandTotal, addCurrency)}
+                                </span>
                               </div>
                               {isAdvanceUnpaidStatus(addStatus) && (
                                 <>
                                   <div className="rounded-xl bg-orange-600 p-4 text-white">
                                     <label htmlFor="add-payable-amount" className="block text-xs font-bold uppercase tracking-wide text-orange-100">Payable Amount</label>
                                     <div className="mt-2 flex items-center rounded-xl border border-white/70 bg-white px-5 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_10px_24px_rgba(124,45,18,0.18)] focus-within:border-white focus-within:ring-4 focus-within:ring-white/25">
-                                      <span className="shrink-0 pr-3 text-xl font-black text-slate-500" aria-hidden="true">
-                                        $
-                                      </span>
+                                      <CurrencyPrefixSelect id="add-currency" value={addCurrency} onChange={setAddCurrency} />
                                       <input
                                         id="add-payable-amount"
                                         type="text"
@@ -2265,13 +2331,13 @@ export default function Invoice() {
                                         placeholder="0.00"
                                         inputMode="decimal"
                                         pattern="^\d+(\.\d{1,2})?$"
-                                        className="min-w-0 flex-1 bg-transparent text-2xl font-black text-slate-900 placeholder:text-slate-400 focus:outline-none"
+                                        className="ml-3 min-w-0 flex-1 bg-transparent text-2xl font-black text-slate-900 placeholder:text-slate-400 focus:outline-none"
                                       />
                                     </div>
                                   </div>
                                   <div className="flex justify-between">
                                     <span className="text-slate-600">Remaining</span>
-                                    <span className="font-medium text-slate-700">${remainingAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                    <span className="font-medium text-slate-700">{formatCurrencyAmount(remainingAmount, addCurrency)}</span>
                                   </div>
                                 </>
                               )}
@@ -2587,18 +2653,23 @@ export default function Invoice() {
                             <div className="space-y-2 text-sm">
                               <div className="flex justify-between">
                                 <span className="text-slate-600">Total</span>
-                                <span className="font-medium text-slate-700">${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                <span className="flex items-center gap-2 font-medium text-slate-700">
+                                  {!isAdvanceUnpaidStatus(editStatus) && (
+                                    <CurrencyPrefixSelect id="edit-currency-total" value={editCurrency} onChange={setEditCurrency} />
+                                  )}
+                                  {formatCurrencyAmount(grandTotal, editCurrency)}
+                                </span>
                               </div>
                               {paidAmount > 0 && (
                                 <div className="flex justify-between">
                                   <span className="text-slate-600">Paid</span>
-                                  <span className="font-medium text-emerald-600">${paidAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                  <span className="font-medium text-emerald-600">{formatCurrencyAmount(paidAmount, editCurrency)}</span>
                                 </div>
                               )}
                               {paidAmount > 0 && !isAdvanceUnpaidStatus(editStatus) && (
                                 <div className="flex justify-between">
                                   <span className="text-slate-600">Remaining</span>
-                                  <span className="font-medium text-slate-700">${remainingBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                  <span className="font-medium text-slate-700">{formatCurrencyAmount(remainingBalance, editCurrency)}</span>
                                 </div>
                               )}
                               {isAdvanceUnpaidStatus(editStatus) && (
@@ -2606,9 +2677,7 @@ export default function Invoice() {
                                   <div className="rounded-xl bg-orange-600 p-4 text-white">
                                     <label htmlFor="edit-payable-amount" className="block text-xs font-bold uppercase tracking-wide text-orange-100">Payable Amount</label>
                                     <div className="mt-2 flex items-center rounded-xl border border-white/70 bg-white px-5 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_10px_24px_rgba(124,45,18,0.18)] focus-within:border-white focus-within:ring-4 focus-within:ring-white/25">
-                                      <span className="shrink-0 pr-3 text-xl font-black text-slate-500" aria-hidden="true">
-                                        $
-                                      </span>
+                                      <CurrencyPrefixSelect id="edit-currency" value={editCurrency} onChange={setEditCurrency} />
                                       <input
                                         id="edit-payable-amount"
                                         type="text"
@@ -2617,13 +2686,13 @@ export default function Invoice() {
                                         placeholder="0.00"
                                         inputMode="decimal"
                                         pattern="^\d+(\.\d{1,2})?$"
-                                        className="min-w-0 flex-1 bg-transparent text-2xl font-black text-slate-900 placeholder:text-slate-400 focus:outline-none"
+                                        className="ml-3 min-w-0 flex-1 bg-transparent text-2xl font-black text-slate-900 placeholder:text-slate-400 focus:outline-none"
                                       />
                                     </div>
                                   </div>
                                   <div className="flex justify-between">
                                     <span className="text-slate-600">Remaining</span>
-                                    <span className="font-medium text-slate-700">${remainingAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                    <span className="font-medium text-slate-700">{formatCurrencyAmount(remainingAmount, editCurrency)}</span>
                                   </div>
                                 </>
                               )}
