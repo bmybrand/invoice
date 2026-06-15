@@ -623,8 +623,8 @@ export function Dashboard() {
     <div className="flex flex-col gap-4 sm:gap-6">
         <div className="flex justify-between items-start gap-2">
               <div className="flex flex-1 flex-col gap-1 sm:gap-2 min-w-0">
-                <h1 className="text-xl font-black leading-tight text-white sm:text-2xl md:text-3xl lg:text-4xl lg:leading-10">Mission Control</h1>
-                <p className="text-xs font-medium leading-5 text-slate-500 sm:text-sm md:text-base md:leading-6">Powering the next generation of creative dominance.</p>
+                <h1 className="text-xl font-black leading-tight text-white sm:text-2xl md:text-3xl lg:text-4xl lg:leading-10">Dashboard Overview</h1>
+                <p className="text-xs font-medium leading-5 text-slate-500 sm:text-sm md:text-base md:leading-6">Track clients, invoices, payments, and team activity in one place.</p>
               </div>
               <div className="flex shrink-0 gap-1.5 pt-1 sm:gap-2 sm:pt-2">
                 <button
