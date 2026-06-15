@@ -33,7 +33,7 @@
 
   button[aria-label="Collapse sidebar"],
   button[aria-label="Expand sidebar"],
-  .fixed.bottom-\[98px\] {
+  .fixed.bottom-\[168px\] {
     display: none !important;
     visibility: hidden !important;
     opacity: 0 !important;

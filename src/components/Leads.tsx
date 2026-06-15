@@ -63,6 +63,14 @@ function CloseIcon({ className = 'h-4 w-4' }: { className?: string }) {
   )
 }
 
+function TrashIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673A2.25 2.25 0 0115.916 21H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+    </svg>
+  )
+}
+
 function formatDateTime(value: string | null) {
   if (!value) return 'N/A'
   const date = new Date(value)
@@ -103,7 +111,7 @@ function getLeadTabLabel(lead: Pick<LeadRow, 'form_type' | 'service'>) {
 }
 
 export default function Leads() {
-  const { accountType, profileLoaded } = useDashboardProfile()
+  const { accountType, displayRole, profileLoaded } = useDashboardProfile()
   const { token } = useSessionContext()
 
   const [leads, setLeads] = useState<LeadRow[]>([])
@@ -113,6 +121,11 @@ export default function Leads() {
   const [activeService, setActiveService] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [selectedLead, setSelectedLead] = useState<LeadRow | null>(null)
+  const [deleteConfirmLead, setDeleteConfirmLead] = useState<LeadRow | null>(null)
+  const [deletingLeadId, setDeletingLeadId] = useState<number | null>(null)
+
+  const normalizedRole = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '')
+  const isSuperAdmin = normalizedRole === 'superadmin'
 
   const fetchLeads = useCallback(async () => {
     const accessToken = token?.trim() || ''
@@ -241,6 +254,35 @@ export default function Leads() {
   const start = (safePage - 1) * PAGE_SIZE
   const end = start + PAGE_SIZE
   const paginatedLeads = filteredLeads.slice(start, start + PAGE_SIZE)
+  const columnCount = (isNewsletterSubscription ? 5 : isContactTab ? 8 : 7) + (isSuperAdmin ? 1 : 0)
+
+  const handleDeleteLead = useCallback(async (lead: LeadRow) => {
+    const accessToken = token?.trim() || ''
+    if (!accessToken || deletingLeadId !== null || !isSuperAdmin) return
+
+    setDeletingLeadId(lead.id)
+    setError(null)
+
+    const response = await fetch(`/api/leads/${lead.id}`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    })
+
+    const result = (await response.json().catch(() => null)) as { error?: string } | null
+
+    if (!response.ok) {
+      setError(result?.error || 'Failed to delete lead')
+      setDeletingLeadId(null)
+      return
+    }
+
+    setLeads((current) => current.filter((item) => item.id !== lead.id))
+    setSelectedLead((current) => (current?.id === lead.id ? null : current))
+    setDeleteConfirmLead(null)
+    setDeletingLeadId(null)
+  }, [deletingLeadId, isSuperAdmin, token])
 
   if (profileLoaded && accountType !== 'employee') {
     return (
@@ -314,7 +356,7 @@ export default function Leads() {
 
       <div className="w-full bg-slate-800/80 rounded-xl border border-slate-700 overflow-hidden">
         <div className="w-full overflow-x-auto scrollbar-thin">
-          <table className={`w-full table-fixed ${isNewsletterSubscription ? 'min-w-[760px]' : 'min-w-[1180px]'}`}>
+          <table className={`w-full table-fixed ${isNewsletterSubscription ? 'min-w-[860px]' : 'min-w-[1280px]'}`}>
             <thead>
               <tr className="bg-slate-900/50 border-b border-slate-700">
                 <th className="w-[72px] px-4 sm:px-6 py-4 text-left">
@@ -347,30 +389,48 @@ export default function Leads() {
                     <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Message</span>
                   </th>
                 ) : null}
+                {isSuperAdmin ? (
+                  <th className="w-[96px] px-4 sm:px-6 py-4 text-right">
+                    <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Action</span>
+                  </th>
+                ) : null}
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={isNewsletterSubscription ? 5 : isContactTab ? 8 : 7} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
+                  <td colSpan={columnCount} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
                     Loading leads...
                   </td>
                 </tr>
               ) : error ? (
                 <tr>
-                  <td colSpan={isNewsletterSubscription ? 5 : isContactTab ? 8 : 7} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-red-300 text-sm">
+                  <td colSpan={columnCount} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-red-300 text-sm">
                     {error}
                   </td>
                 </tr>
               ) : paginatedLeads.length === 0 ? (
                 <tr>
-                  <td colSpan={isNewsletterSubscription ? 5 : isContactTab ? 8 : 7} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
+                  <td colSpan={columnCount} className="border-t border-slate-700 px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
                     {searchQuery.trim() ? 'No matching leads' : 'No leads found.'}
                   </td>
                 </tr>
               ) : (
                 paginatedLeads.map((lead, rowIndex) => (
-                  <tr key={lead.id} className="border-t border-slate-700">
+                  <tr
+                    key={lead.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setSelectedLead(lead)}
+                    onKeyDown={(event) => {
+                      if (event.target !== event.currentTarget) return
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        setSelectedLead(lead)
+                      }
+                    }}
+                    className="cursor-pointer border-t border-slate-700 transition-[background-color,box-shadow] duration-150 hover:bg-slate-800 hover:shadow-[inset_3px_0_0_rgba(249,115,22,0.95)] focus-visible:bg-slate-800 focus-visible:shadow-[inset_3px_0_0_rgba(249,115,22,0.95)] focus-visible:outline-none"
+                  >
                     <td className="w-[72px] px-4 sm:px-6 py-4">
                       <span className="text-white text-sm font-bold font-mono block truncate whitespace-nowrap">
                         {start + rowIndex + 1}
@@ -425,17 +485,32 @@ export default function Leads() {
                     {!isNewsletterSubscription ? (
                       <td className="w-[180px] px-4 sm:px-6 py-4 min-w-0">
                         {lead.message?.trim() ? (
-                          <button
-                            type="button"
-                            onClick={() => setSelectedLead(lead)}
-                            className="block w-full max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-left text-slate-300 text-sm transition hover:text-white"
+                          <span
+                            className="block w-full max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-slate-300 text-sm"
                             title={lead.message.trim()}
                           >
                             {lead.message.trim()}
-                          </button>
+                          </span>
                         ) : (
                           <span className="text-slate-500 text-sm block truncate whitespace-nowrap">No message</span>
                         )}
+                      </td>
+                    ) : null}
+                    {isSuperAdmin ? (
+                      <td className="w-[96px] px-4 sm:px-6 py-4 text-right">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            setDeleteConfirmLead(lead)
+                          }}
+                          disabled={deletingLeadId === lead.id}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-red-500/25 bg-red-500/10 text-red-300 transition hover:border-red-400/60 hover:bg-red-500/20 hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          aria-label={`Delete lead ${lead.id}`}
+                          title="Delete lead"
+                        >
+                          <TrashIcon className="h-4 w-4" />
+                        </button>
                       </td>
                     ) : null}
                   </tr>
@@ -548,6 +623,68 @@ export default function Leads() {
                   </div>
                 </div>
               ) : null}
+            </div>
+          </div>
+        </>
+      ) : null}
+
+      {deleteConfirmLead ? (
+        <>
+          <div className="fixed inset-0 z-50 bg-black/60" onClick={() => {
+            if (deletingLeadId === null) setDeleteConfirmLead(null)
+          }} />
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-2xl shadow-black/40">
+              <div className="mb-5 flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold uppercase tracking-wide text-red-300">Delete Lead</p>
+                  <h2 className="mt-2 truncate text-xl font-black text-white">
+                    {[deleteConfirmLead.first_name, deleteConfirmLead.last_name].filter(Boolean).join(' ') ||
+                      deleteConfirmLead.email ||
+                      `Lead #${deleteConfirmLead.id}`}
+                  </h2>
+                  <p className="mt-2 text-sm leading-6 text-slate-400">
+                    This will permanently delete the Supabase record. This action cannot be undone.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirmLead(null)}
+                  disabled={deletingLeadId !== null}
+                  className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label="Close delete confirmation"
+                >
+                  <CloseIcon />
+                </button>
+              </div>
+
+              <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-4 text-sm text-slate-300">
+                <p className="truncate">
+                  <span className="text-slate-500">Email:</span> {deleteConfirmLead.email || 'N/A'}
+                </p>
+                <p className="mt-2 truncate">
+                  <span className="text-slate-500">Service:</span> {deleteConfirmLead.service || 'N/A'}
+                </p>
+              </div>
+
+              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirmLead(null)}
+                  disabled={deletingLeadId !== null}
+                  className="rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-bold text-slate-300 transition hover:bg-slate-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleDeleteLead(deleteConfirmLead)}
+                  disabled={deletingLeadId !== null}
+                  className="rounded-xl border border-red-500/30 bg-red-500 px-4 py-2.5 text-sm font-bold text-white shadow-[0_10px_24px_rgba(239,68,68,0.25)] transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {deletingLeadId === deleteConfirmLead.id ? 'Deleting...' : 'Delete Record'}
+                </button>
+              </div>
             </div>
           </div>
         </>

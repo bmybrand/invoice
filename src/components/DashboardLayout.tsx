@@ -380,14 +380,6 @@ const allNavItems: Array<{ label: string; href: string }> = [
   { label: 'Settings', href: '/dashboard/settings' },
 ]
 
-const SIDEBAR_EXPANDED_PX = 256
-const SIDEBAR_COLLAPSED_PX = 80
-
-function getSidebarToggleLeft(collapsed: boolean): string {
-  const width = collapsed ? SIDEBAR_COLLAPSED_PX : SIDEBAR_EXPANDED_PX
-  return `${width - 22}px`
-}
-
 function shouldDefaultSidebarCollapsed(): boolean {
   if (typeof window === 'undefined') {
     return false
@@ -442,11 +434,15 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   const sidebarAsideClass = sidebarCollapsed
     ? 'w-12 sm:w-14 md:w-20'
-    : 'w-full max-w-[16rem] md:w-64'
+    : 'w-[min(16rem,calc(100vw-2.75rem))]'
 
   const mainOffsetClass = sidebarCollapsed
     ? 'pl-12 sm:pl-14 md:pl-20'
-    : 'pl-12 sm:pl-14 md:pl-64'
+    : 'pl-12 sm:pl-14 md:pl-20 lg:pl-0'
+
+  const sidebarWidthVarClass = sidebarCollapsed
+    ? '[--sidebar-width:3rem] sm:[--sidebar-width:3.5rem] md:[--sidebar-width:5rem]'
+    : '[--sidebar-width:min(16rem,calc(100vw-2.75rem))] md:[--sidebar-width:16rem]'
 
   const resetDashboardProfile = useCallback((nextProfileLoaded: boolean) => {
     setCurrentUserAuthId(null)
@@ -1111,7 +1107,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       <ClientDashboardDataProvider key={`${currentUserAuthId ?? 'anonymous'}:${accountType ?? 'none'}`}>
       <div
         id="dashboard-root-shell"
-        className={`${plusJakarta.className} relative flex min-h-screen w-full bg-gray-900 text-white`}
+        className={`${plusJakarta.className} ${sidebarWidthVarClass} relative flex min-h-screen w-full bg-gray-900 text-white`}
       >
         <DashboardOverlay
           profileLoaded={profileLoaded}
@@ -1130,9 +1126,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               <Image src="/bmybrand-B.svg" alt="Brand Logo" width={36} height={36} className="h-full w-full object-contain" />
             </div>
             <span
-              className={`truncate text-lg font-extrabold leading-6 transition-[opacity,max-width] duration-200 md:text-xl md:leading-7 ${sidebarCollapsed ? 'w-0 max-w-0 opacity-0' : 'opacity-100 delay-200'}`}
+              className={`truncate text-[22px] font-extrabold leading-7 transition-[opacity,max-width] duration-200 md:text-[26px] md:leading-8 ${sidebarCollapsed ? 'w-0 max-w-0 opacity-0' : 'opacity-100 delay-200'}`}
             >
-              BMYBrand <span className="text-orange-500">CRM</span>
+              <span className="text-white">Bmy</span><span className="text-orange-500">brand</span>
             </span>
           </div>
 
@@ -1210,18 +1206,18 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           <div className="p-3 sm:p-4 md:p-6">
             <button
               onClick={handleLogout}
-              className={`flex w-full items-center justify-center gap-1.5 rounded-md border border-orange-500/20 bg-orange-500 text-xs font-bold leading-4 text-white shadow-[0px_4px_20px_0px_rgba(249,115,22,0.2)] transition hover:bg-orange-600 sm:gap-2 sm:rounded-lg sm:text-sm sm:leading-5 md:rounded-xl md:leading-6 ${
+              className={`flex w-full items-center justify-center rounded-md border border-orange-500/20 bg-orange-500 text-xs font-bold leading-4 text-white shadow-[0px_4px_20px_0px_rgba(249,115,22,0.2)] transition hover:bg-orange-600 sm:rounded-lg sm:text-sm sm:leading-5 md:rounded-xl md:leading-6 ${
                 sidebarCollapsed
                   ? 'h-9 px-0 sm:h-10 md:h-11'
-                  : 'p-1.5 px-2.5 py-2 sm:p-2 sm:px-3 sm:py-2.5 md:px-4 md:py-3'
+                  : 'gap-1.5 p-1.5 px-2.5 py-2 sm:gap-2 sm:p-2 sm:px-3 sm:py-2.5 md:px-4 md:py-3'
               }`}
               title={sidebarCollapsed ? 'Log Out' : undefined}
             >
               <span className="flex h-5 w-5 items-center justify-center">
-                <Image src="/logout-svgrepo-com.svg" alt="" width={14} height={14} className="h-3.5 w-3.5 object-contain" />
+                <Image src="/logout-svgrepo-com.svg" alt="" width={14} height={14} className={`h-3.5 w-3.5 object-contain ${sidebarCollapsed ? '-translate-x-0.5' : ''}`} />
               </span>
               <span
-                className={`truncate transition-opacity duration-200 ${sidebarCollapsed ? 'max-w-0 opacity-0' : 'opacity-100 delay-200'}`}
+                className={`truncate transition-opacity duration-200 ${sidebarCollapsed ? 'hidden' : 'opacity-100 delay-200'}`}
               >
                 Log Out
               </span>
@@ -1233,10 +1229,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         <button
           type="button"
           onClick={handleSidebarToggle}
-          className="no-print print:!hidden fixed bottom-[98px] z-30 flex h-11 w-11 items-center justify-center rounded-full border border-slate-700/70 bg-[#16233a] text-slate-300 shadow-[0_10px_24px_rgba(2,8,23,0.35)] transition-[left,background-color,border-color,color,box-shadow] duration-200 ease-out hover:border-slate-500 hover:bg-[#1b2c49] hover:text-white lg:bottom-6"
-          style={{
-            left: getSidebarToggleLeft(sidebarCollapsed),
-          }}
+          className="no-print print:!hidden fixed bottom-[168px] left-[calc(var(--sidebar-width)-22px)] z-30 flex h-11 w-11 items-center justify-center rounded-full border border-slate-700/70 bg-[#16233a] text-slate-300 shadow-[0_10px_24px_rgba(2,8,23,0.35)] transition-[left,background-color,border-color,color,box-shadow] duration-200 ease-out hover:border-slate-500 hover:bg-[#1b2c49] hover:text-white lg:bottom-24"
           aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           <ChevronLeftIcon

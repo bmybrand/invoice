@@ -233,7 +233,7 @@ export function LoginForm() {
             <div className="relative z-10 flex h-44 w-44 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/95 shadow-2xl shadow-orange-500/20 lg:h-48 lg:w-48">
               <Image
                 src="/bmybrand-B.svg"
-                alt="BMYBrand CRM logo"
+                alt="Bmybrand logo"
                 width={136}
                 height={136}
                 className="h-28 w-28 object-contain lg:h-32 lg:w-32"
@@ -242,7 +242,7 @@ export function LoginForm() {
             </div>
           </div>
           <Link href="/" className="z-10 mt-8 text-4xl font-black tracking-tight text-white lg:text-5xl">
-            <span className="text-white">BMYBrand</span> <span className="text-orange-500">CRM</span>
+            <span className="text-white">Bmy</span><span className="text-orange-500">brand</span>
           </Link>
           <p className="mt-4 text-sm font-medium uppercase tracking-widest text-white/90 z-10">
             Creative Agency Solutions
