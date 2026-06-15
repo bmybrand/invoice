@@ -1101,7 +1101,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           </div>
 
           <nav
-            className={`flex flex-1 flex-col gap-0.5 overflow-hidden ${sidebarCollapsed ? 'items-center px-1 py-1.5 sm:px-1.5 sm:py-2' : 'gap-1 px-3 sm:px-4'}`}
+            className={`scrollbar-thin min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain ${sidebarCollapsed ? 'flex flex-col items-center gap-0.5 px-1 py-1.5 sm:px-1.5 sm:py-2' : 'flex flex-col gap-1 px-3 sm:px-4'}`}
           >
             {visibleNavItems.map((item) => {
               const active = pathname === item.href
