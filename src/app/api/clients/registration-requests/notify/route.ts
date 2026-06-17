@@ -145,12 +145,13 @@ export async function POST(request: Request) {
   if (handlerId) {
     const { data: agentRow } = await supabase
       .from('employees')
-      .select('employee_name')
+      .select('employee_name, agent_name')
       .eq('auth_id', handlerId)
       .neq('isdeleted', true)
       .maybeSingle()
 
-    agentName = String((agentRow as { employee_name?: string | null } | null)?.employee_name || '').trim()
+    const row = agentRow as { employee_name?: string | null; agent_name?: string | null } | null
+    agentName = String(row?.agent_name || row?.employee_name || '').trim()
   }
 
   const resend = new Resend(resendApiKey)
