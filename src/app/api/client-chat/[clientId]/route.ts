@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getDrivePublicViewUrl } from '@/lib/server-google-drive'
+import { getDriveProxyUrl, getDrivePublicViewUrl } from '@/lib/server-google-drive'
 import { requireClientChatAccess } from '@/lib/server-client-chat-auth'
 import { sendHandlerChatPush } from '@/lib/server-push-notifications'
 
@@ -222,7 +222,7 @@ export async function GET(
   const messages = rows.map((row) => {
     const attachments = (attachmentsByMessageId.get(row.id) || []).map((attachment) => ({
       name: attachment.name,
-      url: getDrivePublicViewUrl(attachment.path) || null,
+      url: getDriveProxyUrl(attachment.path) || null,
     }))
     const primaryAttachment = attachments[0]
 

@@ -218,6 +218,11 @@ export function getDrivePublicViewUrl(fileId: string) {
   return trimmed ? driveUrl(trimmed) : ''
 }
 
+export function getDriveProxyUrl(fileId: string) {
+  const trimmed = fileId.trim()
+  return trimmed ? `/api/google-drive/files/${encodeURIComponent(trimmed)}` : ''
+}
+
 export async function getDriveFileMedia(fileId: string): Promise<DriveMediaResult> {
   const trimmed = fileId.trim()
   if (!trimmed || !/^[a-zA-Z0-9_-]+$/.test(trimmed)) {
