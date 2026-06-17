@@ -193,7 +193,7 @@ export function GlobalDashboardSearch({
             tasks.push(
               supabase
                 .from('employees')
-                .select('id, employee_name, email, role, department')
+                .select('id, employee_name, agent_name, email, role, department')
                 .neq('isdeleted', true)
                 .or(`employee_name.ilike.${likeValue},email.ilike.${likeValue},role.ilike.${likeValue},department.ilike.${likeValue}`)
                 .limit(SECTION_LIMIT)
@@ -204,7 +204,7 @@ export function GlobalDashboardSearch({
                     nextResults.push({
                       id: `employee-${row.id}`,
                       kind: 'employee',
-                      title: String(row.employee_name ?? 'Employee'),
+                      title: String(row.agent_name ? `${row.employee_name ?? 'Employee'} (${row.agent_name})` : row.employee_name ?? 'Employee'),
                       subtitle: String(row.email ?? ''),
                       context: `Employees - ${(String(row.role ?? 'User') || 'User').trim()}${String(row.department ?? '').trim() ? ` - ${String(row.department).trim()}` : ''}`,
                       href: withSearchParam('/dashboard/employees', String(row.employee_name ?? row.email ?? trimmedQuery)),
