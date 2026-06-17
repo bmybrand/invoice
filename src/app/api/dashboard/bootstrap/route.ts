@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { getDrivePublicViewUrl } from '@/lib/server-google-drive'
 
 type BootstrapState =
   | 'employee'
@@ -77,7 +78,7 @@ export async function GET(request: Request) {
   const [{ data: employeeRows, error: employeeError }, { data: clientRows, error: clientError }] = await Promise.all([
     setup.serviceClient
       .from('employees')
-      .select('id, employee_name, role, department, avatar_url, isdeleted')
+      .select('id, employee_name, role, department, avatar_path, avatar_url, isdeleted')
       .eq('auth_id', user.id)
       .limit(4),
     setup.serviceClient
@@ -106,6 +107,7 @@ export async function GET(request: Request) {
       employee_name?: string | null
       role?: string | null
       department?: string | null
+      avatar_path?: string | null
       avatar_url?: string | null
       isdeleted?: boolean | null
     }> | null) ?? [])
@@ -119,7 +121,8 @@ export async function GET(request: Request) {
         employeeName: (activeEmployee.employee_name || '').trim(),
         role: (activeEmployee.role || '').trim(),
         department: (activeEmployee.department || '').trim(),
-        avatarUrl: (activeEmployee.avatar_url || '').trim(),
+        avatarFileId: (activeEmployee.avatar_path || '').trim(),
+        avatarUrl: (activeEmployee.avatar_url || '').trim() || getDrivePublicViewUrl((activeEmployee.avatar_path || '').trim()),
       },
     })
   }

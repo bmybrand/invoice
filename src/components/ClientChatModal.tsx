@@ -12,12 +12,12 @@ import { getInvoiceLink as getSignedInvoiceLink } from '@/app/actions/invoice-li
 import { useDashboardProfile } from '@/components/DashboardLayout'
 import { useSessionContext } from '@/context/SessionContext'
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock'
+import { getGoogleDriveImageUrl } from '@/lib/google-drive-url'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 const TYPING_STOP_DELAY_MS = 1800
 const OLDER_LOAD_TRIGGER_PX = 140
-const CHAT_BUCKET = 'client-chat-files'
 const MAX_CHAT_ATTACHMENT_BYTES = 20 * 1024 * 1024
 const MAX_CHAT_ATTACHMENTS_PER_MESSAGE = 10
 const DEFAULT_MESSAGE_LINE_CLAMP = 8
@@ -215,6 +215,7 @@ function avatarColorsFromName(name: string) {
 function MessageAvatar({ name, imageUrl }: { name: string; imageUrl?: string | null }) {
   const [imageFailed, setImageFailed] = useState(false)
   const showImage = Boolean(imageUrl && !imageFailed)
+  const resolvedImageUrl = getGoogleDriveImageUrl(imageUrl) || imageUrl || ''
   const colors = useMemo(() => avatarColorsFromName(name), [name])
 
   return (
@@ -231,7 +232,7 @@ function MessageAvatar({ name, imageUrl }: { name: string; imageUrl?: string | n
     >
       {showImage ? (
         <img
-          src={imageUrl || ''}
+          src={resolvedImageUrl}
           alt={name}
           className="h-full w-full object-cover"
           onError={() => setImageFailed(true)}
@@ -1439,79 +1440,22 @@ export function ClientChatModal({
     }
     setPendingAttachments((prev) => prev.filter((item) => !attachmentsToUpload.some((attachment) => attachment.id === item.id)))
 
-    const uploadedAttachments: Array<{ filePath: string; attachmentName: string }> = []
+    const uploadFormData = new FormData()
+    attachmentsToUpload.forEach((attachment) => {
+      uploadFormData.append('files', attachment.file, attachment.file.name)
+    })
+    uploadFormData.set('message', attachmentMessage)
 
-    for (const attachment of attachmentsToUpload) {
-      const prepareResponse = await fetch(`/api/client-chat/${clientId}/attachments`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          operation: 'prepare',
-          fileName: attachment.file.name,
-        }),
-      })
-
-      const prepareResult = (await prepareResponse.json().catch(() => null)) as {
-        error?: string
-        filePath?: string
-        token?: string
-      } | null
-
-      if (!prepareResponse.ok || !prepareResult?.filePath || !prepareResult.token) {
-        optimisticMessagesRef.current = optimisticMessagesRef.current.filter((message) => message.id !== optimisticMessage.id)
-        setMessages((prev) => prev.filter((message) => message.id !== optimisticMessage.id))
-        if (attachmentMessage) {
-          setDraft(attachmentMessage)
-        }
-        setPendingAttachments((prev) => [...attachmentsToUpload, ...prev])
-        setUploading(false)
-        setError(prepareResult?.error || 'Failed to prepare file upload')
-        return
-      }
-
-      const uploadResult = await supabase.storage
-        .from(CHAT_BUCKET)
-        .uploadToSignedUrl(prepareResult.filePath, prepareResult.token, attachment.file, {
-          contentType: attachment.file.type || 'application/octet-stream',
-          upsert: false,
-        })
-
-      if (uploadResult.error) {
-        optimisticMessagesRef.current = optimisticMessagesRef.current.filter((message) => message.id !== optimisticMessage.id)
-        setMessages((prev) => prev.filter((message) => message.id !== optimisticMessage.id))
-        if (attachmentMessage) {
-          setDraft(attachmentMessage)
-        }
-        setPendingAttachments((prev) => [...attachmentsToUpload, ...prev])
-        setUploading(false)
-        setError(uploadResult.error.message || 'Failed to upload file')
-        return
-      }
-
-      uploadedAttachments.push({
-        filePath: prepareResult.filePath,
-        attachmentName: attachment.file.name,
-      })
-    }
-
-    const completeResponse = await fetch(`/api/client-chat/${clientId}/attachments`, {
+    const uploadResponse = await fetch(`/api/client-chat/${clientId}/attachments`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({
-        operation: 'complete',
-        attachments: uploadedAttachments,
-        message: attachmentMessage,
-      }),
+      body: uploadFormData,
     })
 
-    const completeResult = (await completeResponse.json().catch(() => null)) as { error?: string } | null
-    if (!completeResponse.ok) {
+    const uploadResult = (await uploadResponse.json().catch(() => null)) as { error?: string } | null
+    if (!uploadResponse.ok) {
       optimisticMessagesRef.current = optimisticMessagesRef.current.filter((message) => message.id !== optimisticMessage.id)
       setMessages((prev) => prev.filter((message) => message.id !== optimisticMessage.id))
       if (attachmentMessage) {
@@ -1519,7 +1463,7 @@ export function ClientChatModal({
       }
       setPendingAttachments((prev) => [...attachmentsToUpload, ...prev])
       setUploading(false)
-      setError(completeResult?.error || 'Failed to share files')
+      setError(uploadResult?.error || 'Failed to share files')
       return
     }
 

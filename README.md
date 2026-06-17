@@ -49,6 +49,7 @@ Built for staff dashboards, client self-service, and public shareable links (inv
 | Framework | [Next.js 16](https://nextjs.org/) (App Router) |
 | UI | React 19, Tailwind CSS 4 |
 | Auth & data | [Supabase](https://supabase.com/) (Auth, Postgres tables) |
+| File storage | Google Drive API with OAuth |
 | Payments | [Stripe](https://stripe.com/) |
 | Email | [Resend](https://resend.com/) |
 | Brief form storage | MySQL (`mysql2`) — local dev or **cPanel PHP bridge** on Vercel |
@@ -103,6 +104,7 @@ flowchart LR
 - **Node.js** 20+
 - **npm** (or pnpm / yarn)
 - **Supabase** project (URL, anon key, service role key)
+- **Google OAuth client** with Google Drive API access for avatars and chat files
 - **Stripe** account (test or live keys + webhook secret)
 - **MySQL** for brief forms — either:
   - local/phpMyAdmin for development, or
@@ -155,6 +157,11 @@ Open [http://localhost:3000](http://localhost:3000).
 | `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase anon / publishable key |
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes | Server-side Supabase access |
+| `GOOGLE_OAUTH_CLIENT_ID` | Yes | Google OAuth web client ID for Drive uploads |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | Yes | Google OAuth web client secret for Drive uploads |
+| `GOOGLE_OAUTH_REFRESH_TOKEN` | Yes | Refresh token for the Google account that owns Drive uploads |
+| `GOOGLE_OAUTH_SETUP_SECRET` | Setup only | Temporary secret used by the one-time OAuth setup route |
+| `GOOGLE_DRIVE_ROOT_FOLDER_ID` | Optional | Parent Drive folder where `avatars` and `chat-files` folders are created |
 | `STRIPE_SECRET_KEY` | Yes | Stripe secret key |
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Yes | Stripe publishable key |
 | `STRIPE_WEBHOOK_SECRET` | Yes | Stripe webhook signing secret |
@@ -253,6 +260,7 @@ Submissions are stored as JSON in `brief_form_submissions` with `form_type`, `su
 ## Security notes
 
 - Never commit `.env`, `.env.local`, or `cpanel-bridge/config.php`.
+- Keep Google OAuth secrets and refresh tokens server-side only; browser uploads must go through the app API routes.
 - Use a long random value for `CPANEL_BRIEF_FORMS_BRIDGE_SECRET`.
 - Rotate Stripe and Supabase keys if they are ever exposed.
 - Brief form POST is public by design for client links; staff submission is blocked in the UI and API.

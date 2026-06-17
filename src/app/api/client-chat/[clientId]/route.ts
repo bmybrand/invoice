@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { getDrivePublicViewUrl } from '@/lib/server-google-drive'
 import { requireClientChatAccess } from '@/lib/server-client-chat-auth'
 import { sendHandlerChatPush } from '@/lib/server-push-notifications'
 
@@ -23,12 +24,8 @@ type ClientChatAttachmentRow = {
   sort_order: number | null
 }
 
-const CHAT_BUCKET = 'client-chat-files'
-const PROFILE_AVATAR_BUCKET = 'profile-images'
 const AVATAR_CACHE_TTL_MS = 5 * 60 * 1000
 const senderAvatarCache = new Map<string, { url: string | null; expiresAt: number }>()
-const ATTACHMENT_URL_TTL_MS = 55 * 60 * 1000
-const attachmentSignedUrlCache = new Map<string, { url: string; expiresAt: number }>()
 const HANDLER_NAME_TTL_MS = 10 * 60 * 1000
 const handlerNameCache = new Map<string, { name: string; expiresAt: number }>()
 
@@ -125,7 +122,7 @@ export async function GET(
     senderAuthIds.length
       ? actor.supabase
           .from('employees')
-          .select('auth_id, employee_name')
+          .select('auth_id, employee_name, avatar_path, avatar_url')
           .in('auth_id', senderAuthIds)
           .neq('isdeleted', true)
       : Promise.resolve({ data: [], error: null }),
@@ -146,7 +143,14 @@ export async function GET(
   }
 
   const senderNameByAuthId = new Map<string, string>()
-  ;(((employeesResult.data as Array<{ auth_id?: string | null; employee_name?: string | null }> | null) ?? [])).forEach((row) => {
+  const employeeRows =
+    ((employeesResult.data as Array<{
+      auth_id?: string | null
+      employee_name?: string | null
+      avatar_path?: string | null
+      avatar_url?: string | null
+    }> | null) ?? [])
+  employeeRows.forEach((row) => {
     const authId = (row.auth_id || '').trim()
     if (!authId) return
     senderNameByAuthId.set(authId, row.employee_name?.trim() || 'Employee')
@@ -179,31 +183,16 @@ export async function GET(
       const senderFolder = authId.trim()
       if (!senderFolder) return
 
-      const { data: files, error } = await actor.supabase.storage
-        .from(PROFILE_AVATAR_BUCKET)
-        .list(senderFolder, {
-          limit: 1,
-          sortBy: { column: 'created_at', order: 'desc' },
-        })
-
-      if (error || !files?.length) {
+      const employee = employeeRows.find((row) => (row.auth_id || '').trim() === senderFolder)
+      const avatarUrl = (employee?.avatar_url || '').trim()
+      const avatarFileId = (employee?.avatar_path || '').trim()
+      const resolvedAvatarUrl = avatarUrl || getDrivePublicViewUrl(avatarFileId)
+      if (!resolvedAvatarUrl) {
         senderAvatarCache.set(senderFolder, { url: null, expiresAt: now + AVATAR_CACHE_TTL_MS })
         return
       }
-      const avatarFile = files.find((file) => Boolean(file.name))
-      if (!avatarFile?.name) {
-        senderAvatarCache.set(senderFolder, { url: null, expiresAt: now + AVATAR_CACHE_TTL_MS })
-        return
-      }
-
-      const avatarPath = `${senderFolder}/${avatarFile.name}`
-      const { data } = actor.supabase.storage.from(PROFILE_AVATAR_BUCKET).getPublicUrl(avatarPath)
-      if (data?.publicUrl) {
-        senderAvatarByAuthId.set(senderFolder, data.publicUrl)
-        senderAvatarCache.set(senderFolder, { url: data.publicUrl, expiresAt: now + AVATAR_CACHE_TTL_MS })
-      } else {
-        senderAvatarCache.set(senderFolder, { url: null, expiresAt: now + AVATAR_CACHE_TTL_MS })
-      }
+      senderAvatarByAuthId.set(senderFolder, resolvedAvatarUrl)
+      senderAvatarCache.set(senderFolder, { url: resolvedAvatarUrl, expiresAt: now + AVATAR_CACHE_TTL_MS })
     })
   )
 
@@ -230,44 +219,10 @@ export async function GET(
     attachmentsByMessageId.set(messageId, current)
   })
 
-  const attachmentUrlByPath = new Map<string, string>()
-  const nowForAttachments = Date.now()
-  const attachmentPaths = Array.from(
-    new Set(
-      Array.from(attachmentsByMessageId.values())
-        .flat()
-        .map((attachment) => attachment.path)
-        .filter(Boolean)
-    )
-  )
-  const attachmentPathsToSign = attachmentPaths.filter((path) => {
-    const cached = attachmentSignedUrlCache.get(path)
-    if (!cached) return true
-    if (cached.expiresAt <= nowForAttachments) {
-      attachmentSignedUrlCache.delete(path)
-      return true
-    }
-    attachmentUrlByPath.set(path, cached.url)
-    return false
-  })
-
-  await Promise.all(
-    attachmentPathsToSign.map(async (path) => {
-      const { data } = await actor.supabase.storage.from(CHAT_BUCKET).createSignedUrl(path, 60 * 60)
-      const signedUrl = data?.signedUrl ?? ''
-      if (!signedUrl) return
-      attachmentUrlByPath.set(path, signedUrl)
-      attachmentSignedUrlCache.set(path, {
-        url: signedUrl,
-        expiresAt: nowForAttachments + ATTACHMENT_URL_TTL_MS,
-      })
-    })
-  )
-
   const messages = rows.map((row) => {
     const attachments = (attachmentsByMessageId.get(row.id) || []).map((attachment) => ({
       name: attachment.name,
-      url: attachmentUrlByPath.get(attachment.path) || null,
+      url: getDrivePublicViewUrl(attachment.path) || null,
     }))
     const primaryAttachment = attachments[0]
 

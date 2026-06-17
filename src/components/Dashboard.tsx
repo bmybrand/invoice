@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useDashboardProfile } from '@/components/DashboardLayout'
 import { logFetchError } from '@/lib/fetch-error'
+import { getGoogleDriveImageUrl, getGoogleDrivePublicUrl } from '@/lib/google-drive-url'
 import CountUp from 'react-countup'
 import {
   BarChart,
@@ -16,8 +17,6 @@ import {
   Area,
   Cell,
 } from 'recharts'
-
-const PROFILE_AVATAR_BUCKET = 'profile-images'
 
 type TopOperativeStyle = {
   color: string
@@ -196,8 +195,7 @@ function buildEmployeeAvatarUrl(employee: { avatar_path?: string | null; avatar_
 
   const avatarPath = (employee.avatar_path || '').trim()
   if (avatarPath) {
-    const { data } = supabase.storage.from(PROFILE_AVATAR_BUCKET).getPublicUrl(avatarPath)
-    return data.publicUrl || ''
+    return getGoogleDrivePublicUrl(avatarPath)
   }
   return ''
 }
@@ -225,6 +223,7 @@ function avatarColorsFromName(name: string) {
 function TopOperativeAvatar({ name, imageUrl }: { name: string; imageUrl?: string }) {
   const [imageFailed, setImageFailed] = useState(false)
   const showImage = Boolean(imageUrl && !imageFailed)
+  const resolvedImageUrl = getGoogleDriveImageUrl(imageUrl) || imageUrl || ''
   const colors = avatarColorsFromName(name)
 
   return (
@@ -241,7 +240,7 @@ function TopOperativeAvatar({ name, imageUrl }: { name: string; imageUrl?: strin
     >
       {showImage ? (
         <img
-          src={imageUrl || ''}
+          src={resolvedImageUrl}
           alt={name}
           className="h-full w-full object-cover"
           onError={() => setImageFailed(true)}

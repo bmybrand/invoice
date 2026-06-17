@@ -69,9 +69,9 @@ import { NotificationsBell } from '@/components/NotificationsBell'
 import { GlobalDashboardSearch } from '@/components/GlobalDashboardSearch'
 import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock'
+import { getGoogleDriveImageUrl } from '@/lib/google-drive-url'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
-const PROFILE_AVATAR_BUCKET = 'profile-images'
 
 type DashboardProfile = {
   displayName: string
@@ -92,6 +92,7 @@ type DashboardBootstrapResponse = {
     employeeName: string
     role: string
     department: string
+    avatarFileId?: string
     avatarUrl: string
   }
   client?: {
@@ -305,6 +306,7 @@ function ProfileAvatar({
 }) {
   const [imageFailed, setImageFailed] = useState(false)
   const showImage = Boolean(imageUrl && !imageFailed)
+  const resolvedImageUrl = getGoogleDriveImageUrl(imageUrl) || imageUrl || ''
   const colors = avatarColorsFromName(name)
 
   return (
@@ -323,7 +325,7 @@ function ProfileAvatar({
         // Avatar URLs come from storage and may vary by environment, so keep a plain img here.
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={imageUrl || ''}
+          src={resolvedImageUrl}
           alt={name}
           className="h-full w-full object-cover"
           onError={() => setImageFailed(true)}
@@ -402,6 +404,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [displayDepartment, setDisplayDepartment] = useState('')
   const [currentEmployeeId, setCurrentEmployeeId] = useState<number | null>(null)
   const [displayAvatarUrl, setDisplayAvatarUrl] = useState('')
+  const [displayAvatarFileId, setDisplayAvatarFileId] = useState('')
   const [currentUserAuthId, setCurrentUserAuthId] = useState<string | null>(null)
   const [currentUserEmail, setCurrentUserEmail] = useState('')
   const [currentClientId, setCurrentClientId] = useState<number | null>(null)
@@ -453,6 +456,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     setDisplayRole('')
     setDisplayDepartment('')
     setDisplayAvatarUrl('')
+    setDisplayAvatarFileId('')
     setOnlineAuthIds([])
     setAccountType(null)
     setProfileLoaded(nextProfileLoaded)
@@ -543,6 +547,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           setDisplayName(row?.employeeName || metadataDisplayName || user.email || 'User')
           setCurrentEmployeeId(typeof row?.id === 'number' ? row.id : null)
           setCurrentClientId(null)
+          setDisplayAvatarFileId((row?.avatarFileId || '').trim())
           setDisplayAvatarUrl((row?.avatarUrl || '').trim() || metadataAvatarUrl)
           setDisplayRole(
             row?.role
@@ -957,7 +962,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     const nextPassword = profilePassword.trim()
     const nextConfirmPassword = profileConfirmPassword.trim()
     let nextAvatarUrl = displayAvatarUrl.trim()
-    let nextAvatarPath = ''
+    let nextAvatarFileId = ''
+    const previousAvatarFileId = displayAvatarFileId.trim()
 
     if (!nextName) {
       setProfileError('Name is required.')
@@ -986,29 +992,36 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     const emailChanged = nextEmail.toLowerCase() !== currentUserEmail.trim().toLowerCase()
 
     if (profileImageFile) {
-      const extension = profileImageFile.name.split('.').pop()?.toLowerCase() || 'png'
-      const filePath = `${currentUserAuthId}/avatar-${Date.now()}.${extension}`
-      nextAvatarPath = filePath
-
-      const { error: uploadError } = await supabase.storage
-        .from(PROFILE_AVATAR_BUCKET)
-        .upload(filePath, profileImageFile, {
-          upsert: true,
-          contentType: profileImageFile.type,
-          cacheControl: '3600',
-        })
-
-      if (uploadError) {
+      const accessToken = token?.trim() || ''
+      if (!accessToken) {
         setProfileSaving(false)
-        setProfileError(uploadError.message)
+        setProfileError('Authentication expired. Sign in again and try again.')
         return
       }
 
-      const { data: publicUrlData } = supabase.storage
-        .from(PROFILE_AVATAR_BUCKET)
-        .getPublicUrl(filePath)
+      const formData = new FormData()
+      formData.set('file', profileImageFile, profileImageFile.name)
 
-      nextAvatarUrl = publicUrlData.publicUrl
+      const uploadResponse = await fetch('/api/upload/avatar', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: formData,
+      })
+
+      const uploadResult = (await uploadResponse.json().catch(() => null)) as
+        | { fileId?: string; publicViewUrl?: string; error?: string }
+        | null
+
+      if (!uploadResponse.ok || !uploadResult?.fileId || !uploadResult.publicViewUrl) {
+        setProfileSaving(false)
+        setProfileError(uploadResult?.error || 'Failed to upload profile image.')
+        return
+      }
+
+      nextAvatarFileId = uploadResult.fileId
+      nextAvatarUrl = uploadResult.publicViewUrl
     }
 
     const { error: authError } = await supabase.auth.updateUser({
@@ -1032,7 +1045,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         .update({
           employee_name: nextName,
           email: nextEmail,
-          avatar_path: nextAvatarPath || undefined,
+          avatar_path: nextAvatarFileId || undefined,
           avatar_url: nextAvatarUrl || null,
         })
         .eq('auth_id', currentUserAuthId)
@@ -1061,6 +1074,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     }
 
     setDisplayName(nextName)
+    setDisplayAvatarFileId(nextAvatarFileId || previousAvatarFileId)
     setDisplayAvatarUrl(nextAvatarUrl)
     setCurrentUserEmail(nextEmail)
     setProfilePassword('')
@@ -1077,6 +1091,21 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           : 'Profile updated successfully.'
     )
 
+    if (nextAvatarFileId && previousAvatarFileId && previousAvatarFileId !== nextAvatarFileId) {
+      const accessToken = token?.trim() || ''
+      if (accessToken) {
+        void fetch('/api/upload/avatar/delete', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ fileId: previousAvatarFileId }),
+        }).catch(() => {})
+      }
+    }
+
+    profileLoadInFlightRef.current = false
     await loadProfile()
   }
 

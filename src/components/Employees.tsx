@@ -11,11 +11,11 @@ import { useSessionContext } from '@/context/SessionContext'
 import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
 import { logFetchError } from '@/lib/fetch-error'
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock'
+import { getGoogleDriveImageUrl, getGoogleDrivePublicUrl } from '@/lib/google-drive-url'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
 const PAGE_SIZE = 4
-const PROFILE_AVATAR_BUCKET = 'profile-images'
 
 type EmployeeRow = {
   id: number
@@ -171,8 +171,7 @@ function buildEmployeeAvatarUrl(employee: Pick<EmployeeRow, 'avatar_path' | 'ava
 
   const avatarPath = (employee.avatar_path || '').trim()
   if (avatarPath) {
-    const { data } = supabase.storage.from(PROFILE_AVATAR_BUCKET).getPublicUrl(avatarPath)
-    return data.publicUrl || ''
+    return getGoogleDrivePublicUrl(avatarPath)
   }
   return ''
 }
@@ -208,6 +207,7 @@ function EmployeeAvatar({
 }) {
   const [imageFailed, setImageFailed] = useState(false)
   const showImage = Boolean(imageUrl && !imageFailed)
+  const resolvedImageUrl = getGoogleDriveImageUrl(imageUrl) || imageUrl || ''
   const colors = avatarColorsFromName(name)
 
   return (
@@ -225,7 +225,7 @@ function EmployeeAvatar({
       >
         {showImage ? (
           <img
-            src={imageUrl || ''}
+            src={resolvedImageUrl}
             alt={name}
             className="w-full h-full object-cover"
             onError={() => setImageFailed(true)}
