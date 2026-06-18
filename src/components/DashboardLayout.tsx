@@ -197,6 +197,18 @@ function LeadsIcon({ className = 'h-5 w-5 text-slate-400' }: { className?: strin
   )
 }
 
+function CalendarIcon({ className = 'h-5 w-5 text-slate-400' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M6.75 3v2.25M17.25 3v2.25M3 9.75h18M4.5 5.25h15a1.5 1.5 0 011.5 1.5v12.75a1.5 1.5 0 01-1.5 1.5h-15a1.5 1.5 0 01-1.5-1.5V6.75a1.5 1.5 0 011.5-1.5z"
+      />
+    </svg>
+  )
+}
+
 function BriefcaseFormIcon({ className = 'h-5 w-5 text-slate-400' }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}>
@@ -252,6 +264,8 @@ function NavIcon({ label, active }: { label: string; active: boolean }) {
       return <ClientIcon className={className} />
     case 'Leads':
       return <LeadsIcon className={className} />
+    case 'Strategy Calls':
+      return <CalendarIcon className={className} />
     case 'Chats':
       return <ChatIcon className={className} />
     case 'Brand Identity':
@@ -374,6 +388,7 @@ const allNavItems: Array<{ label: string; href: string }> = [
   { label: 'Employees', href: '/dashboard/employees' },
   { label: 'Clients', href: '/dashboard/clients' },
   { label: 'Leads', href: '/dashboard/leads' },
+  { label: 'Strategy Calls', href: '/dashboard/strategy-calls' },
   { label: 'Chats', href: '/dashboard/chat' },
   { label: 'Brand Identity', href: '/dashboard/brands' },
   { label: 'Invoice', href: '/dashboard/invoices' },
@@ -630,6 +645,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       '/dashboard/employees',
       '/dashboard/clients',
       '/dashboard/leads',
+      '/dashboard/strategy-calls',
       '/dashboard/brands',
       '/dashboard/settings',
     ]
