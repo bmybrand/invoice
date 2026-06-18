@@ -134,12 +134,12 @@ function buildInvoiceCreatedEmail({
                           </tr>
                         </table>
                       </td>
-                      <td width="10%" style="background:linear-gradient(60deg, #11122F 0%, #11122F 36%, #f45b25 36%, #ff843e 58%, #11122f 58%, #11122f 74%, #ffffff 74%, #ffffff 100%); font-size:0; line-height:0;">&nbsp;</td>
-                      <td width="32%" style="background-color:#ffffff; padding:18px 20px 10px; font-family:Arial,sans-serif; vertical-align:middle;">
+                      <td width="10%" style="background:linear-gradient(60deg, #11122F 0%, #11122F 36%, #f45b25 36%, #ff843e 58%, #11122f 58%, #11122f 100%); font-size:0; line-height:0;">&nbsp;</td>
+                      <td width="32%" style="background-color:#11122f; padding:18px 20px 10px; font-family:Arial,sans-serif; vertical-align:middle;">
                         <div style="font-size:15px; line-height:1.9;">
-                          <div style="color:#11122f;">PO BOX 605 Allen, TX 75013</div>
-                          <div><a href="mailto:info@bmybrand.com" style="color:#11122f; text-decoration:none;">info@bmybrand.com</a></div>
-                          <div style="color:#11122f;">+1 469 501 1401</div>
+                          <div style="color:#ffffff;">PO BOX 605 Allen, TX 75013</div>
+                          <div><a href="mailto:info@bmybrand.com" style="color:#ffffff; text-decoration:none;">info@bmybrand.com</a></div>
+                          <div style="color:#ffffff;">+1 469 501 1401</div>
                         </div>
                       </td>
                     </tr>
