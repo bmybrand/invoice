@@ -31,6 +31,15 @@ function normalizeRole(value: string | null | undefined): string {
   return (value || '').trim().toLowerCase().replace(/\s+/g, '')
 }
 
+function normalizeBrandName(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+function isBmyBrand(value: string): boolean {
+  const normalized = normalizeBrandName(value)
+  return normalized === 'bmybrand' || normalized === 'bmy'
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -47,6 +56,22 @@ function normalizeDriveImageUrl(value: string): string {
     return `https://drive.google.com/uc?export=view&id=${fileMatch[1]}`
   }
   return trimmed
+}
+
+function normalizeWebsiteUrl(value: string | null | undefined): string {
+  const trimmed = (value || '').trim()
+  if (!trimmed) return 'https://bmybrand.com'
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+  return `https://${trimmed}`
+}
+
+function getWebsiteLabel(value: string): string {
+  try {
+    const url = new URL(value)
+    return url.hostname.replace(/^www\./i, '')
+  } catch {
+    return value.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/$/, '')
+  }
 }
 
 function renderBrandLogo(logoUrlValue?: string | null, altText = 'BmyBrand'): string {
@@ -87,6 +112,7 @@ function buildInvoiceCreatedEmail({
   currency,
   services,
   brandLogoUrl,
+  brandWebsiteUrl,
 }: {
   clientName: string
   invoiceCode: string
@@ -97,12 +123,39 @@ function buildInvoiceCreatedEmail({
   currency: string
   services: InvoiceServiceLine[]
   brandLogoUrl?: string | null
+  brandWebsiteUrl?: string | null
 }): string {
+  const useBmyBranding = isBmyBrand(brandName)
+  const colors = useBmyBranding
+    ? {
+        header: '#11122F',
+        accent: '#f45b25',
+        accentSoft: '#ff843e',
+        dividerEnd: '#11122f',
+        heading: '#11122f',
+        muted: '#6b7280',
+        linkBar: '#f45b25',
+        button: '#f45b25',
+        footer: '#11122F',
+      }
+    : {
+        header: '#111111',
+        accent: '#6b7280',
+        accentSoft: '#9ca3af',
+        dividerEnd: '#111111',
+        heading: '#111111',
+        muted: '#6b7280',
+        linkBar: '#111111',
+        button: '#111111',
+        footer: '#111111',
+      }
+  const websiteUrl = normalizeWebsiteUrl(useBmyBranding ? 'https://bmybrand.com' : brandWebsiteUrl)
+  const websiteLabel = getWebsiteLabel(websiteUrl)
   const totalLabel = payableAmount != null && Number(payableAmount) > 0 ? 'Payable now' : 'Invoice total'
   const totalValue = payableAmount != null && Number(payableAmount) > 0 ? payableAmount : amount
   const renderedServices = services.length
     ? `
-      <ul style="margin:0; padding-left:20px; color:#11122f;">
+      <ul style="margin:0; padding-left:20px; color:${colors.heading};">
         ${services
           .map((line) => {
             const description = String(line.description || 'Service').trim()
@@ -113,7 +166,7 @@ function buildInvoiceCreatedEmail({
           .join('')}
       </ul>
     `
-    : `<p style="margin:0; font-size:15px; line-height:1.6; color:#11122f;">Your invoice details are available from the secure link below.</p>`
+    : `<p style="margin:0; font-size:15px; line-height:1.6; color:${colors.heading};">Your invoice details are available from the secure link below.</p>`
 
   return `
     <div style="margin:0; padding:0; background-color:#f3f4f6;">
@@ -125,7 +178,7 @@ function buildInvoiceCreatedEmail({
                 <td style="padding:0;">
                   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
                     <tr>
-                      <td width="58%" align="center" style="background-color:#11122F; padding:28px 28px 26px; color:#ffffff; font-family:Arial,sans-serif; vertical-align:middle; text-align:center;">
+                      <td width="58%" align="center" style="background-color:${colors.header}; padding:28px 28px 26px; color:#ffffff; font-family:Arial,sans-serif; vertical-align:middle; text-align:center;">
                         <table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:collapse; margin:0 auto;">
                           <tr>
                             <td style="vertical-align:middle;">
@@ -134,8 +187,8 @@ function buildInvoiceCreatedEmail({
                           </tr>
                         </table>
                       </td>
-                      <td width="10%" style="background:linear-gradient(60deg, #11122F 0%, #11122F 36%, #f45b25 36%, #ff843e 58%, #11122f 58%, #11122f 100%); font-size:0; line-height:0;">&nbsp;</td>
-                      <td width="32%" style="background-color:#11122f; padding:18px 20px 10px; font-family:Arial,sans-serif; vertical-align:middle;">
+                      <td width="10%" style="background:linear-gradient(60deg, ${colors.header} 0%, ${colors.header} 36%, ${colors.accent} 36%, ${colors.accentSoft} 58%, ${colors.dividerEnd} 58%, ${colors.dividerEnd} 100%); font-size:0; line-height:0;">&nbsp;</td>
+                      <td width="32%" style="background-color:${colors.header}; padding:18px 20px 10px; font-family:Arial,sans-serif; vertical-align:middle;">
                         <div style="font-size:15px; line-height:1.9;">
                           <div style="color:#ffffff;">PO BOX 605 Allen, TX 75013</div>
                           <div><a href="mailto:info@bmybrand.com" style="color:#ffffff; text-decoration:none;">info@bmybrand.com</a></div>
@@ -144,15 +197,15 @@ function buildInvoiceCreatedEmail({
                       </td>
                     </tr>
                     <tr>
-                      <td colspan="3" style="background-color:#f45b25; padding:9px 24px; text-align:right; font-family:Arial,sans-serif; font-size:14px; color:#ffffff;">
-                        <a href="https://bmybrand.com" style="color:#ffffff; text-decoration:none;">bmybrand.com</a>
+                      <td colspan="3" style="background-color:${colors.linkBar}; padding:9px 24px; text-align:right; font-family:Arial,sans-serif; font-size:14px; color:#ffffff;">
+                        <a href="${escapeHtml(websiteUrl)}" style="color:#ffffff; text-decoration:none;">${escapeHtml(websiteLabel)}</a>
                       </td>
                     </tr>
                   </table>
                 </td>
               </tr>
               <tr>
-                <td style="padding:20px 32px 0; font-family:Arial,sans-serif; color:#11122f; font-size:18px; line-height:1.8;">
+                <td style="padding:20px 32px 0; font-family:Arial,sans-serif; color:${colors.heading}; font-size:18px; line-height:1.8;">
                   <p style="margin:0 0 22px;">Hi ${escapeHtml(clientName)},</p>
                   <p style="margin:0 0 22px;"><strong>Your invoice has been created</strong></p>
                   <p style="margin:0 0 22px;">An invoice has been created under your name. You can view it securely using the button below.</p>
@@ -162,19 +215,19 @@ function buildInvoiceCreatedEmail({
                 <td style="padding:8px 32px 24px;">
                   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate; border-spacing:0; border:1px solid #e5e7eb; border-radius:16px; overflow:hidden;">
                     <tr>
-                      <td colspan="2" style="padding:16px 20px; background-color:#11122f; color:#ffffff; font-family:Arial,sans-serif; font-size:16px; font-weight:700;">Invoice Details</td>
+                      <td colspan="2" style="padding:16px 20px; background-color:${colors.heading}; color:#ffffff; font-family:Arial,sans-serif; font-size:16px; font-weight:700;">Invoice Details</td>
                     </tr>
                     <tr>
-                      <td style="width:160px; padding:14px 20px; border-top:1px solid #e5e7eb; font-family:Arial,sans-serif; font-size:14px; color:#6b7280; font-weight:700;">Invoice</td>
-                      <td style="padding:14px 20px; border-top:1px solid #e5e7eb; font-family:Arial,sans-serif; font-size:15px; color:#11122f;">#${escapeHtml(invoiceCode)}</td>
+                      <td style="width:160px; padding:14px 20px; border-top:1px solid #e5e7eb; font-family:Arial,sans-serif; font-size:14px; color:${colors.muted}; font-weight:700;">Invoice</td>
+                      <td style="padding:14px 20px; border-top:1px solid #e5e7eb; font-family:Arial,sans-serif; font-size:15px; color:${colors.heading};">#${escapeHtml(invoiceCode)}</td>
                     </tr>
                     <tr>
-                      <td style="width:160px; padding:14px 20px; border-top:1px solid #e5e7eb; font-family:Arial,sans-serif; font-size:14px; color:#6b7280; font-weight:700;">Brand</td>
-                      <td style="padding:14px 20px; border-top:1px solid #e5e7eb; font-family:Arial,sans-serif; font-size:15px; color:#11122f;">${escapeHtml(brandName)}</td>
+                      <td style="width:160px; padding:14px 20px; border-top:1px solid #e5e7eb; font-family:Arial,sans-serif; font-size:14px; color:${colors.muted}; font-weight:700;">Brand</td>
+                      <td style="padding:14px 20px; border-top:1px solid #e5e7eb; font-family:Arial,sans-serif; font-size:15px; color:${colors.heading};">${escapeHtml(brandName)}</td>
                     </tr>
                     <tr>
-                      <td style="width:160px; padding:14px 20px; border-top:1px solid #e5e7eb; font-family:Arial,sans-serif; font-size:14px; color:#6b7280; font-weight:700;">${escapeHtml(totalLabel)}</td>
-                      <td style="padding:14px 20px; border-top:1px solid #e5e7eb; font-family:Arial,sans-serif; font-size:15px; color:#11122f;">${escapeHtml(formatMoney(totalValue, currency))}</td>
+                      <td style="width:160px; padding:14px 20px; border-top:1px solid #e5e7eb; font-family:Arial,sans-serif; font-size:14px; color:${colors.muted}; font-weight:700;">${escapeHtml(totalLabel)}</td>
+                      <td style="padding:14px 20px; border-top:1px solid #e5e7eb; font-family:Arial,sans-serif; font-size:15px; color:${colors.heading};">${escapeHtml(formatMoney(totalValue, currency))}</td>
                     </tr>
                   </table>
                 </td>
@@ -183,7 +236,7 @@ function buildInvoiceCreatedEmail({
                 <td style="padding:0 32px 24px;">
                   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate; border-spacing:0; border:1px solid #e5e7eb; border-radius:16px; overflow:hidden;">
                     <tr>
-                      <td style="padding:16px 20px; background-color:#11122f; color:#ffffff; font-family:Arial,sans-serif; font-size:16px; font-weight:700;">Services</td>
+                      <td style="padding:16px 20px; background-color:${colors.heading}; color:#ffffff; font-family:Arial,sans-serif; font-size:16px; font-weight:700;">Services</td>
                     </tr>
                     <tr>
                       <td style="padding:18px 20px; font-family:Arial,sans-serif;">${renderedServices}</td>
@@ -192,9 +245,9 @@ function buildInvoiceCreatedEmail({
                 </td>
               </tr>
               <tr>
-                <td style="padding:0 32px 36px; font-family:Arial,sans-serif; color:#11122f; font-size:18px; line-height:1.8;">
+                <td style="padding:0 32px 36px; font-family:Arial,sans-serif; color:${colors.heading}; font-size:18px; line-height:1.8;">
                   <p style="margin:0 0 24px;">
-                    <a href="${escapeHtml(invoiceUrl)}" style="display:inline-block; padding:13px 22px; background-color:#f45b25; color:#ffffff; text-decoration:none; border-radius:8px; font-size:15px; line-height:1; font-weight:700;">View Invoice</a>
+                    <a href="${escapeHtml(invoiceUrl)}" style="display:inline-block; padding:13px 22px; background-color:${colors.button}; color:#ffffff; text-decoration:none; border-radius:8px; font-size:15px; line-height:1; font-weight:700;">View Invoice</a>
                   </p>
                   <p style="margin:0 0 22px; font-size:14px; line-height:1.7; color:#4b5563; word-break:break-word;">
                     If the button does not work, copy and paste this link into your browser:<br />
@@ -205,7 +258,7 @@ function buildInvoiceCreatedEmail({
                 </td>
               </tr>
               <tr>
-                <td style="background-color:#11122F; border-top:6px solid #f45b25; padding:20px 32px; text-align:center; font-family:Arial,sans-serif;">
+                <td style="background-color:${colors.footer}; border-top:6px solid ${colors.accent}; padding:20px 32px; text-align:center; font-family:Arial,sans-serif;">
                   <div style="margin:0 0 10px; font-size:14px; color:#ffffff; font-weight:700;">BmyBrand</div>
                   <div style="font-size:13px; line-height:1.8;">
                     <a href="https://www.instagram.com/bmybrand_official/" style="color:#ffffff; text-decoration:none; margin:0 8px;">Instagram</a>
@@ -289,30 +342,41 @@ export async function POST(request: NextRequest) {
     const brandName = String(invoiceRow.brand_name || '').trim() || 'BMYBrand'
     const brandId = invoiceRow.brand_id == null ? null : Number(invoiceRow.brand_id)
     let brandLogoUrl: string | null = null
+    let brandWebsiteUrl: string | null = null
 
     if (Number.isFinite(brandId) && brandId && brandId > 0) {
       const { data: brand } = await auth.supabase
         .from('brands')
-        .select('logo_url')
+        .select('logo_url, brand_url')
         .eq('id', brandId)
         .maybeSingle()
 
       brandLogoUrl = typeof (brand as { logo_url?: unknown } | null)?.logo_url === 'string'
         ? String((brand as { logo_url?: string }).logo_url || '').trim() || null
         : null
+      brandWebsiteUrl = typeof (brand as { brand_url?: unknown } | null)?.brand_url === 'string'
+        ? String((brand as { brand_url?: string }).brand_url || '').trim() || null
+        : null
     }
 
-    if (!brandLogoUrl && brandName) {
+    if ((!brandLogoUrl || !brandWebsiteUrl) && brandName) {
       const { data: brand } = await auth.supabase
         .from('brands')
-        .select('logo_url')
+        .select('logo_url, brand_url')
         .eq('brand_name', brandName)
         .neq('isdeleted', true)
         .maybeSingle()
 
-      brandLogoUrl = typeof (brand as { logo_url?: unknown } | null)?.logo_url === 'string'
-        ? String((brand as { logo_url?: string }).logo_url || '').trim() || null
-        : null
+      if (!brandLogoUrl) {
+        brandLogoUrl = typeof (brand as { logo_url?: unknown } | null)?.logo_url === 'string'
+          ? String((brand as { logo_url?: string }).logo_url || '').trim() || null
+          : null
+      }
+      if (!brandWebsiteUrl) {
+        brandWebsiteUrl = typeof (brand as { brand_url?: unknown } | null)?.brand_url === 'string'
+          ? String((brand as { brand_url?: string }).brand_url || '').trim() || null
+          : null
+      }
     }
 
     const resend = new Resend(env.RESEND_API_KEY)
@@ -331,6 +395,7 @@ export async function POST(request: NextRequest) {
         currency: String(invoiceRow.currency || 'USD').trim().toUpperCase(),
         services: getServiceLines(invoiceRow.service),
         brandLogoUrl,
+        brandWebsiteUrl,
       }),
     })
 
