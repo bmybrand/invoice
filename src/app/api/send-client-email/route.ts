@@ -32,10 +32,8 @@ function buildEmailTemplate({
   closing: string
   credentials?: Array<{ label: string; value: string }>
 }): string {
-  const brandNavy = '#20254b'
-  const brandOrange = '#ff6b2c'
+  const brandNavy = '#11122f'
   const brandInk = '#1f2937'
-  const brandMuted = '#667085'
   const brandSurface = '#f8fafc'
   const brandLine = '#e6eaf0'
   const brandSoft = '#fdf2ea'
@@ -85,38 +83,88 @@ function buildEmailTemplate({
     : ''
 
   return `
-    <div style="margin: 0; padding: 40px 16px; background: #f3f6fb; font-family: Arial, Helvetica, sans-serif;">
-      <div style="max-width: 640px; margin: 0 auto; background: #ffffff; border: 1px solid ${brandLine}; border-radius: 20px; overflow: hidden; box-shadow: 0 12px 32px rgba(16, 24, 40, 0.08);">
-        <div style="height: 6px; background: linear-gradient(90deg, ${brandOrange} 0%, #ff9a64 100%);"></div>
-        <div style="padding: 28px 32px 22px; border-bottom: 1px solid ${brandLine};">
-          <div style="font-size: 23px; line-height: 1.1; font-weight: 800; color: ${brandNavy};">BMYBrand</div>
-          <div style="margin-top: 4px; font-size: 13px; line-height: 1.4; color: ${brandMuted};">Design. Build. Grow.</div>
-        </div>
-        <div style="padding: 32px;">
-          <p style="margin: 0 0 16px; font-size: 17px; line-height: 1.7; color: ${brandInk};">
-            Hi ${escapeHtml(name)},
-          </p>
-          <h1 style="margin: 0 0 12px; font-size: 30px; line-height: 1.2; font-weight: 800; color: ${brandNavy};">
-            ${escapeHtml(title)}
-          </h1>
-          <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.8; color: ${brandInk};">
-            ${subtitle === 'You\'re Approved' ? 'Your account is ready and your access details are below.' : escapeHtml(subtitle)}
-          </p>
-          <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.8; color: ${brandInk};">
-            ${intro}
-          </p>
-          ${renderedCredentials}
-          ${renderedSteps}
-          <p style="margin: 0 0 28px; font-size: 16px; line-height: 1.8; color: ${brandInk};">
-            ${closing}
-          </p>
-          <p style="margin: 0; font-size: 16px; line-height: 1.8; color: ${brandInk};">
-            Regards,<br />
-            <strong style="color: ${brandNavy};">The BMYBrand Team</strong>
-          </p>
-        </div>
-      </div>
-    </div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;background-color:#f3f4f6">
+      <tbody>
+        <tr>
+          <td align="center" style="padding:32px 16px">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;max-width:720px;background-color:#ffffff">
+              <tbody>
+                <tr>
+                  <td style="padding:0">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse">
+                      <tbody>
+                        <tr>
+                          <td width="58%" style="background-color:#231f20;padding:28px 28px 26px;color:#ffffff;font-family:Arial,sans-serif;vertical-align:top">
+                            <div style="font-size:15px;line-height:1.9">
+                              <div>PO BOX 605 Allen, TX 75013</div>
+                              <div><a href="mailto:info@bmybrand.com" style="color:#ffffff;text-decoration:none" target="_blank">info@bmybrand.com</a></div>
+                              <div>+1 469 501 1401</div>
+                            </div>
+                          </td>
+                          <td width="10%" style="background:linear-gradient(60deg,#231f20 0%,#231f20 36%,#f45b25 36%,#ff843e 58%,#11122f 58%,#11122f 74%,#ffffff 74%,#ffffff 100%);font-size:0;line-height:0">&nbsp;</td>
+                          <td width="32%" align="center" style="background-color:#ffffff;padding:18px 20px 10px;font-family:Arial,sans-serif;vertical-align:middle;text-align:center">
+                            <table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin:0 auto">
+                              <tbody>
+                                <tr>
+                                  <td style="padding-right:12px;vertical-align:middle">
+                                    <div style="width:44px;height:44px;background:linear-gradient(135deg,#f45b25 0%,#ff843e 100%);border-radius:10px;color:#ffffff;font-size:28px;line-height:44px;font-weight:700;text-align:center">B</div>
+                                  </td>
+                                  <td style="vertical-align:middle;text-align:left">
+                                    <div style="font-size:24px;line-height:1;font-weight:700;color:#11122f;letter-spacing:0.2px">BmyBrand</div>
+                                    <div style="margin-top:6px;font-size:12px;line-height:1;color:#6b7280">Design. Build. Grow.</div>
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td colspan="3" style="background:linear-gradient(90deg,#11122f 0%,#1a1d4a 40%,#f45b25 100%);padding:9px 24px;text-align:right;font-family:Arial,sans-serif;font-size:14px;color:#ffffff">
+                            <a href="https://bmybrand.com" style="color:#ffffff;text-decoration:none" target="_blank">bmybrand.com</a>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:20px 32px 0;font-family:Arial,sans-serif;color:#11122f;font-size:18px;line-height:1.8">
+                    <p style="margin:0 0 22px">Hi ${escapeHtml(name)},</p>
+                    <p style="margin:0 0 14px;font-size:28px;line-height:1.25;font-weight:700;color:#11122f">${escapeHtml(title)}</p>
+                    <p style="margin:0 0 22px">${subtitle === 'You\'re Approved' ? 'Your account is ready and your access details are below.' : escapeHtml(subtitle)}</p>
+                    <p style="margin:0 0 22px">${intro}</p>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:0 32px;font-family:Arial,sans-serif;color:#11122f;font-size:16px;line-height:1.8">
+                    ${renderedCredentials}
+                    ${renderedSteps}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:0 32px 36px;font-family:Arial,sans-serif;color:#11122f;font-size:18px;line-height:1.8">
+                    <p style="margin:0 0 22px">${closing}</p>
+                    <p style="margin:0 0 18px">Kind regards,</p>
+                    <p style="margin:0"><strong>BmyBrand Team</strong><br>Design. Build. Grow.</p>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="background-color:#111111;border-top:6px solid #f45b25;padding:20px 32px;text-align:center;font-family:Arial,sans-serif">
+                    <div style="margin:0 0 10px;font-size:14px;color:#ffffff;font-weight:700">BmyBrand</div>
+                    <div style="font-size:13px;line-height:1.8">
+                      <a href="https://www.instagram.com/" style="color:#ffffff;text-decoration:none;margin:0 8px" target="_blank">Instagram</a>
+                      <a href="https://www.linkedin.com/" style="color:#ffffff;text-decoration:none;margin:0 8px" target="_blank">LinkedIn</a>
+                      <a href="https://www.youtube.com/" style="color:#ffffff;text-decoration:none;margin:0 8px" target="_blank">YouTube</a>
+                      <a href="mailto:info@bmybrand.com" style="color:#ffffff;text-decoration:none;margin:0 8px" target="_blank">Contact</a>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </td>
+        </tr>
+      </tbody>
+    </table>
   `
 }
 
