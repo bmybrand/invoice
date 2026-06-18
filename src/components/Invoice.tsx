@@ -1417,7 +1417,19 @@ export default function Invoice() {
       setAddError('Invoice saved, but the share URL could not be prepared.')
       setActionMessage({ type: 'error', text: 'Invoice saved, but the share URL could not be prepared.' })
     } else {
-      setActionMessage({ type: 'success', text: `Invoice #${formatInvoiceCode(nextInvoiceId)} created successfully.` })
+      const emailError = await sendCreatedInvoiceEmail(nextInvoiceId)
+      if (emailError) {
+        setAddError(emailError)
+        setActionMessage({
+          type: 'error',
+          text: `Invoice #${formatInvoiceCode(nextInvoiceId)} created, but the email was not sent: ${emailError}`,
+        })
+      } else {
+        setActionMessage({
+          type: 'success',
+          text: `Invoice #${formatInvoiceCode(nextInvoiceId)} created successfully and emailed to ${addEmail.trim()}.`,
+        })
+      }
     }
     await fetchInvoices()
   }
@@ -1458,6 +1470,31 @@ export default function Invoice() {
     } catch {
       setAddError('Failed to copy invoice URL.')
       setAddUrlCopied(false)
+    }
+  }
+
+  async function sendCreatedInvoiceEmail(invoiceId: number): Promise<string | null> {
+    const accessToken = await resolveAccessToken()
+    if (!accessToken) {
+      return 'Invoice created, but the email could not be sent because your session token was unavailable.'
+    }
+
+    try {
+      const response = await fetch('/api/invoices/send-created-email', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ invoiceId }),
+      })
+      const result = (await response.json().catch(() => null)) as { error?: string } | null
+      if (!response.ok) {
+        return result?.error || 'Invoice created, but the email could not be sent.'
+      }
+      return null
+    } catch (error) {
+      return error instanceof Error ? error.message : 'Invoice created, but the email could not be sent.'
     }
   }
 
@@ -2422,7 +2459,7 @@ export default function Invoice() {
                   {currentEmployeeId === null && !addError && savedAddInvoiceId === null && (
                     <p className="mx-10 mt-4 rounded-lg border border-amber-500/50 bg-amber-500/10 px-4 py-3 text-sm text-amber-700">You must be registered as an employee to create invoices.</p>
                   )}
-                  {savedAddInvoiceId !== null && !addError && savedAddInvoiceUrl && (
+                  {savedAddInvoiceId !== null && savedAddInvoiceUrl && (
                     <div className={`mx-10 mt-4 flex items-center justify-between gap-3 rounded-lg border px-4 py-3 text-sm ${addUrlCopied ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-slate-200 bg-slate-50'}`}>
                       <a
                         href={savedAddInvoiceUrl}
