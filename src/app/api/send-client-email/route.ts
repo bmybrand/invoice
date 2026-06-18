@@ -89,40 +89,18 @@ function buildEmailTemplate({
       <div style="max-width: 640px; margin: 0 auto; background: #ffffff; border: 1px solid ${brandLine}; border-radius: 20px; overflow: hidden; box-shadow: 0 12px 32px rgba(16, 24, 40, 0.08);">
         <div style="height: 6px; background: linear-gradient(90deg, ${brandOrange} 0%, #ff9a64 100%);"></div>
         <div style="padding: 28px 32px 22px; border-bottom: 1px solid ${brandLine};">
-          <table role="presentation" style="width: 100%; border-collapse: collapse;">
-            <tr>
-              <td style="vertical-align: middle;">
-                <table role="presentation" style="border-collapse: collapse;">
-                  <tr>
-                    <td style="width: 44px; height: 44px; border-radius: 12px; background: linear-gradient(135deg, #ff8f3d 0%, ${brandOrange} 100%); color: #ffffff; font-size: 26px; line-height: 44px; font-weight: 800; text-align: center;">
-                      B
-                    </td>
-                    <td style="padding-left: 14px; vertical-align: middle;">
-                      <div style="font-size: 23px; line-height: 1.1; font-weight: 800; color: ${brandNavy};">BMYBrand</div>
-                      <div style="margin-top: 4px; font-size: 13px; line-height: 1.4; color: ${brandMuted};">Design. Build. Grow.</div>
-                    </td>
-                  </tr>
-                </table>
-              </td>
-              <td style="vertical-align: top; text-align: right;">
-                <span style="display: inline-block; padding: 8px 12px; background: ${brandSurface}; border: 1px solid ${brandLine}; border-radius: 999px; font-size: 11px; line-height: 1; font-weight: 700; color: ${brandOrange}; text-transform: uppercase; letter-spacing: 0.1em;">
-                  ${escapeHtml(subtitle)}
-                </span>
-              </td>
-            </tr>
-          </table>
+          <div style="font-size: 23px; line-height: 1.1; font-weight: 800; color: ${brandNavy};">BMYBrand</div>
+          <div style="margin-top: 4px; font-size: 13px; line-height: 1.4; color: ${brandMuted};">Design. Build. Grow.</div>
         </div>
-        <div style="padding: 32px 32px 8px;">
-          <div style="margin: 0 0 12px; font-size: 32px; line-height: 1.18; font-weight: 800; color: ${brandNavy}; letter-spacing: -0.02em;">
-            ${escapeHtml(title)}
-          </div>
-          <div style="margin: 0 0 28px; font-size: 16px; line-height: 1.75; color: ${brandMuted};">
-            ${subtitle === 'You\'re Approved' ? 'Your account is ready and your access details are below.' : escapeHtml(subtitle)}
-          </div>
-        </div>
-        <div style="padding: 0 32px 34px;">
+        <div style="padding: 32px;">
           <p style="margin: 0 0 16px; font-size: 17px; line-height: 1.7; color: ${brandInk};">
             Hi ${escapeHtml(name)},
+          </p>
+          <h1 style="margin: 0 0 12px; font-size: 30px; line-height: 1.2; font-weight: 800; color: ${brandNavy};">
+            ${escapeHtml(title)}
+          </h1>
+          <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.8; color: ${brandInk};">
+            ${subtitle === 'You\'re Approved' ? 'Your account is ready and your access details are below.' : escapeHtml(subtitle)}
           </p>
           <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.8; color: ${brandInk};">
             ${intro}
@@ -167,10 +145,10 @@ export async function POST(req: NextRequest) {
     const safeStatus = String(status).trim()
     const safePassword = password ? String(password) : ''
 
-    let subject = 'Welcome to Invoice CRM'
+    let subject = 'Welcome to BMYBrand'
     let html = ''
     if (status === 'approved' || status === 'accepted') {
-      const steps = ['Use your approved email address to sign in to Invoice CRM.']
+      const steps = ['Use your approved email address to sign in to your BMYBrand client dashboard.']
       if (safePassword) steps.push(`Use this temporary password for your first login: ${safePassword}`)
       steps.push('After signing in, update your password if you want a personal one.')
 
@@ -188,7 +166,7 @@ export async function POST(req: NextRequest) {
         closing: 'If you have any trouble signing in, reply to this email and we will help you get back in quickly.',
       })
     } else if (status === 'rejected') {
-      subject = 'Your Invoice CRM Registration Status'
+      subject = 'Your BMYBrand Registration Status'
       html = buildEmailTemplate({
         name: safeName,
         title: 'Registration Status Update',
@@ -197,7 +175,7 @@ export async function POST(req: NextRequest) {
           'We reviewed your registration request and are unable to approve access at this time.',
         steps: [
           'Review your submitted details and confirm they are complete and accurate.',
-          'Contact the Invoice CRM team if you want clarification or would like to re-apply.',
+          'Contact the BMYBrand team if you want clarification or would like to re-apply.',
         ],
         closing: 'If you believe this decision was made in error, reply to this email and include any relevant details for review.',
       })
@@ -206,8 +184,8 @@ export async function POST(req: NextRequest) {
         name: safeName,
         title: 'Account Status Update',
         subtitle: 'Status Update',
-        intro: `Your Invoice CRM registration status is currently: <strong>${escapeHtml(safeStatus)}</strong>.`,
-        steps: ['Keep this email for your records.', 'Contact the Invoice CRM team if you need help with your account.'],
+        intro: `Your BMYBrand registration status is currently: <strong>${escapeHtml(safeStatus)}</strong>.`,
+        steps: ['Keep this email for your records.', 'Contact the BMYBrand team if you need help with your account.'],
         closing: 'We will keep you updated if anything changes.',
       })
     }
