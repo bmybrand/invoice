@@ -15,9 +15,9 @@ function escapeHtml(value: string): string {
 function renderBrandLogo(): string {
   const logoUrl =
     process.env.BMYBRAND_EMAIL_LOGO_URL?.trim() ||
-    'https://drive.google.com/uc?export=view&id=1V3caFY_GBeXkOO1h67arJiMqISZ5786r'
+    'http://bmybrand.com/bmyb-services-brand-bmybrand-01-01.svg?dpl=dpl_E3BqAnZ5brZJwUG3yvtPpDntgK2e'
 
-  return `<img src="${escapeHtml(logoUrl)}" alt="BmyBrand" width="44" height="44" style="display:block; width:44px; height:44px; border-radius:10px; object-fit:contain;" />`
+  return `<img src="${escapeHtml(logoUrl)}" alt="BmyBrand" width="170" style="display:block; width:170px; max-height:150px; height:auto; border-radius:12px; object-fit:contain;" />`
 }
 
 function buildEmailTemplate({
@@ -79,12 +79,8 @@ function buildEmailTemplate({
                       <td width="58%" align="center" style="background-color:#11122F; padding:28px 28px 26px; color:#ffffff; font-family:Arial,sans-serif; vertical-align:middle; text-align:center;">
                         <table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:collapse; margin:0 auto;">
                           <tr>
-                            <td style="padding-right:12px; vertical-align:middle;">
+                            <td style="vertical-align:middle;">
                               ${renderBrandLogo()}
-                            </td>
-                            <td style="vertical-align:middle; text-align:left;">
-                              <div style="font-size:24px; line-height:1; font-weight:700; color:#ffffff; letter-spacing:0.2px;">BmyBrand</div>
-                              <div style="margin-top:6px; font-size:12px; line-height:1; color:#ffffff;">Design. Build. Grow.</div>
                             </td>
                           </tr>
                         </table>

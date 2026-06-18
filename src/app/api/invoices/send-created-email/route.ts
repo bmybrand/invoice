@@ -24,6 +24,7 @@ type InvoiceEmailRow = {
   status?: string | null
   currency?: string | null
   invoice_type?: string | null
+  brand_id?: number | string | null
 }
 
 function normalizeRole(value: string | null | undefined): string {
@@ -39,12 +40,22 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;')
 }
 
-function renderBrandLogo(): string {
-  const logoUrl =
-    process.env.BMYBRAND_EMAIL_LOGO_URL?.trim() ||
-    'https://drive.google.com/uc?export=view&id=1V3caFY_GBeXkOO1h67arJiMqISZ5786r'
+function normalizeDriveImageUrl(value: string): string {
+  const trimmed = value.trim()
+  const fileMatch = trimmed.match(/drive\.google\.com\/file\/d\/([^/]+)/)
+  if (fileMatch?.[1]) {
+    return `https://drive.google.com/uc?export=view&id=${fileMatch[1]}`
+  }
+  return trimmed
+}
 
-  return `<img src="${escapeHtml(logoUrl)}" alt="BmyBrand" width="44" height="44" style="display:block; width:44px; height:44px; border-radius:10px; object-fit:contain;" />`
+function renderBrandLogo(logoUrlValue?: string | null, altText = 'BmyBrand'): string {
+  const fallbackLogoUrl =
+    process.env.BMYBRAND_EMAIL_LOGO_URL?.trim() ||
+    'http://bmybrand.com/bmyb-services-brand-bmybrand-01-01.svg?dpl=dpl_E3BqAnZ5brZJwUG3yvtPpDntgK2e'
+  const logoUrl = logoUrlValue?.trim() ? normalizeDriveImageUrl(logoUrlValue) : fallbackLogoUrl
+
+  return `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(altText)}" width="170" style="display:block; width:170px; max-height:150px; height:auto; border-radius:12px; object-fit:contain;" />`
 }
 
 function isValidEmail(value: string): boolean {
@@ -75,6 +86,7 @@ function buildInvoiceCreatedEmail({
   payableAmount,
   currency,
   services,
+  brandLogoUrl,
 }: {
   clientName: string
   invoiceCode: string
@@ -84,6 +96,7 @@ function buildInvoiceCreatedEmail({
   payableAmount: unknown
   currency: string
   services: InvoiceServiceLine[]
+  brandLogoUrl?: string | null
 }): string {
   const totalLabel = payableAmount != null && Number(payableAmount) > 0 ? 'Payable now' : 'Invoice total'
   const totalValue = payableAmount != null && Number(payableAmount) > 0 ? payableAmount : amount
@@ -115,12 +128,8 @@ function buildInvoiceCreatedEmail({
                       <td width="58%" align="center" style="background-color:#11122F; padding:28px 28px 26px; color:#ffffff; font-family:Arial,sans-serif; vertical-align:middle; text-align:center;">
                         <table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:collapse; margin:0 auto;">
                           <tr>
-                            <td style="padding-right:12px; vertical-align:middle;">
-                              ${renderBrandLogo()}
-                            </td>
-                            <td style="vertical-align:middle; text-align:left;">
-                              <div style="font-size:24px; line-height:1; font-weight:700; color:#ffffff; letter-spacing:0.2px;">BmyBrand</div>
-                              <div style="margin-top:6px; font-size:12px; line-height:1; color:#ffffff;">Design. Build. Grow.</div>
+                            <td style="vertical-align:middle;">
+                              ${renderBrandLogo(brandLogoUrl, brandName)}
                             </td>
                           </tr>
                         </table>
@@ -246,7 +255,7 @@ export async function POST(request: NextRequest) {
         .maybeSingle(),
       auth.supabase
         .from('invoices')
-        .select('id, invoice_creator_id, client_name, brand_name, email, service, amount, payable_amount, status, currency, invoice_type')
+        .select('id, invoice_creator_id, client_name, brand_id, brand_name, email, service, amount, payable_amount, status, currency, invoice_type')
         .eq('id', invoiceId)
         .maybeSingle(),
     ])
@@ -277,6 +286,35 @@ export async function POST(request: NextRequest) {
     const invoiceUrl = new URL(getInvoiceLink(invoiceId), request.nextUrl.origin).toString()
     const invoiceCode = formatInvoiceCode(invoiceId)
     const clientName = String(invoiceRow.client_name || '').trim() || 'there'
+    const brandName = String(invoiceRow.brand_name || '').trim() || 'BMYBrand'
+    const brandId = invoiceRow.brand_id == null ? null : Number(invoiceRow.brand_id)
+    let brandLogoUrl: string | null = null
+
+    if (Number.isFinite(brandId) && brandId && brandId > 0) {
+      const { data: brand } = await auth.supabase
+        .from('brands')
+        .select('logo_url')
+        .eq('id', brandId)
+        .maybeSingle()
+
+      brandLogoUrl = typeof (brand as { logo_url?: unknown } | null)?.logo_url === 'string'
+        ? String((brand as { logo_url?: string }).logo_url || '').trim() || null
+        : null
+    }
+
+    if (!brandLogoUrl && brandName) {
+      const { data: brand } = await auth.supabase
+        .from('brands')
+        .select('logo_url')
+        .eq('brand_name', brandName)
+        .neq('isdeleted', true)
+        .maybeSingle()
+
+      brandLogoUrl = typeof (brand as { logo_url?: unknown } | null)?.logo_url === 'string'
+        ? String((brand as { logo_url?: string }).logo_url || '').trim() || null
+        : null
+    }
+
     const resend = new Resend(env.RESEND_API_KEY)
 
     await resend.emails.send({
@@ -286,12 +324,13 @@ export async function POST(request: NextRequest) {
       html: buildInvoiceCreatedEmail({
         clientName,
         invoiceCode,
-        brandName: String(invoiceRow.brand_name || '').trim() || 'BMYBrand',
+        brandName,
         invoiceUrl,
         amount: invoiceRow.amount,
         payableAmount: invoiceRow.payable_amount,
         currency: String(invoiceRow.currency || 'USD').trim().toUpperCase(),
         services: getServiceLines(invoiceRow.service),
+        brandLogoUrl,
       }),
     })
 

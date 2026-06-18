@@ -12,6 +12,14 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;')
 }
 
+function renderBrandLogo(): string {
+  const logoUrl =
+    process.env.BMYBRAND_EMAIL_LOGO_URL?.trim() ||
+    'http://bmybrand.com/bmyb-services-brand-bmybrand-01-01.svg?dpl=dpl_E3BqAnZ5brZJwUG3yvtPpDntgK2e'
+
+  return `<img src="${escapeHtml(logoUrl)}" alt="BmyBrand" width="170" style="display:block; width:170px; max-height:150px; height:auto; border-radius:12px; object-fit:contain;" />`
+}
+
 function buildAdminNotificationEmail({
   name,
   email,
@@ -29,38 +37,90 @@ function buildAdminNotificationEmail({
     { label: 'Phone', value: phone || 'Not provided' },
     { label: 'Assigned sales agent', value: agentName || 'Not assigned' },
   ]
+  const renderedDetails = details
+    .map(
+      (item) => `
+        <tr>
+          <td style="width:180px; padding:14px 20px; border-top:1px solid #e5e7eb; font-family:Arial,sans-serif; font-size:14px; color:#6b7280; font-weight:700;">${escapeHtml(item.label)}</td>
+          <td style="padding:14px 20px; border-top:1px solid #e5e7eb; font-family:Arial,sans-serif; font-size:15px; color:#11122f;">${escapeHtml(item.value)}</td>
+        </tr>
+      `
+    )
+    .join('')
 
   return `
-    <div style="margin:0;padding:32px 16px;background:#f3f6fb;font-family:Arial,Helvetica,sans-serif;">
-      <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #e6eaf0;border-radius:18px;overflow:hidden;">
-        <div style="padding:24px 28px;border-bottom:1px solid #e6eaf0;background:#20254b;color:#ffffff;">
-          <div style="font-size:24px;font-weight:800;line-height:1.2;">New Client Registration Request</div>
-          <div style="margin-top:8px;font-size:14px;line-height:1.6;color:#d9e1f2;">
-            A new client has created a pending account in Invoice CRM.
-          </div>
-        </div>
-        <div style="padding:28px;">
-          <table role="presentation" style="width:100%;border-collapse:collapse;">
-            ${details
-              .map(
-                (item, index) => `
-                  <tr>
-                    <td style="padding:12px 0;font-size:14px;line-height:1.6;font-weight:700;color:#20254b;vertical-align:top;white-space:nowrap;${index > 0 ? 'border-top:1px solid #eef2f7;' : ''}">
-                      ${escapeHtml(item.label)}
-                    </td>
-                    <td style="padding:12px 0 12px 20px;font-size:14px;line-height:1.6;color:#1f2937;text-align:right;vertical-align:top;word-break:break-word;${index > 0 ? 'border-top:1px solid #eef2f7;' : ''}">
-                      ${escapeHtml(item.value)}
-                    </td>
-                  </tr>
-                `
-              )
-              .join('')}
-          </table>
-          <p style="margin:24px 0 0;font-size:15px;line-height:1.8;color:#1f2937;">
-            Review the request in the clients dashboard and approve or reject it as needed.
-          </p>
-        </div>
-      </div>
+    <div style="margin:0; padding:0; background-color:#f3f4f6;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse; background-color:#f3f4f6;">
+        <tr>
+          <td align="center" style="padding:32px 16px;">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse; max-width:720px; background-color:#ffffff;">
+              <tr>
+                <td style="padding:0;">
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
+                    <tr>
+                      <td width="58%" align="center" style="background-color:#11122F; padding:28px 28px 26px; color:#ffffff; font-family:Arial,sans-serif; vertical-align:middle; text-align:center;">
+                        <table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:collapse; margin:0 auto;">
+                          <tr>
+                            <td style="vertical-align:middle;">${renderBrandLogo()}</td>
+                          </tr>
+                        </table>
+                      </td>
+                      <td width="10%" style="background:linear-gradient(60deg, #11122F 0%, #11122F 36%, #f45b25 36%, #ff843e 58%, #11122f 58%, #11122f 74%, #ffffff 74%, #ffffff 100%); font-size:0; line-height:0;">&nbsp;</td>
+                      <td width="32%" style="background-color:#ffffff; padding:18px 20px 10px; font-family:Arial,sans-serif; vertical-align:middle;">
+                        <div style="font-size:15px; line-height:1.9;">
+                          <div style="color:#11122f;">PO BOX 605 Allen, TX 75013</div>
+                          <div><a href="mailto:info@bmybrand.com" style="color:#11122f; text-decoration:none;">info@bmybrand.com</a></div>
+                          <div style="color:#11122f;">+1 469 501 1401</div>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td colspan="3" style="background-color:#f45b25; padding:9px 24px; text-align:right; font-family:Arial,sans-serif; font-size:14px; color:#ffffff;">
+                        <a href="https://bmybrand.com" style="color:#ffffff; text-decoration:none;">bmybrand.com</a>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:20px 32px 0; font-family:Arial,sans-serif; color:#11122f; font-size:18px; line-height:1.8;">
+                  <p style="margin:0 0 22px;"><strong>New Client Registration Request</strong></p>
+                  <p style="margin:0 0 22px;">A new client has created a pending account in Invoice CRM.</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:8px 32px 24px;">
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate; border-spacing:0; border:1px solid #e5e7eb; border-radius:16px; overflow:hidden;">
+                    <tr>
+                      <td colspan="2" style="padding:16px 20px; background-color:#11122f; color:#ffffff; font-family:Arial,sans-serif; font-size:16px; font-weight:700;">Request Details</td>
+                    </tr>
+                    ${renderedDetails}
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:0 32px 36px; font-family:Arial,sans-serif; color:#11122f; font-size:18px; line-height:1.8;">
+                  <p style="margin:0 0 22px;">Review the request in the clients dashboard and approve or reject it as needed.</p>
+                  <p style="margin:0 0 18px;">Kind regards,</p>
+                  <p style="margin:0;"><strong>BmyBrand Team</strong><br />Design. Build. Grow.</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="background-color:#11122F; border-top:6px solid #f45b25; padding:20px 32px; text-align:center; font-family:Arial,sans-serif;">
+                  <div style="margin:0 0 10px; font-size:14px; color:#ffffff; font-weight:700;">BmyBrand</div>
+                  <div style="font-size:13px; line-height:1.8;">
+                    <a href="https://www.instagram.com/bmybrand_official/" style="color:#ffffff; text-decoration:none; margin:0 8px;">Instagram</a>
+                    <a href="https://www.linkedin.com/company/bmy-brand/" style="color:#ffffff; text-decoration:none; margin:0 8px;">LinkedIn</a>
+                    <a href="https://www.facebook.com/bmybrandofficial/" style="color:#ffffff; text-decoration:none; margin:0 8px;">Facebook</a>
+                    <a href="https://www.youtube.com/@BMyBrandofficial" style="color:#ffffff; text-decoration:none; margin:0 8px;">YouTube</a>
+                    <a href="mailto:info@bmybrand.com" style="color:#ffffff; text-decoration:none; margin:0 8px;">Reply</a>
+                  </div>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
     </div>
   `
 }
