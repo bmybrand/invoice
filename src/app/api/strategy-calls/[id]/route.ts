@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server'
+import { deleteStrategyCallCalendarEventForBooking } from '@/lib/google-calendar-strategy-call'
 import { requireAdminOrSuperAdmin } from '@/lib/server-admin-auth'
-import { deleteStrategyCallBooking, isStrategyCallStorageConfigured } from '@/lib/strategy-call-bookings'
+import {
+  deleteStrategyCallBooking,
+  getStrategyCallBookingById,
+  isStrategyCallStorageConfigured,
+} from '@/lib/strategy-call-bookings'
 
 type RouteParams = { id: string }
 
@@ -25,8 +30,42 @@ export async function DELETE(
   }
 
   try {
+    const booking = await getStrategyCallBookingById(bookingId)
+    if (!booking) {
+      return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+    }
+
+    let calendarDeleted = false
+    let calendarWarning: string | null = null
+
+    try {
+      const calendarResult = await deleteStrategyCallCalendarEventForBooking({
+        calendarEventId: booking.calendarEventId,
+        name: booking.name,
+        companyName: booking.companyName,
+        appointmentDate: booking.appointmentDate,
+        appointmentTime: booking.appointmentTime,
+        timezone: booking.timezone,
+      })
+      calendarDeleted = calendarResult.deleted === true
+      if (calendarResult.deleted === false && calendarResult.reason === 'not_configured') {
+        calendarWarning = 'Google Calendar is not configured on the CRM; database record was still removed.'
+      }
+    } catch (calendarError) {
+      calendarWarning =
+        calendarError instanceof Error
+          ? `Google Calendar event could not be removed: ${calendarError.message}`
+          : 'Google Calendar event could not be removed.'
+    }
+
     await deleteStrategyCallBooking(bookingId)
-    return NextResponse.json({ ok: true, id: bookingId })
+
+    return NextResponse.json({
+      ok: true,
+      id: bookingId,
+      calendarDeleted,
+      ...(calendarWarning ? { calendarWarning } : {}),
+    })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to delete booking'
     const status = message === 'Booking not found' ? 404 : 500

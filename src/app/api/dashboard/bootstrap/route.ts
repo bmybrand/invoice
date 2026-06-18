@@ -78,7 +78,7 @@ export async function GET(request: Request) {
   const [{ data: employeeRows, error: employeeError }, { data: clientRows, error: clientError }] = await Promise.all([
     setup.serviceClient
       .from('employees')
-      .select('id, employee_name, agent_name, role, department, avatar_path, avatar_url, isdeleted')
+      .select('id, employee_name, role, department, avatar_path, avatar_url, isdeleted')
       .eq('auth_id', user.id)
       .limit(4),
     setup.serviceClient
@@ -105,7 +105,6 @@ export async function GET(request: Request) {
     ((employeeRows as Array<{
       id?: number | null
       employee_name?: string | null
-      agent_name?: string | null
       role?: string | null
       department?: string | null
       avatar_path?: string | null
@@ -120,7 +119,6 @@ export async function GET(request: Request) {
       employee: {
         id: Number(activeEmployee.id ?? 0),
         employeeName: (activeEmployee.employee_name || '').trim(),
-        agentName: (activeEmployee.agent_name || '').trim(),
         role: (activeEmployee.role || '').trim(),
         department: (activeEmployee.department || '').trim(),
         avatarFileId: (activeEmployee.avatar_path || '').trim(),

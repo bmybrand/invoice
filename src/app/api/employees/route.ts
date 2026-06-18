@@ -15,7 +15,6 @@ export async function POST(request: Request) {
   const email = String(body?.email ?? '').trim().toLowerCase()
   const password = String(body?.password ?? '').trim()
   const name = String(body?.name ?? '').trim()
-  const agentName = String(body?.agentName ?? body?.agent_name ?? '').trim()
   const department = String(body?.department ?? '').trim()
   const role = normalizeRole(body?.role)
 
@@ -54,12 +53,11 @@ export async function POST(request: Request) {
       auth_id: createdUser.user.id,
       email,
       employee_name: name,
-      agent_name: agentName || null,
       role,
       department,
       isdeleted: false,
     })
-    .select('id, auth_id, employee_name, agent_name, email, role, department')
+    .select('id, auth_id, employee_name, email, role, department')
     .single()
 
   if (insertError) {

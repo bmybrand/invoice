@@ -25,6 +25,8 @@ const MESSAGE_LINE_CLAMP_STEP = 8
 
 type ChatCacheEntry = {
   messages: ChatMessage[]
+  headerTitle: string
+  headerSubtitle: string
   hasOlderMessages: boolean
 }
 
@@ -742,6 +744,8 @@ export function ClientChatModal({
     if (cached) {
       loadedMessagesRef.current = cached.messages
       setMessages(cached.messages)
+      setHeaderTitle(cached.headerTitle)
+      setHeaderSubtitle(cached.headerSubtitle)
       setHasOlderMessages(cached.hasOlderMessages)
       hasOlderMessagesRef.current = cached.hasOlderMessages
       if (cached.messages.length > 0) {
@@ -981,9 +985,11 @@ export function ClientChatModal({
     if (!cacheKey) return
     clientChatCache.set(cacheKey, {
       messages,
+      headerTitle,
+      headerSubtitle,
       hasOlderMessages,
     })
-  }, [cacheKey, hasOlderMessages, messages])
+  }, [cacheKey, hasOlderMessages, headerSubtitle, headerTitle, messages])
 
   useEffect(() => {
     if (!open || !clientId) {

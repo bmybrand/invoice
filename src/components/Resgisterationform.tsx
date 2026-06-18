@@ -45,7 +45,7 @@ function PhoneIcon() {
 export function RegisterForm() {
   const router = useRouter()
 
-  const [salesAgents, setSalesAgents] = useState<Array<{ auth_id: string; employee_name: string; agent_name?: string | null }>>([])
+  const [salesAgents, setSalesAgents] = useState<Array<{ auth_id: string; employee_name: string }>>([])
   const [agentsLoading, setAgentsLoading] = useState(true)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -64,7 +64,7 @@ export function RegisterForm() {
     const loadSalesAgents = async () => {
       const { data, error: fetchError } = await supabase
         .from('employees')
-        .select('auth_id, employee_name, agent_name')
+        .select('auth_id, employee_name')
         .neq('isdeleted', true)
         .ilike('department', '%sales%')
         .order('employee_name', { ascending: true })
@@ -77,12 +77,11 @@ export function RegisterForm() {
         return
       }
 
-      const rows = (((data as Array<{ auth_id?: string | null; employee_name?: string | null; agent_name?: string | null }> | null) ?? []))
-        .filter((row) => Boolean(row.auth_id?.trim()) && Boolean(row.agent_name?.trim()))
+      const rows = (((data as Array<{ auth_id?: string | null; employee_name?: string | null }> | null) ?? []))
+        .filter((row) => Boolean(row.auth_id?.trim()))
         .map((row) => ({
           auth_id: String(row.auth_id).trim(),
-          employee_name: row.employee_name?.trim() || '',
-          agent_name: row.agent_name?.trim() || '',
+          employee_name: row.employee_name?.trim() || 'Sales Agent',
         }))
 
       setSalesAgents(rows)
@@ -285,7 +284,7 @@ export function RegisterForm() {
                         <option value="" className="bg-slate-900 text-white">Select Agent</option>
                         {salesAgents.map((agent) => (
                           <option key={agent.auth_id} value={agent.auth_id} className="bg-slate-900 text-white">
-                            {agent.agent_name}
+                            {agent.employee_name}
                           </option>
                         ))}
                       </>

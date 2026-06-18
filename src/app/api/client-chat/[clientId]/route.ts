@@ -26,6 +26,8 @@ type ClientChatAttachmentRow = {
 
 const AVATAR_CACHE_TTL_MS = 5 * 60 * 1000
 const senderAvatarCache = new Map<string, { url: string | null; expiresAt: number }>()
+const HANDLER_NAME_TTL_MS = 10 * 60 * 1000
+const handlerNameCache = new Map<string, { name: string; expiresAt: number }>()
 
 function getParams(params: RouteParams | Promise<RouteParams>) {
   return params instanceof Promise ? params : Promise.resolve(params)
@@ -120,7 +122,7 @@ export async function GET(
     senderAuthIds.length
       ? actor.supabase
           .from('employees')
-          .select('auth_id, employee_name, agent_name, avatar_path, avatar_url')
+          .select('auth_id, employee_name, avatar_path, avatar_url')
           .in('auth_id', senderAuthIds)
           .neq('isdeleted', true)
       : Promise.resolve({ data: [], error: null }),
@@ -145,22 +147,13 @@ export async function GET(
     ((employeesResult.data as Array<{
       auth_id?: string | null
       employee_name?: string | null
-      agent_name?: string | null
       avatar_path?: string | null
       avatar_url?: string | null
     }> | null) ?? [])
   employeeRows.forEach((row) => {
     const authId = (row.auth_id || '').trim()
     if (!authId) return
-    const employeeName = row.employee_name?.trim() || 'Employee'
-    const agentName = row.agent_name?.trim() || ''
-    const displayName =
-      actor.accountType === 'client'
-        ? agentName || employeeName
-        : agentName && agentName.toLowerCase() !== employeeName.toLowerCase()
-          ? `${employeeName} (${agentName})`
-          : employeeName
-    senderNameByAuthId.set(authId, displayName)
+    senderNameByAuthId.set(authId, row.employee_name?.trim() || 'Employee')
   })
   ;(((clientsResult.data as Array<{ auth_id?: string | null; name?: string | null }> | null) ?? [])).forEach((row) => {
     const authId = (row.auth_id || '').trim()
@@ -263,22 +256,24 @@ export async function GET(
   let handlerName = 'Handler'
   if ((actor.clientRow.handler_id || '').trim()) {
     const handlerId = (actor.clientRow.handler_id || '').trim()
-    const { data: handlerData } = await actor.supabase
-      .from('employees')
-      .select('employee_name, agent_name')
-      .eq('auth_id', handlerId)
-      .neq('isdeleted', true)
-      .maybeSingle()
+    const cachedHandler = handlerNameCache.get(handlerId)
+    const nowForHandler = Date.now()
+    if (cachedHandler && cachedHandler.expiresAt > nowForHandler) {
+      handlerName = cachedHandler.name || 'Handler'
+    } else {
+      const { data: handlerData } = await actor.supabase
+        .from('employees')
+        .select('employee_name')
+        .eq('auth_id', handlerId)
+        .neq('isdeleted', true)
+        .maybeSingle()
 
-    const handlerRow = handlerData as { employee_name?: string | null; agent_name?: string | null } | null
-    const employeeName = (handlerRow?.employee_name || '').trim()
-    const agentName = (handlerRow?.agent_name || '').trim()
-    handlerName =
-      actor.accountType === 'client'
-        ? agentName || employeeName || 'Handler'
-        : agentName && employeeName && agentName.toLowerCase() !== employeeName.toLowerCase()
-          ? `${employeeName} (${agentName})`
-          : employeeName || agentName || 'Handler'
+      handlerName = ((handlerData as { employee_name?: string | null } | null)?.employee_name || '').trim() || 'Handler'
+      handlerNameCache.set(handlerId, {
+        name: handlerName,
+        expiresAt: nowForHandler + HANDLER_NAME_TTL_MS,
+      })
+    }
   }
 
   return NextResponse.json({

@@ -14,6 +14,7 @@ export type StrategyCallBooking = {
   appointmentDate: string
   appointmentTime: string
   timezone: string
+  calendarEventId: string
   createdAt: string
 }
 
@@ -77,7 +78,8 @@ function mapMysqlRow(row: Record<string, unknown>): StrategyCallBooking {
     appointmentDate: String(row.appointment_date ?? ''),
     appointmentTime: String(row.appointment_time ?? ''),
     timezone: String(row.timezone ?? ''),
-    createdAt: String(row.created_at ?? ''),
+    calendarEventId: String(row.calendar_event_id ?? row.calendarEventId ?? ''),
+    createdAt: String(row.created_at ?? row.createdAt ?? ''),
   }
 }
 
@@ -134,7 +136,8 @@ export async function listStrategyCallBookings(input?: {
 
   const [rows] = await pool.execute(
     `SELECT id, email, name, country_code, phone, company_name, website_url,
-            budget, call_notes, source, appointment_date, appointment_time, timezone, created_at
+            budget, call_notes, source, appointment_date, appointment_time, timezone,
+            calendar_event_id, created_at
      FROM strategy_call_bookings
      WHERE ${conditions.join(' AND ')}
      ORDER BY appointment_date ASC, appointment_time ASC, id ASC`,
@@ -146,6 +149,56 @@ export async function listStrategyCallBookings(input?: {
   }
 
   return rows.map((row) => mapMysqlRow(row as Record<string, unknown>))
+}
+
+export async function getStrategyCallBookingById(id: number): Promise<StrategyCallBooking | null> {
+  const bridge = getBridgeConfig()
+
+  if (bridge) {
+    const response = await fetch(
+      buildBridgeUrl(bridge.url, bridge.secret, { id: String(id) }),
+      {
+        method: 'GET',
+        headers: bridgeHeaders(bridge.secret),
+        cache: 'no-store',
+      }
+    )
+
+    const data = (await response.json().catch(() => null)) as
+      | { booking?: StrategyCallBooking; error?: string }
+      | null
+
+    if (response.status === 404) {
+      return null
+    }
+
+    if (!response.ok || !data?.booking) {
+      throw new Error(data?.error || 'Could not load strategy call booking.')
+    }
+
+    return mapMysqlRow(data.booking as unknown as Record<string, unknown>)
+  }
+
+  if (!isMysqlConfigured()) {
+    throw new Error('Strategy call storage is not configured.')
+  }
+
+  const pool = getMysqlPool()
+  const [rows] = await pool.execute(
+    `SELECT id, email, name, country_code, phone, company_name, website_url,
+            budget, call_notes, source, appointment_date, appointment_time, timezone,
+            calendar_event_id, created_at
+     FROM strategy_call_bookings
+     WHERE id = ?
+     LIMIT 1`,
+    [id]
+  )
+
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return null
+  }
+
+  return mapMysqlRow(rows[0] as Record<string, unknown>)
 }
 
 export async function deleteStrategyCallBooking(id: number): Promise<void> {

@@ -90,7 +90,6 @@ type DashboardBootstrapResponse = {
   employee?: {
     id: number
     employeeName: string
-    agentName?: string
     role: string
     department: string
     avatarFileId?: string
@@ -408,10 +407,6 @@ function shouldDefaultSidebarCollapsed(): boolean {
   return width >= 768 && width < 1280
 }
 
-function isSalesDepartment(department: string | null | undefined) {
-  return (department || '').trim().toLowerCase().includes('sales')
-}
-
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -420,7 +415,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const sidebarPreferenceSetRef = useRef(false)
   const [displayName, setDisplayName] = useState('')
-  const [displayAgentName, setDisplayAgentName] = useState('')
   const [displayRole, setDisplayRole] = useState('')
   const [displayDepartment, setDisplayDepartment] = useState('')
   const [currentEmployeeId, setCurrentEmployeeId] = useState<number | null>(null)
@@ -431,7 +425,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [currentClientId, setCurrentClientId] = useState<number | null>(null)
   const [profileModalOpen, setProfileModalOpen] = useState(false)
   const [profileName, setProfileName] = useState('')
-  const [profileAgentName, setProfileAgentName] = useState('')
   const [profileEmail, setProfileEmail] = useState('')
   const [profilePassword, setProfilePassword] = useState('')
   const [profileConfirmPassword, setProfileConfirmPassword] = useState('')
@@ -475,7 +468,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     setCurrentClientId(null)
     setCurrentUserEmail('')
     setDisplayName('')
-    setDisplayAgentName('')
     setDisplayRole('')
     setDisplayDepartment('')
     setDisplayAvatarUrl('')
@@ -555,7 +547,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
         console.error('Dashboard bootstrap error:', result?.error || 'Failed to load dashboard profile')
         setDisplayName(metadataDisplayName || user.email || 'User')
-        setDisplayAgentName('')
         setCurrentEmployeeId(null)
         setCurrentClientId(null)
         setDisplayRole('')
@@ -569,7 +560,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         case 'employee': {
           const row = result.employee
           setDisplayName(row?.employeeName || metadataDisplayName || user.email || 'User')
-          setDisplayAgentName(row?.agentName?.trim() || '')
           setCurrentEmployeeId(typeof row?.id === 'number' ? row.id : null)
           setCurrentClientId(null)
           setDisplayAvatarFileId((row?.avatarFileId || '').trim())
@@ -587,7 +577,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         case 'client': {
           const row = result.client
           setDisplayName(row?.name || metadataDisplayName || user.email || 'Client')
-          setDisplayAgentName('')
           setCurrentEmployeeId(null)
           setCurrentClientId(typeof row?.id === 'number' ? row.id : null)
           setDisplayRole('Client')
@@ -616,7 +605,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         case 'none':
         default:
           setDisplayName(metadataDisplayName || user.email || 'User')
-          setDisplayAgentName('')
           setCurrentEmployeeId(null)
           setCurrentClientId(null)
           setDisplayRole('')
@@ -961,7 +949,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   function openProfileModal() {
     setProfileName(displayName || '')
-    setProfileAgentName(displayAgentName || '')
     setProfileEmail(currentUserEmail || '')
     setProfilePassword('')
     setProfileConfirmPassword('')
@@ -973,7 +960,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   function closeProfileModal() {
     if (profileSaving) return
-    setProfileAgentName(displayAgentName || '')
     setProfilePassword('')
     setProfileConfirmPassword('')
     resetProfileImageState(displayAvatarUrl || '')
@@ -988,8 +974,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     if (!currentUserAuthId || profileSaving) return
 
     const nextName = profileName.trim()
-    const canUseAgentName = accountType === 'employee' && isSalesDepartment(displayDepartment)
-    const nextAgentName = canUseAgentName ? profileAgentName.trim() : ''
     const nextEmail = profileEmail.trim()
     const nextPassword = profilePassword.trim()
     const nextConfirmPassword = profileConfirmPassword.trim()
@@ -1076,7 +1060,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         .from('employees')
         .update({
           employee_name: nextName,
-          agent_name: nextAgentName || null,
           email: nextEmail,
           avatar_path: nextAvatarFileId || undefined,
           avatar_url: nextAvatarUrl || null,
@@ -1107,7 +1090,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     }
 
     setDisplayName(nextName)
-    setDisplayAgentName(nextAgentName)
     setDisplayAvatarFileId(nextAvatarFileId || previousAvatarFileId)
     setDisplayAvatarUrl(nextAvatarUrl)
     setCurrentUserEmail(nextEmail)
@@ -1430,22 +1412,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                     className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                   />
                 </div>
-
-                {accountType === 'employee' && isSalesDepartment(displayDepartment) && (
-                  <div>
-                    <label htmlFor="profile-agent-name" className="block text-sm font-medium text-slate-300">
-                      Agent name
-                    </label>
-                    <input
-                      id="profile-agent-name"
-                      type="text"
-                      value={profileAgentName}
-                      onChange={(e) => setProfileAgentName(e.target.value)}
-                      placeholder="Client-facing name"
-                      className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
-                    />
-                  </div>
-                )}
 
                 <div>
                   <label htmlFor="profile-email" className="block text-sm font-medium text-slate-300">
