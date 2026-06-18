@@ -18,14 +18,32 @@ export type StrategyCallBooking = {
 }
 
 function getBridgeConfig() {
-  const url = (process.env.MYSQL_BRIDGE_URL || '').trim().replace(/\/$/, '')
-  const secret = (process.env.MYSQL_BRIDGE_SECRET || '').trim()
+  const url = (
+    process.env.MYSQL_BRIDGE_URL ||
+    process.env.STRATEGY_CALL_BRIDGE_URL ||
+    ''
+  )
+    .trim()
+    .replace(/\/$/, '')
+  const secret = (
+    process.env.MYSQL_BRIDGE_SECRET ||
+    process.env.STRATEGY_CALL_BRIDGE_SECRET ||
+    ''
+  ).trim()
 
   if (!url || !secret) {
     return null
   }
 
   return { url, secret }
+}
+
+export function getStrategyCallStorageSetupHint(): string {
+  return [
+    'Add MYSQL_BRIDGE_URL and MYSQL_BRIDGE_SECRET to the CRM Vercel project (dashboard.bmybrand.com).',
+    'Use the same values as the brand site (bmybrand.com) Vercel project, then redeploy the CRM.',
+    'Also upload the latest cpanel-bridge/strategy-call.php to cPanel if list/delete was not added yet.',
+  ].join(' ')
 }
 
 function buildBridgeUrl(baseUrl: string, secret: string, params: Record<string, string> = {}) {

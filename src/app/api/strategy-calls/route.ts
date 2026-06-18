@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
 import { requireActiveEmployee } from '@/lib/server-employee-auth'
-import { isStrategyCallStorageConfigured, listStrategyCallBookings } from '@/lib/strategy-call-bookings'
+import {
+  getStrategyCallStorageSetupHint,
+  isStrategyCallStorageConfigured,
+  listStrategyCallBookings,
+} from '@/lib/strategy-call-bookings'
 
 export async function GET(request: Request) {
   const auth = await requireActiveEmployee(request)
@@ -12,7 +16,7 @@ export async function GET(request: Request) {
     return NextResponse.json(
       {
         error: 'Strategy call storage is not configured.',
-        hint: 'Set MYSQL_BRIDGE_URL and MYSQL_BRIDGE_SECRET on the CRM deployment (same values as the brand site).',
+        hint: getStrategyCallStorageSetupHint(),
       },
       { status: 503 }
     )
