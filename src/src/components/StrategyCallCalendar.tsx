@@ -249,7 +249,9 @@ export default function StrategyCallCalendar() {
       headers: { Authorization: `Bearer ${accessToken}` },
     })
 
-    const result = (await response.json().catch(() => null)) as { error?: string } | null
+    const result = (await response.json().catch(() => null)) as
+      | { error?: string; calendarWarning?: string }
+      | null
 
     if (!response.ok) {
       setError(result?.error || 'Failed to delete booking.')
@@ -263,6 +265,12 @@ export default function StrategyCallCalendar() {
       setSelectedBooking(null)
     }
     setDeletingId(null)
+
+    if (result?.calendarWarning) {
+      setError(result.calendarWarning)
+    }
+
+    await fetchBookings()
   }
 
   if (!profileLoaded) {
@@ -521,7 +529,7 @@ export default function StrategyCallCalendar() {
             <p className="mt-2 text-sm text-slate-400">
               This removes <span className="font-semibold text-white">{deleteConfirmBooking.name}</span> on{' '}
               {formatLongDate(deleteConfirmBooking.appointmentDate)} at {deleteConfirmBooking.appointmentTime} from
-              the calendar. This cannot be undone.
+              the dashboard calendar and Google Calendar (when configured). This cannot be undone.
             </p>
             <div className="mt-6 flex justify-end gap-3">
               <button

@@ -21,7 +21,6 @@ type EmployeeRow = {
   id: number
   auth_id: string
   employee_name: string
-  agent_name?: string | null
   email: string
   role: string
   department: string
@@ -50,10 +49,6 @@ function getDepartmentStyle(dept: string): string {
     return 'bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/20'
   }
   return 'bg-slate-500/10 text-slate-400 border-slate-500/20'
-}
-
-function isSalesDepartment(department: string | null | undefined) {
-  return (department || '').trim().toLowerCase().includes('sales')
 }
 
 function SearchIcon({ className = 'h-4 w-4' }: { className?: string }) {
@@ -181,13 +176,6 @@ function buildEmployeeAvatarUrl(employee: Pick<EmployeeRow, 'avatar_path' | 'ava
   return ''
 }
 
-function formatEmployeeDisplayName(employee: Pick<EmployeeRow, 'employee_name' | 'agent_name' | 'email'>) {
-  const originalName = (employee.employee_name || '').trim() || (employee.email || '').trim() || 'User'
-  const agentName = (employee.agent_name || '').trim()
-  if (!agentName || agentName.toLowerCase() === originalName.toLowerCase()) return originalName
-  return `${originalName} (${agentName})`
-}
-
 function initials(name: string) {
   const tokens = name.trim().split(/\s+/).filter(Boolean)
   return (tokens[0]?.[0] || '') + (tokens[1]?.[0] || tokens[0]?.[1] || '')
@@ -270,7 +258,6 @@ export default function Employees() {
   const [addEmail, setAddEmail] = useState('')
   const [addPassword, setAddPassword] = useState('')
   const [addName, setAddName] = useState('')
-  const [addAgentName, setAddAgentName] = useState('')
   const [addRole, setAddRole] = useState<'user' | 'admin'>('user')
   const [addDepartment, setAddDepartment] = useState('')
   const [addLoading, setAddLoading] = useState(false)
@@ -284,7 +271,6 @@ export default function Employees() {
   )
   const [editingEmployee, setEditingEmployee] = useState<EmployeeRow | null>(null)
   const [editName, setEditName] = useState('')
-  const [editAgentName, setEditAgentName] = useState('')
   const [editRole, setEditRole] = useState<'user' | 'admin' | 'superadmin'>('user')
   const [editDepartment, setEditDepartment] = useState('')
   const [editPassword, setEditPassword] = useState('')
@@ -398,7 +384,6 @@ export default function Employees() {
       list = list.filter(
         (e) =>
           (e.employee_name || '').toLowerCase().includes(q) ||
-          (e.agent_name || '').toLowerCase().includes(q) ||
           (e.email || '').toLowerCase().includes(q) ||
           (e.department || '').toLowerCase().includes(q) ||
           (e.role || '').toLowerCase().includes(q)
@@ -465,7 +450,7 @@ export default function Employees() {
     }
     const { data, error } = await supabase
       .from('employees')
-      .select('id, auth_id, employee_name, agent_name, email, role, department, avatar_path, avatar_url, created_at')
+      .select('id, auth_id, employee_name, email, role, department, avatar_path, avatar_url, created_at')
       .neq('isdeleted', true)
       .order('created_at', { ascending: false })
 
@@ -519,7 +504,6 @@ export default function Employees() {
             id: Number(row.id),
             auth_id: row.auth_id || '',
             employee_name: row.employee_name || '',
-            agent_name: row.agent_name ?? null,
             email: row.email || '',
             role: row.role || '',
             department: row.department || '',
@@ -608,7 +592,7 @@ export default function Employees() {
 
     const { data, error } = await supabase
       .from('employees')
-      .select('id, auth_id, employee_name, agent_name, email, role, department, avatar_path, avatar_url, created_at')
+      .select('id, auth_id, employee_name, email, role, department, avatar_path, avatar_url, created_at')
       .eq('isdeleted', true)
       .order('created_at', { ascending: false })
 
@@ -656,7 +640,6 @@ export default function Employees() {
         email: addEmail,
         password: addPassword,
         name: addName,
-        agentName: isSalesDepartment(addDepartment) ? addAgentName : '',
         role: addRole,
         department: addDepartment,
       }),
@@ -675,7 +658,6 @@ export default function Employees() {
     setAddEmail('')
     setAddPassword('')
     setAddName('')
-    setAddAgentName('')
     setAddRole('user')
     setAddDepartment('')
     setActionMessage({ type: 'success', text: `Employee ${addName.trim()} added successfully.` })
@@ -685,7 +667,6 @@ export default function Employees() {
   function openEditModal(emp: EmployeeRow) {
     setEditingEmployee(emp)
     setEditName(emp.employee_name || '')
-    setEditAgentName(emp.agent_name || '')
     const role = (emp.role || '').trim().toLowerCase().replace(/\s+/g, '')
     setEditRole(
       role === 'superadmin' ? 'superadmin' : role === 'admin' ? 'admin' : 'user'
@@ -758,9 +739,6 @@ export default function Employees() {
     }
 
     const isEditingSuperAdmin = (editingEmployee.role || '').trim().toLowerCase().replace(/\s+/g, '') === 'superadmin'
-    const isEditingSelf = editingEmployee.auth_id === profileCurrentUserAuthId
-    const nextDepartment = isEditingSelf ? (editingEmployee.department || '').trim() : editDepartment.trim()
-    const nextAgentName = isSalesDepartment(nextDepartment) ? editAgentName.trim() || null : null
 
     if (editRole === 'superadmin' && !isEditingSuperAdmin && currentUserEmployeeId) {
       const { error: demoteError } = await supabase
@@ -777,9 +755,8 @@ export default function Employees() {
         .from('employees')
         .update({
           employee_name: editName.trim(),
-          agent_name: nextAgentName,
           role: 'superadmin',
-          department: nextDepartment,
+          department: editDepartment.trim(),
         })
         .eq('id', editingEmployee.id)
       setEditLoading(false)
@@ -795,10 +772,10 @@ export default function Employees() {
       return
     }
 
-    const updatePayload: { employee_name: string; agent_name: string | null; role?: string; department: string } = {
+    const isEditingSelf = editingEmployee.auth_id === profileCurrentUserAuthId
+    const updatePayload: { employee_name: string; role?: string; department: string } = {
       employee_name: editName.trim(),
-      agent_name: nextAgentName,
-      department: nextDepartment,
+      department: isEditingSelf ? (editingEmployee.department || '').trim() : editDepartment.trim(),
     }
     if (!isEditingSuperAdmin && !isAdmin && !isEditingSelf) updatePayload.role = editRole
 
@@ -1079,12 +1056,12 @@ export default function Employees() {
             <div key={emp.id} className="w-full min-w-[560px] border-t border-slate-700 grid grid-cols-[1fr_1fr_140px_100px] gap-0 items-center">
               <div className="px-4 sm:px-6 py-4 flex items-center gap-3 min-w-0">
                 <EmployeeAvatar
-                  name={formatEmployeeDisplayName(emp)}
+                  name={emp.employee_name || emp.email || 'User'}
                   imageUrl={employeeAvatarUrls[emp.auth_id] || ''}
                   isOnline={onlineAuthIdSet.has(emp.auth_id)}
                 />
                 <div className="min-w-0">
-                  <p className="text-white text-sm font-bold truncate">{formatEmployeeDisplayName(emp)}</p>
+                  <p className="text-white text-sm font-bold truncate">{emp.employee_name}</p>
                   <p className="text-slate-400 text-xs truncate">{emp.email}</p>
                 </div>
               </div>
@@ -1201,7 +1178,7 @@ export default function Employees() {
             </button>
             <h2 className="text-lg font-bold text-white">Delete Employee</h2>
             <p className="mt-1 text-sm text-slate-400">
-              Archive <span className="font-semibold text-white">{formatEmployeeDisplayName(deletingEmployee)}</span>? This hides the employee but keeps historical invoice links.
+              Archive <span className="font-semibold text-white">{deletingEmployee.employee_name}</span>? This hides the employee but keeps historical invoice links.
             </p>
             {deleteError && (
               <p className="mt-4 rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-400">{deleteError}</p>
@@ -1272,7 +1249,7 @@ export default function Employees() {
                     archivedEmployees.map((employee) => (
                       <tr key={employee.id} className="border-b border-slate-700/60 last:border-b-0">
                         <td className="px-3 py-4 text-sm font-mono text-white">{employee.id}</td>
-                        <td className="px-3 py-4 text-sm font-semibold text-white">{formatEmployeeDisplayName(employee)}</td>
+                        <td className="px-3 py-4 text-sm font-semibold text-white">{employee.employee_name || '-'}</td>
                         <td className="px-3 py-4 text-sm text-slate-300">{employee.email || '-'}</td>
                         <td className="px-3 py-4 text-sm capitalize text-slate-300">{employee.role || '-'}</td>
                         <td className="px-3 py-4 text-sm text-slate-300">{employee.department || '-'}</td>
@@ -1345,19 +1322,6 @@ export default function Employees() {
                   className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 pr-12 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                 />
               </div>
-              {isSalesDepartment(editDepartment) && (
-                <div className="relative">
-                  <label htmlFor="edit-agent-name" className="block text-sm font-medium text-slate-300">Agent name</label>
-                  <input
-                    id="edit-agent-name"
-                    type="text"
-                    value={editAgentName}
-                    onChange={(e) => setEditAgentName(e.target.value)}
-                    placeholder="Client-facing name"
-                    className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 pr-12 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
-                  />
-                </div>
-              )}
               <div className="relative">
                 <label htmlFor="edit-email" className="block text-sm font-medium text-slate-300">Email</label>
                 <input
@@ -1506,19 +1470,6 @@ export default function Employees() {
                   className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                 />
               </div>
-              {isSalesDepartment(addDepartment) && (
-                <div>
-                  <label htmlFor="add-agent-name" className="block text-sm font-medium text-slate-300">Agent name</label>
-                  <input
-                    id="add-agent-name"
-                    type="text"
-                    value={addAgentName}
-                    onChange={(e) => setAddAgentName(e.target.value)}
-                    placeholder="Client-facing name"
-                    className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
-                  />
-                </div>
-              )}
               <div>
                 <label htmlFor="add-email" className="block text-sm font-medium text-slate-300">Email</label>
                 <input
