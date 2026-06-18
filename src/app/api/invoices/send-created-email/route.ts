@@ -151,6 +151,17 @@ function buildInvoiceCreatedEmail({
       }
   const websiteUrl = normalizeWebsiteUrl(useBmyBranding ? 'https://bmybrand.com' : brandWebsiteUrl)
   const websiteLabel = getWebsiteLabel(websiteUrl)
+  const footerLinks = useBmyBranding
+    ? `
+                    <a href="https://www.instagram.com/bmybrand_official/" style="color:#ffffff; text-decoration:none; margin:0 8px;">Instagram</a>
+                    <a href="https://www.linkedin.com/company/bmy-brand/" style="color:#ffffff; text-decoration:none; margin:0 8px;">LinkedIn</a>
+                    <a href="https://www.facebook.com/bmybrandofficial/" style="color:#ffffff; text-decoration:none; margin:0 8px;">Facebook</a>
+                    <a href="https://www.youtube.com/@BMyBrandofficial" style="color:#ffffff; text-decoration:none; margin:0 8px;">YouTube</a>
+                    <a href="mailto:info@bmybrand.com" style="color:#ffffff; text-decoration:none; margin:0 8px;">Reply</a>
+    `
+    : `
+                    <a href="${escapeHtml(websiteUrl)}" style="color:#ffffff; text-decoration:none; margin:0 8px;">${escapeHtml(websiteLabel)}</a>
+    `
   const totalLabel = payableAmount != null && Number(payableAmount) > 0 ? 'Payable now' : 'Invoice total'
   const totalValue = payableAmount != null && Number(payableAmount) > 0 ? payableAmount : amount
   const renderedServices = services.length
@@ -254,18 +265,14 @@ function buildInvoiceCreatedEmail({
                     ${escapeHtml(invoiceUrl)}
                   </p>
                   <p style="margin:0 0 18px;">Kind regards,</p>
-                  <p style="margin:0;"><strong>BmyBrand Team</strong><br />Design. Build. Grow.</p>
+                  <p style="margin:0;"><strong>${escapeHtml(useBmyBranding ? 'BmyBrand Team' : brandName)}</strong>${useBmyBranding ? '<br />Design. Build. Grow.' : ''}</p>
                 </td>
               </tr>
               <tr>
                 <td style="background-color:${colors.footer}; border-top:6px solid ${colors.accent}; padding:20px 32px; text-align:center; font-family:Arial,sans-serif;">
-                  <div style="margin:0 0 10px; font-size:14px; color:#ffffff; font-weight:700;">BmyBrand</div>
+                  <div style="margin:0 0 10px; font-size:14px; color:#ffffff; font-weight:700;">${escapeHtml(useBmyBranding ? 'BmyBrand' : brandName)}</div>
                   <div style="font-size:13px; line-height:1.8;">
-                    <a href="https://www.instagram.com/bmybrand_official/" style="color:#ffffff; text-decoration:none; margin:0 8px;">Instagram</a>
-                    <a href="https://www.linkedin.com/company/bmy-brand/" style="color:#ffffff; text-decoration:none; margin:0 8px;">LinkedIn</a>
-                    <a href="https://www.facebook.com/bmybrandofficial/" style="color:#ffffff; text-decoration:none; margin:0 8px;">Facebook</a>
-                    <a href="https://www.youtube.com/@BMyBrandofficial" style="color:#ffffff; text-decoration:none; margin:0 8px;">YouTube</a>
-                    <a href="mailto:info@bmybrand.com" style="color:#ffffff; text-decoration:none; margin:0 8px;">Reply</a>
+${footerLinks}
                   </div>
                 </td>
               </tr>
