@@ -55,6 +55,7 @@ type RealtimeClientRow = {
 type SalesAgentOption = {
   auth_id: string
   employee_name: string
+  agent_name?: string | null
 }
 
 type ClientTableRow = {
@@ -199,6 +200,13 @@ function ArrowPathIcon({ className = 'h-4 w-4' }: { className?: string }) {
   )
 }
 
+function formatAgentDisplayName(agent: Pick<SalesAgentOption, 'employee_name' | 'agent_name'>) {
+  const employeeName = (agent.employee_name || '').trim() || 'Sales Agent'
+  const agentName = (agent.agent_name || '').trim()
+  if (!agentName || agentName.toLowerCase() === employeeName.toLowerCase()) return employeeName
+  return `${employeeName} (${agentName})`
+}
+
 export default function Clients() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -297,7 +305,7 @@ export default function Clients() {
 
     const { data, error } = await supabase
       .from('employees')
-      .select('auth_id, employee_name')
+      .select('auth_id, employee_name, agent_name')
       .neq('isdeleted', true)
       .ilike('department', '%sales%')
       .order('employee_name', { ascending: true })
@@ -308,11 +316,12 @@ export default function Clients() {
       return
     }
 
-    const rows = (((data as Array<{ auth_id?: string | null; employee_name?: string | null }> | null) ?? []))
+    const rows = (((data as Array<{ auth_id?: string | null; employee_name?: string | null; agent_name?: string | null }> | null) ?? []))
       .filter((row) => Boolean(row.auth_id?.trim()))
       .map((row) => ({
         auth_id: String(row.auth_id).trim(),
         employee_name: row.employee_name?.trim() || 'Sales Agent',
+        agent_name: row.agent_name?.trim() || null,
       }))
 
     setSalesAgents(rows)
@@ -395,16 +404,19 @@ export default function Clients() {
     if (handlerIds.length > 0) {
       const { data: handlersData, error: handlersError } = await supabase
         .from('employees')
-        .select('auth_id, employee_name')
+        .select('auth_id, employee_name, agent_name')
         .in('auth_id', handlerIds)
         .neq('isdeleted', true)
 
       if (!handlersError) {
-        ;(((handlersData as Array<{ auth_id?: string | null; employee_name?: string | null }> | null) ?? [])).forEach(
+        ;(((handlersData as Array<{ auth_id?: string | null; employee_name?: string | null; agent_name?: string | null }> | null) ?? [])).forEach(
           (row) => {
             const authId = (row.auth_id || '').trim()
             if (!authId) return
-            handlerNameByAuthId.set(authId, row.employee_name?.trim() || 'Unassigned')
+            handlerNameByAuthId.set(authId, formatAgentDisplayName({
+              employee_name: row.employee_name?.trim() || 'Unassigned',
+              agent_name: row.agent_name?.trim() || null,
+            }))
           }
         )
       }
@@ -508,7 +520,7 @@ export default function Clients() {
     const resolveHandlerName = () => {
       if (!nextHandlerId) return 'Unassigned'
       const knownAgent = salesAgentsRef.current.find((agent) => agent.auth_id === nextHandlerId)
-      if (knownAgent?.employee_name?.trim()) return knownAgent.employee_name.trim()
+      if (knownAgent?.employee_name?.trim()) return formatAgentDisplayName(knownAgent)
       const existingClient = clientsRef.current.find((client) => (client.handler_id || '').trim() === nextHandlerId)
       if (existingClient?.handler_name?.trim()) return existingClient.handler_name.trim()
       return 'Unassigned'
@@ -1975,7 +1987,7 @@ export default function Clients() {
                     <option value="">{agentsLoading ? 'Loading handlers...' : 'Select Handler'}</option>
                     {salesAgents.map((agent) => (
                       <option key={agent.auth_id} value={agent.auth_id}>
-                        {agent.employee_name}
+                        {formatAgentDisplayName(agent)}
                       </option>
                     ))}
                   </select>

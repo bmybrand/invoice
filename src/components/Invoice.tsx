@@ -30,6 +30,7 @@ type ServiceLine = {
 }
 
 type ClientOption = { id: number; name: string; email: string; phone: string }
+type BmyRecipientMode = 'registered' | 'manual'
 
 type InvoiceRow = {
   id: number
@@ -663,6 +664,7 @@ export default function Invoice() {
   const [currentPage, setCurrentPage] = useState(1)
   const [showAddModal, setShowAddModal] = useState(false)
   const [addClientId, setAddClientId] = useState<number | null>(null)
+  const [addBmyRecipientMode, setAddBmyRecipientMode] = useState<BmyRecipientMode>('registered')
   const [addClientName, setAddClientName] = useState('')
   const [addBrand, setAddBrand] = useState('')
   const [addEmail, setAddEmail] = useState('')
@@ -681,6 +683,7 @@ export default function Invoice() {
   const [addGatewayInfoOpen, setAddGatewayInfoOpen] = useState(false)
   const [editingInvoice, setEditingInvoice] = useState<InvoiceRow | null>(null)
   const [editClientId, setEditClientId] = useState<number | null>(null)
+  const [editBmyRecipientMode, setEditBmyRecipientMode] = useState<BmyRecipientMode>('registered')
   const [editClientName, setEditClientName] = useState('')
   const [editBrand, setEditBrand] = useState('')
   const [editEmail, setEditEmail] = useState('')
@@ -1209,7 +1212,12 @@ export default function Invoice() {
 
   const addValidation = (() => {
     const resolvedBrand = addBrand.trim() || getDefaultInvoiceBrand()
-    const requiresClientName = !isBmyBrand(resolvedBrand)
+    const addIsBmy = isBmyBrand(resolvedBrand)
+    const usesRegisteredClient = addIsBmy && addBmyRecipientMode === 'registered'
+    const requiresClientName = !addIsBmy || addBmyRecipientMode === 'manual'
+    if (usesRegisteredClient && addClientId === null) {
+      return { valid: false, message: 'Select a registered client or choose manual entry.' }
+    }
     if (!resolvedBrand || (requiresClientName && !addClientName.trim()) || !addEmail.trim() || !addPhone.trim()) {
       return { valid: false, message: 'Fill all required fields: client name, email, phone.' }
     }
@@ -1265,7 +1273,12 @@ export default function Invoice() {
   }, [showAddModal, addError, addValidation.valid, addServices, addStatus, addPayableAmount])
 
   const editValidation = (() => {
-    const requiresClientName = !isBmyBrand(editBrand)
+    const editIsBmy = isBmyBrand(editBrand)
+    const usesRegisteredClient = editIsBmy && editBmyRecipientMode === 'registered'
+    const requiresClientName = !editIsBmy || editBmyRecipientMode === 'manual'
+    if (usesRegisteredClient && editClientId === null) {
+      return { valid: false, message: 'Select a registered client or choose manual entry.' }
+    }
     if (!editBrand.trim() || !editEmail.trim() || !editPhone.trim() || (requiresClientName && !editClientName.trim())) {
       return { valid: false, message: 'Fill all required fields: brand, email, phone.' }
     }
@@ -1300,7 +1313,9 @@ export default function Invoice() {
     e.preventDefault()
     if (currentEmployeeId === null) return
     if (savedAddInvoiceId !== null) return
-    if (addClientId !== null && !clients.some((client) => client.id === addClientId)) {
+    const addResolvedBrand = addBrand.trim() || getDefaultInvoiceBrand()
+    const addCheckingRegisteredClient = !isBmyBrand(addResolvedBrand) || addBmyRecipientMode === 'registered'
+    if (addCheckingRegisteredClient && addClientId !== null && !clients.some((client) => client.id === addClientId)) {
       const message = isSuperAdmin
         ? 'Select a valid client before creating the invoice.'
         : 'You can only create invoices for clients assigned to you.'
@@ -1338,13 +1353,14 @@ export default function Invoice() {
 
     const resolvedBrand = addBrand.trim() || getDefaultInvoiceBrand()
     const resolvedBrandId = getInvoiceBrandMeta(resolvedBrand)?.id ?? null
+    const addInvoiceClientId = isBmyBrand(resolvedBrand) && addBmyRecipientMode === 'manual' ? null : addClientId
 
     let { data: insertedInvoice, error: insertError } = await supabase
       .from('invoices')
       .insert({
         invoice_date: new Date().toISOString().slice(0, 10),
         invoice_creator_id: currentEmployeeId,
-        client_id: addClientId,
+        client_id: addInvoiceClientId,
         brand_id: resolvedBrandId,
         brand_name: resolvedBrand,
         client_name: addClientName.trim(),
@@ -1366,7 +1382,7 @@ export default function Invoice() {
         .insert({
           invoice_date: new Date().toISOString().slice(0, 10),
           invoice_creator_id: currentEmployeeId,
-          client_id: addClientId,
+          client_id: addInvoiceClientId,
           brand_name: resolvedBrand,
           client_name: addClientName.trim(),
           email: addEmail.trim(),
@@ -1420,6 +1436,7 @@ export default function Invoice() {
 
   function resetAddModalState() {
     setAddClientId(null)
+    setAddBmyRecipientMode('registered')
     setAddClientName('')
     setAddBrand(getDefaultInvoiceBrand())
     setAddEmail('')
@@ -1484,6 +1501,7 @@ export default function Invoice() {
   function openEditModal(inv: InvoiceRow) {
     setEditingInvoice(inv)
     setEditClientId(inv.client_id ?? null)
+    setEditBmyRecipientMode(isBmyBrand(inv.brand_name || getDefaultInvoiceBrand()) && inv.client_id == null ? 'manual' : 'registered')
     setEditClientName(inv.client_name || '')
     setEditBrand(inv.brand_name || getDefaultInvoiceBrand())
     setEditEmail(inv.email || '')
@@ -1532,7 +1550,8 @@ export default function Invoice() {
   async function handleEditSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!editingInvoice || !canEditInvoice(editingInvoice)) return
-    if (editClientId !== null && !clients.some((client) => client.id === editClientId)) {
+    const editCheckingRegisteredClient = !isBmyBrand(editBrand) || editBmyRecipientMode === 'registered'
+    if (editCheckingRegisteredClient && editClientId !== null && !clients.some((client) => client.id === editClientId)) {
       const message = isSuperAdmin
         ? 'Select a valid client before saving the invoice.'
         : 'You can only assign invoices to clients assigned to you.'
@@ -1575,11 +1594,12 @@ export default function Invoice() {
     setEditGatewayInfoOpen(false)
     setEditError(null)
     setEditLoading(true)
+    const editInvoiceClientId = isBmyBrand(editBrand) && editBmyRecipientMode === 'manual' ? null : editClientId
 
     let { error } = await supabase
       .from('invoices')
       .update({
-        client_id: editClientId,
+        client_id: editInvoiceClientId,
         client_name: editClientName.trim(),
         brand_id: getInvoiceBrandMeta(editBrand.trim())?.id ?? null,
         brand_name: editBrand.trim(),
@@ -1598,7 +1618,7 @@ export default function Invoice() {
       ;({ error } = await supabase
         .from('invoices')
         .update({
-          client_id: editClientId,
+          client_id: editInvoiceClientId,
           client_name: editClientName.trim(),
           brand_name: editBrand.trim(),
           email: editEmail.trim(),
@@ -2163,8 +2183,9 @@ export default function Invoice() {
                     const grandTotal = subTotal
                     const payableAmount = Math.min(parseAmountValue(addPayableAmount), grandTotal)
                     const remainingAmount = Math.max(grandTotal - payableAmount, 0)
-                    const hideAddClientDropdown = !isBmyBrand(addBrand)
-                    const hideAddClientNameField = isBmyBrand(addBrand)
+                    const addIsBmyInvoice = isBmyBrand(addBrand)
+                    const showAddClientDropdown = addIsBmyInvoice && addBmyRecipientMode === 'registered'
+                    const showAddClientNameField = !addIsBmyInvoice || addBmyRecipientMode === 'manual'
                     return (
                       <>
                         <div className="grid grid-cols-1 gap-10 px-10 py-8 md:grid-cols-2">
@@ -2179,14 +2200,20 @@ export default function Invoice() {
                                   onChange={(e) => {
                                     const nextBrand = e.target.value
                                     const switchingFromBmyToManual = isBmyBrand(addBrand) && !isBmyBrand(nextBrand)
+                                    const switchingToBmy = !isBmyBrand(addBrand) && isBmyBrand(nextBrand)
                                     setAddBrand(nextBrand)
                                     if (switchingFromBmyToManual || !isBmyBrand(nextBrand)) {
+                                      setAddBmyRecipientMode('manual')
                                       setAddClientId(null)
                                       setAddClientName('')
                                       setAddEmail('')
                                       setAddPhone('')
-                                    } else if (addClientId === null && !addClientName.trim()) {
-                                      setAddClientName(nextBrand)
+                                    } else if (switchingToBmy) {
+                                      setAddBmyRecipientMode('registered')
+                                      setAddClientId(null)
+                                      setAddClientName('')
+                                      setAddEmail('')
+                                      setAddPhone('')
                                     }
                                   }}
                                   required
@@ -2201,7 +2228,45 @@ export default function Invoice() {
                                   ))}
                                 </select>
                               </div>
-                              {!hideAddClientDropdown ? (
+                              {addIsBmyInvoice ? (
+                                <div>
+                                  <span className="block text-xs font-bold uppercase tracking-wide text-slate-500">Recipient</span>
+                                  <div className="mt-1 grid grid-cols-2 overflow-hidden rounded-lg border border-slate-300 bg-slate-100 p-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setAddBmyRecipientMode('registered')
+                                        setAddClientId(null)
+                                        setAddClientName('')
+                                        setAddEmail('')
+                                        setAddPhone('')
+                                      }}
+                                      className={`rounded-md px-3 py-2 text-xs font-bold uppercase tracking-wide transition ${
+                                        addBmyRecipientMode === 'registered'
+                                          ? 'bg-white text-slate-900 shadow-sm'
+                                          : 'text-slate-500 hover:text-slate-900'
+                                      }`}
+                                    >
+                                      Registered
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setAddBmyRecipientMode('manual')
+                                        setAddClientId(null)
+                                      }}
+                                      className={`rounded-md px-3 py-2 text-xs font-bold uppercase tracking-wide transition ${
+                                        addBmyRecipientMode === 'manual'
+                                          ? 'bg-white text-slate-900 shadow-sm'
+                                          : 'text-slate-500 hover:text-slate-900'
+                                      }`}
+                                    >
+                                      Manual
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : null}
+                              {showAddClientDropdown ? (
                               <div>
                                 <label htmlFor="add-client" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Client</label>
                                 <select
@@ -2225,14 +2290,14 @@ export default function Invoice() {
                                   }}
                                   className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                                 >
-                                  <option value="">Select client (optional)</option>
+                                  <option value="">Select registered client</option>
                                   {clients.map((c) => (
                                     <option key={c.id} value={c.id}>{c.name || c.email || `Client #${c.id}`}</option>
                                   ))}
                                 </select>
                               </div>
                               ) : null}
-                              {!hideAddClientNameField ? (
+                              {showAddClientNameField ? (
                               <div>
                                 <label htmlFor="add-client-name" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Client name</label>
                                 <input
@@ -2241,7 +2306,7 @@ export default function Invoice() {
                                   value={addClientName}
                                   onChange={(e) => setAddClientName(e.target.value)}
                                   placeholder="Enter client name"
-                                  required={!hideAddClientNameField}
+                                  required={showAddClientNameField}
                                   className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                                 />
                               </div>
@@ -2506,8 +2571,9 @@ export default function Invoice() {
                     const remainingBalance = Math.max(grandTotal - paidAmount, 0)
                     const payableAmount = Math.min(parseAmountValue(editPayableAmount), grandTotal)
                     const remainingAmount = Math.max(remainingBalance - payableAmount, 0)
-                    const hideEditClientDropdown = !isBmyBrand(editBrand)
-                    const hideEditClientNameField = isBmyBrand(editBrand)
+                    const editIsBmyInvoice = isBmyBrand(editBrand)
+                    const showEditClientDropdown = editIsBmyInvoice && editBmyRecipientMode === 'registered'
+                    const showEditClientNameField = !editIsBmyInvoice || editBmyRecipientMode === 'manual'
                     return (
                       <>
                         <div className="grid grid-cols-1 gap-10 px-10 py-8 md:grid-cols-2">
@@ -2522,14 +2588,20 @@ export default function Invoice() {
                                   onChange={(e) => {
                                     const nextBrand = e.target.value
                                     const switchingFromBmyToManual = isBmyBrand(editBrand) && !isBmyBrand(nextBrand)
+                                    const switchingToBmy = !isBmyBrand(editBrand) && isBmyBrand(nextBrand)
                                     setEditBrand(nextBrand)
                                     if (switchingFromBmyToManual || !isBmyBrand(nextBrand)) {
+                                      setEditBmyRecipientMode('manual')
                                       setEditClientId(null)
                                       setEditClientName('')
                                       setEditEmail('')
                                       setEditPhone('')
-                                    } else if (editClientId === null && !editClientName.trim()) {
-                                      setEditClientName(nextBrand)
+                                    } else if (switchingToBmy) {
+                                      setEditBmyRecipientMode('registered')
+                                      setEditClientId(null)
+                                      setEditClientName('')
+                                      setEditEmail('')
+                                      setEditPhone('')
                                     }
                                   }}
                                   required
@@ -2544,7 +2616,45 @@ export default function Invoice() {
                                   ))}
                                 </select>
                               </div>
-                              {!hideEditClientDropdown ? (
+                              {editIsBmyInvoice ? (
+                                <div>
+                                  <span className="block text-xs font-bold uppercase tracking-wide text-slate-500">Recipient</span>
+                                  <div className="mt-1 grid grid-cols-2 overflow-hidden rounded-lg border border-slate-300 bg-slate-100 p-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditBmyRecipientMode('registered')
+                                        setEditClientId(null)
+                                        setEditClientName('')
+                                        setEditEmail('')
+                                        setEditPhone('')
+                                      }}
+                                      className={`rounded-md px-3 py-2 text-xs font-bold uppercase tracking-wide transition ${
+                                        editBmyRecipientMode === 'registered'
+                                          ? 'bg-white text-slate-900 shadow-sm'
+                                          : 'text-slate-500 hover:text-slate-900'
+                                      }`}
+                                    >
+                                      Registered
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditBmyRecipientMode('manual')
+                                        setEditClientId(null)
+                                      }}
+                                      className={`rounded-md px-3 py-2 text-xs font-bold uppercase tracking-wide transition ${
+                                        editBmyRecipientMode === 'manual'
+                                          ? 'bg-white text-slate-900 shadow-sm'
+                                          : 'text-slate-500 hover:text-slate-900'
+                                      }`}
+                                    >
+                                      Manual
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : null}
+                              {showEditClientDropdown ? (
                               <div>
                                 <label htmlFor="edit-client" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Client</label>
                                 <select
@@ -2568,14 +2678,14 @@ export default function Invoice() {
                                   }}
                                   className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                                 >
-                                  <option value="">Select client (optional)</option>
+                                  <option value="">Select registered client</option>
                                   {clients.map((c) => (
                                     <option key={c.id} value={c.id}>{c.name || c.email || `Client #${c.id}`}</option>
                                   ))}
                                 </select>
                               </div>
                               ) : null}
-                              {!hideEditClientNameField ? (
+                              {showEditClientNameField ? (
                               <div>
                                 <label htmlFor="edit-client-name" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Client name</label>
                                 <input
@@ -2584,7 +2694,7 @@ export default function Invoice() {
                                   value={editClientName}
                                   onChange={(e) => setEditClientName(e.target.value)}
                                   placeholder="Enter client name"
-                                  required={!hideEditClientNameField}
+                                  required={showEditClientNameField}
                                   className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                                 />
                               </div>
