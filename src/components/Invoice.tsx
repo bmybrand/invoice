@@ -38,6 +38,7 @@ type InvoiceRow = {
   invoice_creator_id: number
   invoice_creator: string
   client_id: number | null
+  parent_invoice_id?: number | null
   brand_id?: number | null
   client_name: string
   brand_name: string
@@ -99,6 +100,17 @@ type GatewayLimitInfo = {
   minAmount: number
   maxAmount: number | null
 }
+
+type DueInvoiceModalState = {
+  invoice: InvoiceRow
+  mode: 'full' | 'custom'
+  amount: string
+  loading: boolean
+  error: string | null
+  gatewayLimits: GatewayLimitInfo[]
+  gatewayInfoOpen: boolean
+}
+
 const INVOICE_GRID = 'minmax(48px,0.6fr) minmax(100px,1.2fr) minmax(100px,1.2fr) minmax(100px,1.2fr) minmax(100px,1.2fr) minmax(140px,1.5fr) minmax(90px,1.15fr) minmax(100px,1.2fr) minmax(90px,1fr) minmax(90px,1fr) 72px'
 
 function SearchIcon({ className = 'h-4 w-4' }: { className?: string }) {
@@ -224,6 +236,10 @@ function formatCurrencyAmount(amount: number, currency: InvoiceCurrency): string
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(Number.isFinite(amount) ? amount : 0)
+}
+
+function getCurrencyPrefix(currency: InvoiceCurrency): string {
+  return INVOICE_CURRENCY_OPTIONS.find((option) => option.value === currency)?.prefix ?? '$'
 }
 
 function CurrencyPrefixSelect({
@@ -422,6 +438,10 @@ function isInvoicePaid(inv: Pick<InvoiceRow, 'status' | 'amount' | 'payable_amou
     ? inv.payable_amount
     : parseAmountValue(inv.amount)
   return requiredAmount > 0 && inv.paid_amount >= requiredAmount
+}
+
+function getRemainingInvoiceAmount(inv: Pick<InvoiceRow, 'amount' | 'paid_amount'>): number {
+  return Math.max(parseAmountValue(inv.amount) - (Number(inv.paid_amount) || 0), 0)
 }
 
 function sanitizeCurrencyInput(value: string): string {
@@ -702,12 +722,13 @@ export default function Invoice() {
   const [editGatewayInfoOpen, setEditGatewayInfoOpen] = useState(false)
   const [deletingInvoice, setDeletingInvoice] = useState<InvoiceRow | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [dueInvoiceModal, setDueInvoiceModal] = useState<DueInvoiceModalState | null>(null)
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const realtimeRefreshTimeoutRef = useRef<number | null>(null)
   const invoiceIdsRef = useRef<number[]>(scopedInvoiceCache?.map((invoice) => invoice.id) ?? [])
   const { token } = useSessionContext()
 
-  useBodyScrollLock(Boolean(showAddModal || editingInvoice || deletingInvoice))
+  useBodyScrollLock(Boolean(showAddModal || editingInvoice || deletingInvoice || dueInvoiceModal))
 
   async function resolveAccessToken() {
     const accessToken = token?.trim() || ''
@@ -785,6 +806,14 @@ export default function Invoice() {
 
   function canDeleteInvoice(inv: InvoiceRow): boolean {
     if (isInvoicePaid(inv)) return false
+    if (isSuperAdmin) return true
+    return currentEmployeeId !== null && currentEmployeeId === inv.invoice_creator_id
+  }
+
+  function canGenerateDueInvoice(inv: InvoiceRow): boolean {
+    if (accountType === 'client') return false
+    if (!isInvoicePaid(inv)) return false
+    if (getRemainingInvoiceAmount(inv) <= 0) return false
     if (isSuperAdmin) return true
     return currentEmployeeId !== null && currentEmployeeId === inv.invoice_creator_id
   }
@@ -868,6 +897,19 @@ export default function Invoice() {
     const invoiceIds = invoiceRows
       .map((row) => Number(row.id))
       .filter((id) => Number.isFinite(id) && id > 0)
+    const parentInvoiceIdByInvoiceId = new Map<number, number>()
+    invoiceRows.forEach((row) => {
+      const invoiceId = Number(row.id)
+      const parentInvoiceId = Number(row.parent_invoice_id)
+      if (
+        Number.isFinite(invoiceId) &&
+        invoiceId > 0 &&
+        Number.isFinite(parentInvoiceId) &&
+        parentInvoiceId > 0
+      ) {
+        parentInvoiceIdByInvoiceId.set(invoiceId, parentInvoiceId)
+      }
+    })
 
     const paidAmountByInvoiceId = new Map<number, number>()
     if (invoiceIds.length > 0) {
@@ -887,6 +929,12 @@ export default function Invoice() {
 
           const nextTotal = (paidAmountByInvoiceId.get(invoiceId) ?? 0) + parseAmountValue(String(payment.amount_paid ?? '0'))
           paidAmountByInvoiceId.set(invoiceId, Number(nextTotal.toFixed(2)))
+
+          const parentInvoiceId = parentInvoiceIdByInvoiceId.get(invoiceId)
+          if (parentInvoiceId) {
+            const nextParentTotal = (paidAmountByInvoiceId.get(parentInvoiceId) ?? 0) + parseAmountValue(String(payment.amount_paid ?? '0'))
+            paidAmountByInvoiceId.set(parentInvoiceId, Number(nextParentTotal.toFixed(2)))
+          }
         })
       }
     }
@@ -907,6 +955,7 @@ export default function Invoice() {
         invoice_creator_id: (row.invoice_creator_id as number) ?? 0,
         invoice_creator: empObj?.employee_name ?? '--',
         client_id: (row.client_id as number) ?? null,
+        parent_invoice_id: row.parent_invoice_id == null ? null : Number(row.parent_invoice_id),
         brand_id: row.brand_id == null ? null : Number(row.brand_id),
         client_name: clientName,
         brand_name: (row.brand_name as string) ?? '',
@@ -1187,7 +1236,7 @@ export default function Invoice() {
     }
     const rect = target.getBoundingClientRect()
     const menuWidth = 148
-    const menuHeight = 132
+    const menuHeight = 220
     const left = Math.min(window.innerWidth - menuWidth - 8, Math.max(8, rect.right - menuWidth))
     const top =
       rect.bottom + 8 + menuHeight > window.innerHeight - 8
@@ -1458,6 +1507,177 @@ export default function Invoice() {
     if (addLoading) return
     setShowAddModal(false)
     resetAddModalState()
+  }
+
+  function openDueInvoiceModal(inv: InvoiceRow) {
+    const remaining = getRemainingInvoiceAmount(inv)
+    if (remaining <= 0) {
+      setActionMessage({ type: 'error', text: 'This invoice has no remaining due amount.' })
+      return
+    }
+    setDueInvoiceModal({
+      invoice: inv,
+      mode: 'full',
+      amount: remaining.toFixed(2),
+      loading: false,
+      error: null,
+      gatewayLimits: [],
+      gatewayInfoOpen: false,
+    })
+  }
+
+  function closeDueInvoiceModal() {
+    if (dueInvoiceModal?.loading) return
+    setDueInvoiceModal(null)
+  }
+
+  function setDueInvoiceAmount(value: string) {
+    setDueInvoiceModal((prev) => {
+      if (!prev) return prev
+      const remaining = getRemainingInvoiceAmount(prev.invoice)
+      const cleaned = sanitizeCurrencyInput(value)
+      const parsed = parseAmountValue(cleaned)
+      const capped = parsed > remaining ? remaining.toFixed(2) : cleaned
+      return {
+        ...prev,
+        amount: capped,
+        error: null,
+        gatewayLimits: [],
+        gatewayInfoOpen: false,
+      }
+    })
+  }
+
+  async function handleGenerateDueInvoice() {
+    if (!dueInvoiceModal || currentEmployeeId === null) return
+
+    const sourceInvoice = dueInvoiceModal.invoice
+    const remaining = Number(getRemainingInvoiceAmount(sourceInvoice).toFixed(2))
+    const requestedAmount =
+      dueInvoiceModal.mode === 'full'
+        ? remaining
+        : Number(parseAmountValue(dueInvoiceModal.amount).toFixed(2))
+
+    if (remaining <= 0) {
+      setDueInvoiceModal((prev) => prev ? { ...prev, error: 'This invoice has no remaining due amount.' } : prev)
+      return
+    }
+    if (requestedAmount <= 0) {
+      setDueInvoiceModal((prev) => prev ? { ...prev, error: 'Enter an amount greater than 0.' } : prev)
+      return
+    }
+    if (requestedAmount > remaining) {
+      setDueInvoiceModal((prev) => prev ? { ...prev, error: 'Due invoice amount cannot be greater than the remaining amount.' } : prev)
+      return
+    }
+
+    setDueInvoiceModal((prev) => prev ? { ...prev, loading: true, error: null, gatewayLimits: [], gatewayInfoOpen: false } : prev)
+
+    const gatewayValidation = await validateGatewayAmountForInvoice(requestedAmount)
+    if (gatewayValidation.error) {
+      setDueInvoiceModal((prev) =>
+        prev
+          ? {
+              ...prev,
+              loading: false,
+              error: gatewayValidation.error,
+              gatewayLimits: gatewayValidation.gateways,
+              gatewayInfoOpen: false,
+            }
+          : prev
+      )
+      setActionMessage({ type: 'error', text: gatewayValidation.error })
+      return
+    }
+
+    const sourceCurrency = normalizeInvoiceCurrency(sourceInvoice.currency)
+    const sourceBrand = sourceInvoice.brand_name || getDefaultInvoiceBrand()
+    const sourceBrandId = sourceInvoice.brand_id ?? getInvoiceBrandMeta(sourceBrand)?.id ?? null
+    const serviceLine: ServiceLine = {
+      description: `Remaining balance for invoice #${formatInvoiceCode(sourceInvoice.id)}`,
+      qty: 1,
+      price: requestedAmount.toFixed(2),
+    }
+
+    let { data: insertedInvoice, error: insertError } = await supabase
+      .from('invoices')
+      .insert({
+        invoice_date: new Date().toISOString().slice(0, 10),
+        invoice_creator_id: currentEmployeeId,
+        client_id: sourceInvoice.client_id,
+        parent_invoice_id: sourceInvoice.id,
+        brand_id: sourceBrandId,
+        brand_name: sourceBrand,
+        client_name: sourceInvoice.client_name,
+        email: sourceInvoice.email,
+        service: [serviceLine],
+        phone: sourceInvoice.phone,
+        amount: requestedAmount,
+        status: 'Pending',
+        payable_amount: requestedAmount,
+        invoice_type: sourceInvoice.invoice_type || INVOICE_TYPE_OPTIONS[0],
+        currency: sourceCurrency,
+      })
+      .select('id')
+      .single()
+
+    if (
+      insertError &&
+      (
+        isMissingBrandIdColumnError(insertError) ||
+        isMissingColumnError(insertError, 'currency') ||
+        isMissingColumnError(insertError, 'parent_invoice_id')
+      )
+    ) {
+      ;({ data: insertedInvoice, error: insertError } = await supabase
+        .from('invoices')
+        .insert({
+          invoice_date: new Date().toISOString().slice(0, 10),
+          invoice_creator_id: currentEmployeeId,
+          client_id: sourceInvoice.client_id,
+          brand_name: sourceBrand,
+          client_name: sourceInvoice.client_name,
+          email: sourceInvoice.email,
+          service: [serviceLine],
+          phone: sourceInvoice.phone,
+          amount: requestedAmount,
+          status: 'Pending',
+          payable_amount: requestedAmount,
+          invoice_type: sourceInvoice.invoice_type || INVOICE_TYPE_OPTIONS[0],
+        })
+        .select('id')
+        .single())
+    }
+
+    if (insertError) {
+      setDueInvoiceModal((prev) => prev ? { ...prev, loading: false, error: insertError.message } : prev)
+      setActionMessage({ type: 'error', text: insertError.message })
+      return
+    }
+
+    const nextInvoiceId = typeof insertedInvoice?.id === 'number' ? insertedInvoice.id : null
+    if (nextInvoiceId === null) {
+      const message = 'Due invoice was created, but the new invoice ID was unavailable.'
+      setDueInvoiceModal((prev) => prev ? { ...prev, loading: false, error: message } : prev)
+      setActionMessage({ type: 'error', text: message })
+      await fetchInvoices()
+      return
+    }
+
+    const emailError = await sendCreatedInvoiceEmail(nextInvoiceId)
+    setDueInvoiceModal(null)
+    if (emailError) {
+      setActionMessage({
+        type: 'error',
+        text: `Due invoice #${formatInvoiceCode(nextInvoiceId)} created, but the email was not sent: ${emailError}`,
+      })
+    } else {
+      setActionMessage({
+        type: 'success',
+        text: `Due invoice #${formatInvoiceCode(nextInvoiceId)} created for ${formatCurrencyAmount(requestedAmount, sourceCurrency)} and emailed to ${sourceInvoice.email}.`,
+      })
+    }
+    await fetchInvoices()
   }
 
   async function handleCopyAddedInvoiceUrl() {
@@ -2025,6 +2245,20 @@ export default function Invoice() {
                               Edit
                             </button>
                           )}
+                          {canGenerateDueInvoice(inv) && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setOpenActionMenu(null)
+                                openDueInvoiceModal(inv)
+                              }}
+                              className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-amber-300 transition hover:bg-slate-800"
+                            >
+                              <PlusIcon className="h-4 w-4" />
+                              Due Invoice
+                            </button>
+                          )}
                           {canDeleteInvoice(inv) && (
                             <button
                               type="button"
@@ -2130,6 +2364,117 @@ export default function Invoice() {
                 {deleteLoading ? 'Deleting...' : 'Delete'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Generate due invoice modal */}
+      {dueInvoiceModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4">
+          <div className="relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-700 bg-slate-800 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={closeDueInvoiceModal}
+              disabled={dueInvoiceModal.loading}
+              aria-label="Close modal"
+              className="absolute right-4 top-4 rounded-full border border-orange-500/30 bg-orange-500/10 p-2 text-orange-400 transition hover:bg-orange-500/20 hover:text-orange-300 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <CloseIcon />
+            </button>
+            {(() => {
+              const remaining = Number(getRemainingInvoiceAmount(dueInvoiceModal.invoice).toFixed(2))
+              const currency = normalizeInvoiceCurrency(dueInvoiceModal.invoice.currency)
+              const customAmount = parseAmountValue(dueInvoiceModal.amount)
+              const selectedAmount = dueInvoiceModal.mode === 'full' ? remaining : Math.min(customAmount, remaining)
+              const disableGenerate = dueInvoiceModal.loading || selectedAmount <= 0 || selectedAmount > remaining
+
+              return (
+                <>
+                  <h2 className="text-lg font-bold text-white">Generate Due Invoice</h2>
+                  <p className="mt-1 text-sm text-slate-400">
+                    Create a new invoice from the remaining balance of invoice{' '}
+                    <span className="font-semibold text-white">#{formatInvoiceCode(dueInvoiceModal.invoice.id)}</span>.
+                  </p>
+                  <div className="mt-5 rounded-xl border border-slate-700 bg-slate-900/60 p-4 text-sm">
+                    <div className="flex justify-between gap-4">
+                      <span className="text-slate-400">Remaining</span>
+                      <span className="font-semibold text-white">{formatCurrencyAmount(remaining, currency)}</span>
+                    </div>
+                    <div className="mt-2 flex justify-between gap-4">
+                      <span className="text-slate-400">Client</span>
+                      <span className="max-w-[220px] truncate text-right font-medium text-slate-200">{dueInvoiceModal.invoice.client_name || '--'}</span>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 space-y-3">
+                    <label className="flex cursor-pointer items-center justify-between rounded-xl border border-slate-700 bg-slate-900/40 px-4 py-3 text-sm transition hover:border-orange-400/50">
+                      <span className="font-medium text-slate-100">Use full remaining amount</span>
+                      <input
+                        type="radio"
+                        name="due-invoice-mode"
+                        checked={dueInvoiceModal.mode === 'full'}
+                        onChange={() =>
+                          setDueInvoiceModal((prev) =>
+                            prev ? { ...prev, mode: 'full', amount: remaining.toFixed(2), error: null } : prev
+                          )
+                        }
+                        className="h-4 w-4 accent-orange-500"
+                      />
+                    </label>
+                    <label className="block rounded-xl border border-slate-700 bg-slate-900/40 px-4 py-3 text-sm">
+                      <div className="flex items-center justify-between gap-4">
+                        <span className="font-medium text-slate-100">Enter custom amount</span>
+                        <input
+                          type="radio"
+                          name="due-invoice-mode"
+                          checked={dueInvoiceModal.mode === 'custom'}
+                          onChange={() => setDueInvoiceModal((prev) => prev ? { ...prev, mode: 'custom', error: null } : prev)}
+                          className="h-4 w-4 accent-orange-500"
+                        />
+                      </div>
+                      {dueInvoiceModal.mode === 'custom' && (
+                        <div className="mt-3 flex items-center rounded-xl border border-slate-600 bg-slate-950 px-4 py-2 focus-within:border-orange-400">
+                          <span className="shrink-0 text-xl font-black text-slate-500">{getCurrencyPrefix(currency)}</span>
+                          <input
+                            type="text"
+                            value={dueInvoiceModal.amount}
+                            onChange={(e) => setDueInvoiceAmount(e.target.value)}
+                            placeholder="0.00"
+                            inputMode="decimal"
+                            pattern="^\d+(\.\d{1,2})?$"
+                            className="ml-3 min-w-0 flex-1 bg-transparent text-xl font-bold text-white placeholder:text-slate-500 focus:outline-none"
+                          />
+                        </div>
+                      )}
+                    </label>
+                  </div>
+
+                  {dueInvoiceModal.error && (
+                    <GatewayLimitAlert
+                      message={dueInvoiceModal.error}
+                      gateways={dueInvoiceModal.gatewayLimits}
+                      infoOpen={dueInvoiceModal.gatewayInfoOpen}
+                      onToggleInfo={() =>
+                        setDueInvoiceModal((prev) =>
+                          prev ? { ...prev, gatewayInfoOpen: !prev.gatewayInfoOpen } : prev
+                        )
+                      }
+                    />
+                  )}
+
+                  <div className="mt-6 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={handleGenerateDueInvoice}
+                      disabled={disableGenerate}
+                      className="w-full rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:min-w-[170px]"
+                    >
+                      {dueInvoiceModal.loading ? 'Generating...' : 'Generate Invoice'}
+                    </button>
+                  </div>
+                </>
+              )
+            })()}
           </div>
         </div>
       )}

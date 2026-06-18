@@ -79,6 +79,11 @@ export async function GET(request: Request) {
   }
 
   const requestedClientId = Number(new URL(request.url).searchParams.get('clientId'))
+  const invoiceSelectWithParentBrandIdAndCurrency = `
+    id, invoice_date, invoice_creator_id, client_id, parent_invoice_id, brand_id, client_name, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, currency, created_at,
+    employees!invoice_creator_id(employee_name),
+    clients!client_id(name)
+  `
   const invoiceSelectWithBrandIdAndCurrency = `
     id, invoice_date, invoice_creator_id, client_id, brand_id, client_name, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, currency, created_at,
     employees!invoice_creator_id(employee_name),
@@ -113,10 +118,18 @@ export async function GET(request: Request) {
   }
 
   const firstResult = await applyAccessFilter(
-    serviceClient.from('invoices').select(invoiceSelectWithBrandIdAndCurrency).order('created_at', { ascending: false })
+    serviceClient.from('invoices').select(invoiceSelectWithParentBrandIdAndCurrency).order('created_at', { ascending: false })
   )
   let data = firstResult.data as Record<string, unknown>[] | null
   let error = firstResult.error as { message: string } | null
+
+  if (error && error.message.toLowerCase().includes('parent_invoice_id') && error.message.toLowerCase().includes('does not exist')) {
+    const parentlessResult = await applyAccessFilter(
+      serviceClient.from('invoices').select(invoiceSelectWithBrandIdAndCurrency).order('created_at', { ascending: false })
+    )
+    data = parentlessResult.data as Record<string, unknown>[] | null
+    error = parentlessResult.error as { message: string } | null
+  }
 
   if (error && error.message.toLowerCase().includes('brand_id') && error.message.toLowerCase().includes('does not exist')) {
     const currencyResult = await applyAccessFilter(
