@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
-import { env } from '@/lib/env'
 import { applyRateLimit, getRateLimitIdentity } from '@/lib/rate-limit'
 import { requireAdminOrSuperAdmin } from '@/lib/server-admin-auth'
-
-const resend = new Resend(env.RESEND_API_KEY)
 
 function escapeHtml(value: string): string {
   return value
@@ -170,6 +167,13 @@ function buildEmailTemplate({
 
 export async function POST(req: NextRequest) {
   try {
+    const resendApiKey = process.env.RESEND_API_KEY?.trim()
+    const resendFromEmail = process.env.RESEND_FROM_EMAIL?.trim() || 'noreply@resend.dev'
+
+    if (!resendApiKey) {
+      return NextResponse.json({ error: 'Missing RESEND_API_KEY' }, { status: 503 })
+    }
+
     const auth = await requireAdminOrSuperAdmin(req)
     if (!auth.ok) {
       return NextResponse.json({ error: auth.error }, { status: auth.status })
@@ -238,8 +242,9 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    const resend = new Resend(resendApiKey)
     await resend.emails.send({
-      from: env.RESEND_FROM_EMAIL,
+      from: resendFromEmail,
       to: String(email).trim(),
       subject,
       html,

@@ -769,7 +769,7 @@ export default function Clients() {
 
     // Send email to client after successful add
     try {
-      await fetch('/api/send-client-email', {
+      const emailResponse = await fetch('/api/send-client-email', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -782,8 +782,12 @@ export default function Clients() {
           password: addPassword,
         }),
       })
-    } catch {
-      // Ignore email errors for now
+      if (!emailResponse.ok) {
+        const emailResult = (await emailResponse.json().catch(() => null)) as { error?: string } | null
+        console.error('Failed to send client email:', emailResult?.error || emailResponse.statusText)
+      }
+    } catch (emailError) {
+      console.error('Failed to send client email:', emailError)
     }
     setShowAddModal(false)
     setAddName('')
@@ -977,7 +981,7 @@ export default function Clients() {
 
     // Send email to client after rejection
     try {
-      await fetch('/api/send-client-email', {
+      const emailResponse = await fetch('/api/send-client-email', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -989,8 +993,12 @@ export default function Clients() {
           status: 'rejected',
         }),
       })
-    } catch {
-      // Ignore email errors for now
+      if (!emailResponse.ok) {
+        const emailResult = (await emailResponse.json().catch(() => null)) as { error?: string } | null
+        console.error('Failed to send client email:', emailResult?.error || emailResponse.statusText)
+      }
+    } catch (emailError) {
+      console.error('Failed to send client email:', emailError)
     }
 
     const response = await fetch(`/api/clients/registration-requests/${targetClient.id}/reject`, {
@@ -1075,7 +1083,7 @@ export default function Clients() {
     try {
       const targetRequest = registrationRequests.find((row) => row.id === requestId)
       if (targetRequest) {
-        await fetch('/api/send-client-email', {
+        const emailResponse = await fetch('/api/send-client-email', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1087,9 +1095,13 @@ export default function Clients() {
             status: decision === 'approve' ? 'approved' : 'rejected',
           }),
         })
+        if (!emailResponse.ok) {
+          const emailResult = (await emailResponse.json().catch(() => null)) as { error?: string } | null
+          console.error('Failed to send client email:', emailResult?.error || emailResponse.statusText)
+        }
       }
-    } catch {
-      // Ignore email errors for now
+    } catch (emailError) {
+      console.error('Failed to send client email:', emailError)
     }
 
     const endpoint = `/api/clients/registration-requests/${requestId}/${decision}`
