@@ -76,8 +76,8 @@ function buildEmailTemplate({
                 <td style="padding:0;">
                   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
                     <tr>
-                      <td width="58%" align="center" style="background-color:#11122F; padding:28px 28px 26px; color:#ffffff; font-family:Arial,sans-serif; vertical-align:middle; text-align:center;">
-                        <table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:collapse; margin:0 auto;">
+                      <td width="50%" align="left" style="background-color:#11122F; padding:28px 28px 26px; color:#ffffff; font-family:Arial,sans-serif; vertical-align:middle; text-align:left;">
+                        <table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:collapse; margin:0;">
                           <tr>
                             <td style="vertical-align:middle;">
                               ${renderBrandLogo()}
@@ -85,9 +85,8 @@ function buildEmailTemplate({
                           </tr>
                         </table>
                       </td>
-                      <td width="10%" style="background:linear-gradient(60deg, #11122F 0%, #11122F 36%, #f45b25 36%, #ff843e 58%, #11122f 58%, #11122f 100%); font-size:0; line-height:0;">&nbsp;</td>
-                      <td width="32%" style="background-color:#11122f; padding:18px 20px 10px; font-family:Arial,sans-serif; vertical-align:middle;">
-                        <div style="font-size:15px; line-height:1.9;">
+                      <td width="50%" align="right" style="background-color:#11122f; padding:18px 28px 10px; font-family:Arial,sans-serif; vertical-align:middle; text-align:right;">
+                        <div style="font-size:15px; line-height:1.9; text-align:right;">
                           <div style="color:#ffffff;">PO BOX 605 Allen, TX 75013</div>
                           <div><a href="mailto:info@bmybrand.com" style="color:#ffffff; text-decoration:none;">info@bmybrand.com</a></div>
                           <div style="color:#ffffff;">+1 469 501 1401</div>
@@ -95,7 +94,7 @@ function buildEmailTemplate({
                       </td>
                     </tr>
                     <tr>
-                      <td colspan="3" style="background-color:#f45b25; padding:9px 24px; text-align:right; font-family:Arial,sans-serif; font-size:14px; color:#ffffff;">
+                      <td colspan="2" style="background-color:#f45b25; padding:9px 24px; text-align:right; font-family:Arial,sans-serif; font-size:14px; color:#ffffff;">
                         <a href="https://bmybrand.com" style="color:#ffffff; text-decoration:none;">bmybrand.com</a>
                       </td>
                     </tr>
