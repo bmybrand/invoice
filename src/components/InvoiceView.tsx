@@ -209,7 +209,7 @@ export default function InvoiceView({
   const isProcessing = normalizedStatus.includes('processing')
   const canDownloadPdf = isPaid
   const showPaidWatermark = isPaid
-  const grandTotal = (invoice?.service ?? []).reduce((sum, line) => sum + (Number(line.qty) || 0) * Number((line.price || '').replace(/[^0-9.-]/g, '')), 0)
+  const grandTotal = (invoice?.service ?? []).reduce((sum, line) => sum + (Number(line.qty) || 0) * parseAmountValue(line.price), 0)
   const payableAmount = Math.min(Number(invoice?.payable_amount ?? 0), grandTotal)
   const remainingAmount = Math.max(grandTotal - payableAmount, 0)
   const showPayableDetails = invoice?.payable_amount != null

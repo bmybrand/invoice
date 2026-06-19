@@ -213,8 +213,8 @@ function getStatusStyle(status: string): string {
   return 'bg-slate-500/10 text-slate-400 border-slate-500/20'
 }
 
-function parseAmountValue(amount: string): number {
-  const n = Number((amount || '').replace(/[^0-9.-]/g, ''))
+function parseAmountValue(amount: unknown): number {
+  const n = Number(String(amount ?? '').replace(/[^0-9.-]/g, ''))
   return Number.isFinite(n) ? n : 0
 }
 
