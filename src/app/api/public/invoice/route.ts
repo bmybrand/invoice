@@ -10,6 +10,21 @@ const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
   },
 })
 
+function parseAmountValue(amount: unknown): number {
+  const n = Number(String(amount ?? '').replace(/[^0-9.-]/g, ''))
+  return Number.isFinite(n) ? n : 0
+}
+
+function isSuccessfulPaymentStatus(status: string | null | undefined): boolean {
+  const normalized = (status || '').trim().toLowerCase()
+  return (
+    normalized.includes('paid') ||
+    normalized.includes('success') ||
+    normalized.includes('succeed') ||
+    normalized.includes('completed')
+  )
+}
+
 export async function GET(req: Request) {
   const url = new URL(req.url)
   const token = url.searchParams.get('token')?.trim() ?? ''
@@ -51,8 +66,25 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: brandsError.message }, { status: 500 })
   }
 
+  const { data: paymentRows, error: paymentsError } = await supabase
+    .from('payment_submissions')
+    .select('amount_paid, payment_status')
+    .eq('invoice_id', resolvedPayload.id)
+
+  if (paymentsError) {
+    return NextResponse.json({ error: paymentsError.message }, { status: 500 })
+  }
+
+  const paidAmount = ((paymentRows as Array<{ amount_paid?: unknown; payment_status?: string | null }> | null) ?? []).reduce(
+    (sum, payment) => sum + (isSuccessfulPaymentStatus(payment.payment_status) ? parseAmountValue(payment.amount_paid) : 0),
+    0
+  )
+
   return NextResponse.json({
-    invoice,
+    invoice: {
+      ...invoice,
+      paid_amount: Number(paidAmount.toFixed(2)),
+    },
     brands: brands ?? [],
     tokenExpired: !payload && !!expiredPayload,
   })

@@ -29,12 +29,38 @@ type InvoiceRow = {
   amount: string
   status: string
   payable_amount: number | null
+  paid_amount: number
   invoice_type: string
   currency: 'USD' | 'CAD'
 }
 
 function normalizeInvoiceCurrency(value: unknown): 'USD' | 'CAD' {
   return String(value ?? '').trim().toUpperCase() === 'CAD' ? 'CAD' : 'USD'
+}
+
+function isSuccessfulPaymentStatus(status: string | null | undefined): boolean {
+  const normalized = (status || '').trim().toLowerCase()
+  return (
+    normalized.includes('paid') ||
+    normalized.includes('success') ||
+    normalized.includes('succeed') ||
+    normalized.includes('completed')
+  )
+}
+
+function parseAmountValue(amount: unknown): number {
+  const n = Number(String(amount ?? '').replace(/[^0-9.-]/g, ''))
+  return Number.isFinite(n) ? n : 0
+}
+
+function formatCurrencyAmount(amount: number, currency: 'USD' | 'CAD'): string {
+  const safeAmount = Number.isFinite(amount) ? amount : 0
+  const formattedAmount = new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(safeAmount)
+
+  return `$${formattedAmount} ${currency}`
 }
 
 export default function InvoiceView({
@@ -124,9 +150,27 @@ export default function InvoiceView({
     const clientName = storedClientName || relatedClientName
     const serviceRaw = invoiceData.service
     const normalizedServices = Array.isArray(serviceRaw) ? serviceRaw : []
+    const resolvedInvoiceId = Number(invoiceData.id ?? 0)
+    let paidAmount = Number(invoiceData.paid_amount ?? 0)
+
+    if ((!Number.isFinite(paidAmount) || paidAmount <= 0) && Number.isFinite(resolvedInvoiceId) && resolvedInvoiceId > 0 && !publicView) {
+      const { data: paymentRows, error: paymentError } = await supabase
+        .from('payment_submissions')
+        .select('amount_paid, payment_status')
+        .eq('invoice_id', resolvedInvoiceId)
+
+      if (paymentError) {
+        logFetchError('Failed to fetch invoice payment totals', paymentError)
+      } else {
+        paidAmount = ((paymentRows as Array<{ amount_paid?: unknown; payment_status?: string | null }> | null) ?? []).reduce(
+          (sum, payment) => sum + (isSuccessfulPaymentStatus(payment.payment_status) ? parseAmountValue(payment.amount_paid) : 0),
+          0
+        )
+      }
+    }
 
     setInvoice({
-      id: (invoiceData.id as number) ?? 0,
+      id: resolvedInvoiceId,
       invoice_date: (invoiceData.invoice_date as string) ?? '',
       invoice_creator_id: (invoiceData.invoice_creator_id as number) ?? 0,
       invoice_creator: empObj?.employee_name ?? '--',
@@ -139,6 +183,7 @@ export default function InvoiceView({
       amount: (invoiceData.amount as string) ?? '',
       status: (invoiceData.status as string) ?? 'Pending',
       payable_amount: invoiceData.payable_amount == null ? null : Number(invoiceData.payable_amount),
+      paid_amount: Number(paidAmount.toFixed(2)),
       invoice_type: (invoiceData.invoice_type as string) ?? 'Standard',
       currency: normalizeInvoiceCurrency(invoiceData.currency),
     })
@@ -154,7 +199,13 @@ export default function InvoiceView({
     return brands.find((b) => b.brand_name === invoice.brand_name) ?? null
   }, [brands, invoice])
   const normalizedStatus = (invoice?.status || '').toLowerCase()
-  const isPaid = normalizedStatus.includes('paid') || normalizedStatus.includes('completed')
+  const paidAmount = Number(invoice?.paid_amount ?? 0)
+  const invoiceTotal = parseAmountValue(invoice?.amount)
+  const remainingBalance = Math.max(invoiceTotal - paidAmount, 0)
+  const isPartiallyPaid = paidAmount > 0 && remainingBalance > 0
+  const isPaid = invoiceTotal > 0
+    ? remainingBalance <= 0
+    : normalizedStatus.includes('paid') || normalizedStatus.includes('completed')
   const isProcessing = normalizedStatus.includes('processing')
   const canDownloadPdf = isPaid
   const showPaidWatermark = isPaid
@@ -162,8 +213,15 @@ export default function InvoiceView({
   const payableAmount = Math.min(Number(invoice?.payable_amount ?? 0), grandTotal)
   const remainingAmount = Math.max(grandTotal - payableAmount, 0)
   const showPayableDetails = invoice?.payable_amount != null
-  const amountToPay = showPayableDetails && payableAmount > 0 ? payableAmount : grandTotal
-  const shouldShowPaymentForm = !tokenExpired && !isPaid && !isProcessing
+  const amountToPay = paidAmount > 0 && remainingBalance > 0
+    ? remainingBalance
+    : showPayableDetails && payableAmount > 0
+      ? payableAmount
+      : grandTotal
+  const shouldShowPaymentForm = !tokenExpired && !isPaid && !isProcessing && !isPartiallyPaid
+  const partialPaymentMessage = invoice
+    ? `This invoice is partially paid. Generate a new due invoice for the remaining balance of ${formatCurrencyAmount(remainingBalance, invoice.currency)} to collect another payment.`
+    : ''
 
   const handleRenewToken = useCallback(async () => {
     if (renewingToken || !Number.isFinite(invoiceId) || invoiceId <= 0) return
@@ -455,21 +513,28 @@ export default function InvoiceView({
           rootId="invoice-print-root"
           includeDownloadButton
           showStatusBadge
-          paymentFormContent={shouldShowPaymentForm ? (
-            <InvoicePayForm
-              invoiceId={invoice.id}
-              invoiceToken={invoiceToken}
-              grandTotal={amountToPay}
-              initialEmail={invoice.email}
-              initialPhone={invoice.phone}
-              currency={invoice.currency}
-              embedded
-              onPaymentSuccess={() => {
-                setPaymentCompletedLocally(true)
-                void loadInvoice()
-              }}
-            />
-          ) : null}
+          paymentFormContent={
+            isPartiallyPaid ? (
+              <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 p-4">
+                <p className="text-sm font-semibold text-sky-300">Partially paid</p>
+                <p className="mt-1 text-xs leading-5 text-slate-300">{partialPaymentMessage}</p>
+              </div>
+            ) : shouldShowPaymentForm ? (
+              <InvoicePayForm
+                invoiceId={invoice.id}
+                invoiceToken={invoiceToken}
+                grandTotal={amountToPay}
+                initialEmail={invoice.email}
+                initialPhone={invoice.phone}
+                currency={invoice.currency}
+                embedded
+                onPaymentSuccess={() => {
+                  setPaymentCompletedLocally(true)
+                  void loadInvoice()
+                }}
+              />
+            ) : null
+          }
           showPayableSummary={showPayableDetails}
           payableAmount={payableAmount}
           remainingAmount={remainingAmount}

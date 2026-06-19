@@ -56,12 +56,13 @@ function normalizeInvoiceCurrency(value: unknown): InvoiceCurrency {
 }
 
 function formatCurrencyAmount(amount: number, currency: InvoiceCurrency): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: 2,
+  const safeAmount = Number.isFinite(amount) ? amount : 0
+  const formattedAmount = new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 0,
     maximumFractionDigits: 2,
-  }).format(Number.isFinite(amount) ? amount : 0)
+  }).format(safeAmount)
+
+  return `$${formattedAmount} ${currency}`
 }
 
 function normalizeCountryCode(value: string): string {

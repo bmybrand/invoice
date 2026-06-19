@@ -198,13 +198,28 @@ function getPaymentStatusStyle(status: PaymentRow['status']): string {
   return 'border-slate-500/20 bg-slate-500/10 text-slate-400'
 }
 
+function isSuccessfulPaymentStatus(status: string | null | undefined): boolean {
+  const normalized = (status || '').trim().toLowerCase()
+  return (
+    normalized.includes('paid') ||
+    normalized.includes('success') ||
+    normalized.includes('succeed') ||
+    normalized.includes('completed')
+  )
+}
+
+function parseAmountValue(amount: unknown): number {
+  const n = Number(String(amount ?? '').replace(/[^0-9.-]/g, ''))
+  return Number.isFinite(n) ? n : 0
+}
+
 function formatAmount(value: number, currency: BulkInvoiceCurrency = 'USD'): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: 2,
+  const formattedAmount = new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 0,
     maximumFractionDigits: 2,
-  }).format(value)
+  }).format(Number.isFinite(value) ? value : 0)
+
+  return `$${formattedAmount} ${currency}`
 }
 
 function formatDateTime(value: string | null | undefined): string {
@@ -853,18 +868,26 @@ export default function Payments() {
   async function mapInvoicesForBulk(invoiceIds: number[]): Promise<Map<number, BulkRenderPayload>> {
     if (invoiceIds.length === 0) return new Map()
 
-    const [{ data: invoiceData, error: invoiceError }, { data: brandData, error: brandError }] = await Promise.all([
+    const [{ data: invoiceData, error: invoiceError }, { data: brandData, error: brandError }, { data: paymentData, error: paymentError }] = await Promise.all([
       supabase
         .from('invoices')
         .select('*, employees!invoice_creator_id(employee_name), clients!client_id(name)')
         .in('id', invoiceIds),
       supabase.from('brands').select('id, brand_name, brand_url, logo_url').neq('isdeleted', true),
+      supabase.from('payment_submissions').select('invoice_id, amount_paid, payment_status').in('invoice_id', invoiceIds),
     ])
 
     if (invoiceError) throw invoiceError
     if (brandError) throw brandError
+    if (paymentError) throw paymentError
 
     const brands = (brandData ?? []) as BulkBrandOption[]
+    const paidAmountByInvoiceId = new Map<number, number>()
+    ;((paymentData as Array<{ invoice_id?: number | null; amount_paid?: unknown; payment_status?: string | null }> | null) ?? []).forEach((payment) => {
+      const invoiceId = Number(payment.invoice_id ?? 0)
+      if (!Number.isFinite(invoiceId) || invoiceId <= 0 || !isSuccessfulPaymentStatus(payment.payment_status)) return
+      paidAmountByInvoiceId.set(invoiceId, (paidAmountByInvoiceId.get(invoiceId) ?? 0) + parseAmountValue(payment.amount_paid))
+    })
     const byId = new Map<number, BulkRenderPayload>()
 
     for (const row of (invoiceData ?? []) as Array<Record<string, unknown>>) {
@@ -893,7 +916,7 @@ export default function Payments() {
         amount: String(row.amount ?? ''),
         status: String(row.status ?? 'Pending'),
         payable_amount: row.payable_amount == null ? null : Number(row.payable_amount),
-        paid_amount: Number(row.paid_amount ?? 0),
+        paid_amount: Number((paidAmountByInvoiceId.get(invoiceId) ?? 0).toFixed(2)),
         invoice_type: String(row.invoice_type ?? 'Standard'),
         currency: normalizeBulkInvoiceCurrency(row.currency),
       }

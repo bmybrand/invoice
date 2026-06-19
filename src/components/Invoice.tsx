@@ -205,6 +205,7 @@ function CopyIcon({ className = 'h-4 w-4' }: { className?: string }) {
 
 function getStatusStyle(status: string): string {
   const s = (status || '').toLowerCase()
+  if (s.includes('partial')) return 'bg-sky-500/10 text-sky-300 border-sky-500/20'
   if (s.includes('paid') || s.includes('completed')) return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
   if (s.includes('processing')) return 'bg-blue-500/10 text-blue-400 border-blue-500/20'
   if (s.includes('pending') || s.includes('payable')) return 'bg-amber-500/10 text-amber-400 border-amber-500/20'
@@ -218,8 +219,8 @@ function parseAmountValue(amount: string): number {
 }
 
 const INVOICE_CURRENCY_OPTIONS = [
-  { value: 'USD', label: 'USD - US Dollar', prefix: '$' },
-  { value: 'CAD', label: 'CAD - Canadian Dollar', prefix: 'CA$' },
+  { value: 'USD', label: 'USD - US Dollar', prefix: 'USD' },
+  { value: 'CAD', label: 'CAD - Canadian Dollar', prefix: 'CAD' },
 ] as const
 
 type InvoiceCurrency = (typeof INVOICE_CURRENCY_OPTIONS)[number]['value']
@@ -229,17 +230,18 @@ function normalizeInvoiceCurrency(value: unknown): InvoiceCurrency {
   return normalized === 'CAD' ? 'CAD' : 'USD'
 }
 
-function formatCurrencyAmount(amount: number, currency: InvoiceCurrency): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: 2,
+function formatCurrencyAmount(amount: number, currency: InvoiceCurrency, includeCurrencyCode = true): string {
+  const safeAmount = Number.isFinite(amount) ? amount : 0
+  const formattedAmount = new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 0,
     maximumFractionDigits: 2,
-  }).format(Number.isFinite(amount) ? amount : 0)
+  }).format(safeAmount)
+
+  return `$${formattedAmount}${includeCurrencyCode ? ` ${currency}` : ''}`
 }
 
-function getCurrencyPrefix(currency: InvoiceCurrency): string {
-  return INVOICE_CURRENCY_OPTIONS.find((option) => option.value === currency)?.prefix ?? '$'
+function getCurrencyPrefix(): string {
+  return '$'
 }
 
 function CurrencyPrefixSelect({
@@ -251,7 +253,7 @@ function CurrencyPrefixSelect({
   value: InvoiceCurrency
   onChange: (value: InvoiceCurrency) => void
 }) {
-  const widthClass = value === 'CAD' ? 'w-[72px]' : 'w-[46px]'
+  const widthClass = 'w-[72px]'
 
   return (
     <span className="relative inline-flex shrink-0 items-center">
@@ -433,15 +435,44 @@ function isSettledInvoiceStatus(status: string): boolean {
 }
 
 function isInvoicePaid(inv: Pick<InvoiceRow, 'status' | 'amount' | 'payable_amount' | 'paid_amount'>): boolean {
-  if (isSettledInvoiceStatus(inv.status)) return true
   const requiredAmount = inv.payable_amount != null && inv.payable_amount > 0
     ? inv.payable_amount
     : parseAmountValue(inv.amount)
-  return requiredAmount > 0 && inv.paid_amount >= requiredAmount
+  if (requiredAmount > 0 && inv.paid_amount >= requiredAmount) return true
+  return isSettledInvoiceStatus(inv.status) && getRemainingInvoiceAmount(inv) <= 0
+}
+
+function isInvoicePartiallyPaid(inv: Pick<InvoiceRow, 'amount' | 'paid_amount'>): boolean {
+  const paidAmount = Number(inv.paid_amount) || 0
+  return paidAmount > 0 && getRemainingInvoiceAmount(inv) > 0
+}
+
+function hasInvoicePayment(inv: Pick<InvoiceRow, 'status' | 'amount' | 'payable_amount' | 'paid_amount'>): boolean {
+  return isInvoicePaid(inv) || isInvoicePartiallyPaid(inv)
 }
 
 function getRemainingInvoiceAmount(inv: Pick<InvoiceRow, 'amount' | 'paid_amount'>): number {
   return Math.max(parseAmountValue(inv.amount) - (Number(inv.paid_amount) || 0), 0)
+}
+
+function getInvoiceDisplayStatus(inv: Pick<InvoiceRow, 'status' | 'amount' | 'paid_amount'>): string {
+  const totalAmount = parseAmountValue(inv.amount)
+  const paidAmount = Number(inv.paid_amount) || 0
+  const remainingAmount = getRemainingInvoiceAmount(inv)
+
+  if (totalAmount > 0 && paidAmount > 0 && remainingAmount > 0) {
+    return 'Partially Paid'
+  }
+
+  if (totalAmount > 0 && remainingAmount > 0 && isSettledInvoiceStatus(inv.status)) {
+    return 'Partially Paid'
+  }
+
+  if ((totalAmount > 0 && remainingAmount <= 0) || isSettledInvoiceStatus(inv.status)) {
+    return 'Paid'
+  }
+
+  return inv.status || 'Unpaid'
 }
 
 function sanitizeCurrencyInput(value: string): string {
@@ -493,6 +524,7 @@ export function InvoiceDocument({
   const invoiceType = invoice.invoice_type || 'Standard'
   const invoiceCurrency = normalizeInvoiceCurrency(invoice.currency)
   const normalizedStatus = (invoice.status || '').toLowerCase()
+  const displayStatus = getInvoiceDisplayStatus(invoice)
   const payableSummaryLabel =
     normalizedStatus.includes('paid') || normalizedStatus.includes('completed')
       ? 'Paid Amount'
@@ -501,7 +533,7 @@ export function InvoiceDocument({
 
   return (
     <div id={rootId} className="relative flex min-h-[1120px] flex-col overflow-visible bg-white shadow-xl md:min-h-[1280px] print:min-h-0 print:overflow-visible">
-      {showPaidWatermark && (
+      {showPaidWatermark && displayStatus === 'Paid' && (
         <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
           <span className="-rotate-[24deg] select-none text-[180px] font-black uppercase leading-none tracking-[0.12em] text-emerald-500/8">
             Paid
@@ -571,8 +603,8 @@ export function InvoiceDocument({
             </div>
             {showStatusBadge && (
               <div className="pt-1">
-                <span className={`inline-block rounded-lg border px-3 py-1 text-xs font-semibold ${getStatusStyle(invoice.status)}`}>
-                  {invoice.status || '-'}
+                <span className={`inline-block rounded-lg border px-3 py-1 text-xs font-semibold ${getStatusStyle(displayStatus)}`}>
+                  {displayStatus}
                 </span>
               </div>
             )}
@@ -609,7 +641,17 @@ export function InvoiceDocument({
 
           <div>
             <p className="text-sm font-bold text-slate-900">Terms & Conditions</p>
-            <p className="mt-1 text-xs leading-5 text-slate-500">Please pay within 15 days of receiving this invoice. A late fee of 5% per month will be applied to overdue balances.</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              Please review our{' '}
+              <a href="https://bmybrand.com/terms-of-use" target="_blank" rel="noopener noreferrer" className="font-semibold text-orange-600 hover:text-orange-700">
+                Terms & Conditions
+              </a>{' '}
+              and{' '}
+              <a href="https://bmybrand.com/privacy-policy" target="_blank" rel="noopener noreferrer" className="font-semibold text-orange-600 hover:text-orange-700">
+                Privacy Policy
+              </a>
+              .
+            </p>
           </div>
         </div>
 
@@ -669,6 +711,7 @@ export default function Invoice() {
   const normalizedDepartment = (displayDepartment || '').trim().toLowerCase()
   const isUserRole = normalizedRole === 'user'
   const isSuperAdmin = normalizedRole === 'superadmin'
+  const isSalesAdmin = normalizedRole === 'salesadmin' || (normalizedRole === 'admin' && normalizedDepartment.includes('sales'))
   const isFinanceDepartment = normalizedDepartment.includes('finance')
   const clientData = useClientDashboardData()
   const scopedInvoiceCache = invoiceTableCache?.ownerAuthId === currentUserAuthId ? invoiceTableCache.rows : null
@@ -679,7 +722,7 @@ export default function Invoice() {
   const [clients, setClients] = useState<ClientOption[]>([])
   const [brands, setBrands] = useState<BrandOption[]>([])
   const [searchQuery, setSearchQuery] = useState(() => (searchParams.get('globalSearch') || '').trim())
-  const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'unpaid'>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'partial' | 'unpaid'>('all')
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [showAddModal, setShowAddModal] = useState(false)
@@ -799,22 +842,22 @@ export default function Invoice() {
   }, [searchParams])
 
   function canEditInvoice(inv: InvoiceRow): boolean {
-    if (isInvoicePaid(inv)) return false
+    if (hasInvoicePayment(inv)) return false
     if (isSuperAdmin) return true
     return currentEmployeeId !== null && currentEmployeeId === inv.invoice_creator_id
   }
 
   function canDeleteInvoice(inv: InvoiceRow): boolean {
-    if (isInvoicePaid(inv)) return false
+    if (hasInvoicePayment(inv)) return false
     if (isSuperAdmin) return true
     return currentEmployeeId !== null && currentEmployeeId === inv.invoice_creator_id
   }
 
   function canGenerateDueInvoice(inv: InvoiceRow): boolean {
     if (accountType === 'client') return false
-    if (!isInvoicePaid(inv)) return false
+    if (!hasInvoicePayment(inv)) return false
     if (getRemainingInvoiceAmount(inv) <= 0) return false
-    if (isSuperAdmin) return true
+    if (isSuperAdmin || isSalesAdmin) return true
     return currentEmployeeId !== null && currentEmployeeId === inv.invoice_creator_id
   }
 
@@ -1170,9 +1213,10 @@ export default function Invoice() {
     }
   }, [addBrand, brands, showAddModal])
 
-  const statusOptions: { label: string; value: 'all' | 'paid' | 'unpaid' }[] = [
+  const statusOptions: { label: string; value: 'all' | 'paid' | 'partial' | 'unpaid' }[] = [
     { label: 'All Statuses', value: 'all' },
     { label: 'Paid', value: 'paid' },
+    { label: 'Partially Paid', value: 'partial' },
     { label: 'Unpaid', value: 'unpaid' },
   ]
   const statusFilterLabel = statusOptions.find((o) => o.value === statusFilter)?.label ?? 'All Statuses'
@@ -1188,21 +1232,26 @@ export default function Invoice() {
     let list = invoices
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase()
-      list = list.filter(
-        (i) =>
+      list = list.filter((i) => {
+        const displayStatus = getInvoiceDisplayStatus(i).toLowerCase()
+        return (
           formatInvoiceCode(i.id).includes(q) ||
           `#${formatInvoiceCode(i.id)}`.toLowerCase().includes(q) ||
           (i.invoice_creator || '').toLowerCase().includes(q) ||
           (i.client_name || '').toLowerCase().includes(q) ||
           (i.email || '').toLowerCase().includes(q) ||
           i.service.some((s) => (s.description || '').toLowerCase().includes(q)) ||
-          (i.status || '').toLowerCase().includes(q)
-      )
+          (i.status || '').toLowerCase().includes(q) ||
+          displayStatus.includes(q)
+        )
+      })
     }
     if (statusFilter === 'paid') {
-      list = list.filter((i) => (i.status || '').toLowerCase() === 'paid')
+      list = list.filter((i) => getInvoiceDisplayStatus(i).toLowerCase() === 'paid')
+    } else if (statusFilter === 'partial') {
+      list = list.filter((i) => getInvoiceDisplayStatus(i).toLowerCase() === 'partially paid')
     } else if (statusFilter === 'unpaid') {
-      list = list.filter((i) => (i.status || '').toLowerCase() !== 'paid')
+      list = list.filter((i) => getInvoiceDisplayStatus(i).toLowerCase() !== 'paid' && getInvoiceDisplayStatus(i).toLowerCase() !== 'partially paid')
     }
     return list
   })()
@@ -1869,8 +1918,8 @@ export default function Invoice() {
   async function handleDeleteConfirm() {
     if (!deletingInvoice || !canDeleteInvoice(deletingInvoice)) return
 
-    if (isInvoicePaid(deletingInvoice)) {
-      setActionMessage({ type: 'error', text: 'Paid invoices cannot be deleted.' })
+    if (hasInvoicePayment(deletingInvoice)) {
+      setActionMessage({ type: 'error', text: 'Invoices with payments cannot be deleted.' })
       setDeletingInvoice(null)
       return
     }
@@ -2186,12 +2235,18 @@ export default function Invoice() {
                     })()}
                   </div>
                   <div className="px-4 sm:px-6 py-4 min-w-0">
-                    <span
-                      className={`inline-block max-w-full truncate whitespace-nowrap px-2 py-1 rounded-lg border text-xs font-medium ${getStatusStyle(inv.status)}`}
-                      title={inv.status || '--'}
-                    >
-                      {inv.status || '--'}
-                    </span>
+                    {(() => {
+                      const displayStatus = getInvoiceDisplayStatus(inv)
+
+                      return (
+                        <span
+                          className={`inline-block max-w-full truncate whitespace-nowrap px-2 py-1 rounded-lg border text-xs font-medium ${getStatusStyle(displayStatus)}`}
+                          title={displayStatus}
+                        >
+                          {displayStatus}
+                        </span>
+                      )
+                    })()}
                   </div>
                   <div className="px-4 sm:px-6 py-4 flex justify-end">
                     <button
@@ -2448,7 +2503,7 @@ export default function Invoice() {
                       </div>
                       {dueInvoiceModal.mode === 'custom' && (
                         <div className="mt-3 flex items-center rounded-xl border border-slate-600 bg-slate-950 px-4 py-2 focus-within:border-orange-400">
-                          <span className="shrink-0 text-xl font-black text-slate-500">{getCurrencyPrefix(currency)}</span>
+                          <span className="shrink-0 text-xl font-black text-slate-500">{getCurrencyPrefix()}</span>
                           <input
                             type="text"
                             value={dueInvoiceModal.amount}
@@ -2458,6 +2513,7 @@ export default function Invoice() {
                             pattern="^\d+(\.\d{1,2})?$"
                             className="ml-3 min-w-0 flex-1 bg-transparent text-xl font-bold text-white placeholder:text-slate-500 focus:outline-none"
                           />
+                          <span className="shrink-0 text-xl font-black text-slate-500">{currency}</span>
                         </div>
                       )}
                     </label>
@@ -2771,7 +2827,17 @@ export default function Invoice() {
                             </div>
                             <div>
                               <p className="text-sm font-bold text-slate-900">Terms & Conditions</p>
-                              <p className="mt-1 text-xs leading-5 text-slate-500">Please pay within 15 days of receiving this invoice. A late fee of 5% per month will be applied to overdue balances.</p>
+                              <p className="mt-1 text-xs leading-5 text-slate-500">
+                                Please review our{' '}
+                                <a href="https://bmybrand.com/terms-of-use" target="_blank" rel="noopener noreferrer" className="font-semibold text-orange-600 hover:text-orange-700">
+                                  Terms & Conditions
+                                </a>{' '}
+                                and{' '}
+                                <a href="https://bmybrand.com/privacy-policy" target="_blank" rel="noopener noreferrer" className="font-semibold text-orange-600 hover:text-orange-700">
+                                  Privacy Policy
+                                </a>
+                                .
+                              </p>
                             </div>
                           </div>
 
@@ -2780,10 +2846,10 @@ export default function Invoice() {
                               <div className="flex justify-between">
                                 <span className="text-slate-600">Total</span>
                                 <span className="flex items-center gap-2 font-medium text-slate-700">
+                                  {formatCurrencyAmount(grandTotal, addCurrency, false)}
                                   {!isAdvanceUnpaidStatus(addStatus) && (
                                     <CurrencyPrefixSelect id="add-currency-total" value={addCurrency} onChange={setAddCurrency} />
                                   )}
-                                  {formatCurrencyAmount(grandTotal, addCurrency)}
                                 </span>
                               </div>
                               {isAdvanceUnpaidStatus(addStatus) && (
@@ -2791,7 +2857,7 @@ export default function Invoice() {
                                   <div className="rounded-xl bg-orange-600 p-4 text-white">
                                     <label htmlFor="add-payable-amount" className="block text-xs font-bold uppercase tracking-wide text-orange-100">Payable Amount</label>
                                     <div className="mt-2 flex items-center rounded-xl border border-white/70 bg-white px-5 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_10px_24px_rgba(124,45,18,0.18)] focus-within:border-white focus-within:ring-4 focus-within:ring-white/25">
-                                      <CurrencyPrefixSelect id="add-currency" value={addCurrency} onChange={setAddCurrency} />
+                                      <span className="shrink-0 text-2xl font-black text-slate-500">$</span>
                                       <input
                                         id="add-payable-amount"
                                         type="text"
@@ -2802,6 +2868,7 @@ export default function Invoice() {
                                         pattern="^\d+(\.\d{1,2})?$"
                                         className="ml-3 min-w-0 flex-1 bg-transparent text-2xl font-black text-slate-900 placeholder:text-slate-400 focus:outline-none"
                                       />
+                                      <CurrencyPrefixSelect id="add-currency" value={addCurrency} onChange={setAddCurrency} />
                                     </div>
                                   </div>
                                   <div className="flex justify-between">
@@ -3159,7 +3226,17 @@ export default function Invoice() {
                             </div>
                             <div>
                               <p className="text-sm font-bold text-slate-900">Terms & Conditions</p>
-                              <p className="mt-1 text-xs leading-5 text-slate-500">Please pay within 15 days of receiving this invoice. A late fee of 5% per month will be applied to overdue balances.</p>
+                              <p className="mt-1 text-xs leading-5 text-slate-500">
+                                Please review our{' '}
+                                <a href="https://bmybrand.com/terms-of-use" target="_blank" rel="noopener noreferrer" className="font-semibold text-orange-600 hover:text-orange-700">
+                                  Terms & Conditions
+                                </a>{' '}
+                                and{' '}
+                                <a href="https://bmybrand.com/privacy-policy" target="_blank" rel="noopener noreferrer" className="font-semibold text-orange-600 hover:text-orange-700">
+                                  Privacy Policy
+                                </a>
+                                .
+                              </p>
                             </div>
                           </div>
 
@@ -3168,10 +3245,10 @@ export default function Invoice() {
                               <div className="flex justify-between">
                                 <span className="text-slate-600">Total</span>
                                 <span className="flex items-center gap-2 font-medium text-slate-700">
+                                  {formatCurrencyAmount(grandTotal, editCurrency, false)}
                                   {!isAdvanceUnpaidStatus(editStatus) && (
                                     <CurrencyPrefixSelect id="edit-currency-total" value={editCurrency} onChange={setEditCurrency} />
                                   )}
-                                  {formatCurrencyAmount(grandTotal, editCurrency)}
                                 </span>
                               </div>
                               {paidAmount > 0 && (
@@ -3191,7 +3268,7 @@ export default function Invoice() {
                                   <div className="rounded-xl bg-orange-600 p-4 text-white">
                                     <label htmlFor="edit-payable-amount" className="block text-xs font-bold uppercase tracking-wide text-orange-100">Payable Amount</label>
                                     <div className="mt-2 flex items-center rounded-xl border border-white/70 bg-white px-5 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_10px_24px_rgba(124,45,18,0.18)] focus-within:border-white focus-within:ring-4 focus-within:ring-white/25">
-                                      <CurrencyPrefixSelect id="edit-currency" value={editCurrency} onChange={setEditCurrency} />
+                                      <span className="shrink-0 text-2xl font-black text-slate-500">$</span>
                                       <input
                                         id="edit-payable-amount"
                                         type="text"
@@ -3202,6 +3279,7 @@ export default function Invoice() {
                                         pattern="^\d+(\.\d{1,2})?$"
                                         className="ml-3 min-w-0 flex-1 bg-transparent text-2xl font-black text-slate-900 placeholder:text-slate-400 focus:outline-none"
                                       />
+                                      <CurrencyPrefixSelect id="edit-currency" value={editCurrency} onChange={setEditCurrency} />
                                     </div>
                                   </div>
                                   <div className="flex justify-between">

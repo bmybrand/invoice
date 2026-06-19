@@ -89,12 +89,14 @@ function isValidEmail(value: string): boolean {
 
 function formatMoney(value: unknown, currency: string): string {
   const amount = typeof value === 'number' ? value : Number(String(value ?? '').replace(/[^0-9.-]/g, ''))
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: currency === 'CAD' ? 'CAD' : 'USD',
-    minimumFractionDigits: 2,
+  const safeAmount = Number.isFinite(amount) ? amount : 0
+  const currencyCode = currency === 'CAD' ? 'CAD' : 'USD'
+  const formattedAmount = new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 0,
     maximumFractionDigits: 2,
-  }).format(Number.isFinite(amount) ? amount : 0)
+  }).format(safeAmount)
+
+  return `$${formattedAmount} ${currencyCode}`
 }
 
 function getServiceLines(value: unknown): InvoiceServiceLine[] {
