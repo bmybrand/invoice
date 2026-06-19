@@ -111,7 +111,7 @@ type DueInvoiceModalState = {
   gatewayInfoOpen: boolean
 }
 
-const INVOICE_GRID = 'minmax(48px,0.6fr) minmax(100px,1.2fr) minmax(100px,1.2fr) minmax(100px,1.2fr) minmax(100px,1.2fr) minmax(140px,1.5fr) minmax(90px,1.15fr) minmax(100px,1.2fr) minmax(90px,1fr) minmax(90px,1fr) 72px'
+const INVOICE_GRID = 'minmax(48px,0.6fr) minmax(100px,1.2fr) minmax(100px,1.2fr) minmax(100px,1.2fr) minmax(100px,1.2fr) minmax(140px,1.5fr) minmax(90px,1.15fr) minmax(100px,1.2fr) minmax(120px,1.2fr) minmax(90px,1fr) 72px'
 
 function SearchIcon({ className = 'h-4 w-4' }: { className?: string }) {
   return (
@@ -2164,12 +2164,26 @@ export default function Invoice() {
                     <span className="text-slate-300 text-sm block truncate whitespace-nowrap" title={inv.phone || '--'}>{inv.phone || '--'}</span>
                   </div>
                   <div className="px-4 sm:px-6 py-4 min-w-0">
-                    <span
-                      className="block truncate whitespace-nowrap text-white text-sm font-semibold"
-                      title={formatCurrencyAmount(parseAmountValue(inv.amount), normalizeInvoiceCurrency(inv.currency))}
-                    >
-                      {formatCurrencyAmount(parseAmountValue(inv.amount), normalizeInvoiceCurrency(inv.currency))}
-                    </span>
+                    {(() => {
+                      const currency = normalizeInvoiceCurrency(inv.currency)
+                      const totalAmount = parseAmountValue(inv.amount)
+                      const payableAmount = inv.payable_amount != null && inv.payable_amount > 0
+                        ? Number(inv.payable_amount)
+                        : totalAmount
+                      const totalLabel = formatCurrencyAmount(totalAmount, currency)
+                      const payableLabel = formatCurrencyAmount(payableAmount, currency)
+
+                      return (
+                        <div className="min-w-0" title={`Total: ${totalLabel} | Payable: ${payableLabel}`}>
+                          <span className="block truncate whitespace-nowrap text-sm font-semibold text-white">
+                            {totalLabel}
+                          </span>
+                          <span className="mt-0.5 block truncate whitespace-nowrap text-[11px] font-medium text-orange-300">
+                            Payable {payableLabel}
+                          </span>
+                        </div>
+                      )
+                    })()}
                   </div>
                   <div className="px-4 sm:px-6 py-4 min-w-0">
                     <span
@@ -2657,7 +2671,15 @@ export default function Invoice() {
                               </div>
                               ) : null}
                               <div>
-                                <label htmlFor="add-email" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Email</label>
+                                <label htmlFor="add-email" className="flex items-center justify-between gap-3 text-xs font-bold uppercase tracking-wide text-slate-500">
+                                  <span>Email</span>
+                                  <span className="group relative inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-300 bg-slate-100 text-[10px] font-black leading-none text-slate-500">
+                                    ?
+                                    <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 w-56 -translate-x-1/2 rounded-lg bg-slate-900 px-3 py-2 text-left text-[11px] font-medium normal-case leading-snug tracking-normal text-white opacity-0 shadow-xl transition group-hover:opacity-100">
+                                      An email will be sent to this address when the invoice is created.
+                                    </span>
+                                  </span>
+                                </label>
                                 <input id="add-email" type="email" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} placeholder="ketut.susilo@example.com" required className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20" />
                               </div>
                               <div>
