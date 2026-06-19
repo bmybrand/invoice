@@ -106,7 +106,6 @@ function getServiceLines(value: unknown): InvoiceServiceLine[] {
 
 function buildInvoiceCreatedEmail({
   clientName,
-  invoiceCode,
   brandName,
   invoiceUrl,
   amount,
@@ -117,7 +116,6 @@ function buildInvoiceCreatedEmail({
   brandWebsiteUrl,
 }: {
   clientName: string
-  invoiceCode: string
   brandName: string
   invoiceUrl: string
   amount: unknown
@@ -172,9 +170,8 @@ function buildInvoiceCreatedEmail({
         ${services
           .map((line) => {
             const description = String(line.description || 'Service').trim()
-            const qty = line.qty != null ? ` x ${escapeHtml(String(line.qty))}` : ''
             const price = line.price != null ? ` - ${escapeHtml(formatMoney(line.price, currency))}` : ''
-            return `<li style="margin:0 0 10px; font-size:15px; line-height:1.6;">${escapeHtml(description)}${qty}${price}</li>`
+            return `<li style="margin:0 0 10px; font-size:15px; line-height:1.6;">${escapeHtml(description)}${price}</li>`
           })
           .join('')}
       </ul>
@@ -228,10 +225,6 @@ function buildInvoiceCreatedEmail({
                   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate; border-spacing:0; border:1px solid #e5e7eb; border-radius:16px; overflow:hidden;">
                     <tr>
                       <td colspan="2" style="padding:16px 20px; background-color:${colors.heading}; color:#ffffff; font-family:Arial,sans-serif; font-size:16px; font-weight:700;">Invoice Details</td>
-                    </tr>
-                    <tr>
-                      <td style="width:160px; padding:14px 20px; border-top:1px solid #e5e7eb; font-family:Arial,sans-serif; font-size:14px; color:${colors.muted}; font-weight:700;">Invoice</td>
-                      <td style="padding:14px 20px; border-top:1px solid #e5e7eb; font-family:Arial,sans-serif; font-size:15px; color:${colors.heading};">#${escapeHtml(invoiceCode)}</td>
                     </tr>
                     <tr>
                       <td style="width:160px; padding:14px 20px; border-top:1px solid #e5e7eb; font-family:Arial,sans-serif; font-size:14px; color:${colors.muted}; font-weight:700;">Brand</td>
@@ -395,7 +388,6 @@ export async function POST(request: NextRequest) {
       subject: `Your invoice #${invoiceCode} has been created`,
       html: buildInvoiceCreatedEmail({
         clientName,
-        invoiceCode,
         brandName,
         invoiceUrl,
         amount: invoiceRow.amount,
