@@ -696,7 +696,7 @@ export function InvoiceDocument({
 
       {showBmyFooter ? (
         <div id="invoice-print-footer" className="invoice-footer-contact mt-auto shrink-0 relative z-10 border-t border-slate-200 bg-slate-50 px-10 py-6 text-sm text-slate-500">
-          +14695011401 | www.bmybrand.com | PO BOX 605 Allen, TX 75013
+          +14695011401 | www.bmybrand.com | billing@bmybrand.com
         </div>
       ) : null}
     </div>
@@ -2883,7 +2883,7 @@ export default function Invoice() {
 
                         {isBmyBrand(addBrand) ? (
                           <div className="border-t border-slate-200 bg-slate-50 px-10 py-6 text-sm text-slate-500">
-                            +14695011401 | www.bmybrand.com | PO BOX 605 Allen, TX 75013
+                            +14695011401 | www.bmybrand.com | billing@bmybrand.com
                           </div>
                         ) : null}
                       </>
@@ -3294,7 +3294,7 @@ export default function Invoice() {
 
                         {isBmyBrand(editBrand) ? (
                           <div className="border-t border-slate-200 bg-slate-50 px-10 py-6 text-sm text-slate-500">
-                            +14695011401 | www.bmybrand.com | PO BOX 605 Allen, TX 75013
+                            +14695011401 | www.bmybrand.com | billing@bmybrand.com
                           </div>
                         ) : null}
                       </>

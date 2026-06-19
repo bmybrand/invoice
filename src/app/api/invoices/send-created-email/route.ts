@@ -157,7 +157,7 @@ function buildInvoiceCreatedEmail({
                     <a href="https://www.linkedin.com/company/bmy-brand/" style="color:#ffffff; text-decoration:none; margin:0 8px;">LinkedIn</a>
                     <a href="https://www.facebook.com/bmybrandofficial/" style="color:#ffffff; text-decoration:none; margin:0 8px;">Facebook</a>
                     <a href="https://www.youtube.com/@BMyBrandofficial" style="color:#ffffff; text-decoration:none; margin:0 8px;">YouTube</a>
-                    <a href="mailto:info@bmybrand.com" style="color:#ffffff; text-decoration:none; margin:0 8px;">Reply</a>
+                    <a href="mailto:billing@bmybrand.com" style="color:#ffffff; text-decoration:none; margin:0 8px;">Reply</a>
     `
     : `
                     <a href="${escapeHtml(websiteUrl)}" style="color:#ffffff; text-decoration:none; margin:0 8px;">${escapeHtml(websiteLabel)}</a>
@@ -177,6 +177,15 @@ function buildInvoiceCreatedEmail({
       </ul>
     `
     : `<p style="margin:0; font-size:15px; line-height:1.6; color:${colors.heading};">Your invoice details are available from the secure link below.</p>`
+  const headerContact = useBmyBranding
+    ? `
+                      <td width="50%" align="right" style="background-color:${colors.header}; padding:18px 28px 10px; font-family:Arial,sans-serif; vertical-align:middle; text-align:right;">
+                        <div style="font-size:15px; line-height:1.9; text-align:right;">
+                          <div><a href="mailto:billing@bmybrand.com" style="color:#ffffff; text-decoration:none;">billing@bmybrand.com</a></div>
+                          <div style="color:#ffffff;">+1 469 501 1401</div>
+                        </div>
+                      </td>`
+    : ''
 
   return `
     <div style="margin:0; padding:0; background-color:#f3f4f6;">
@@ -188,7 +197,7 @@ function buildInvoiceCreatedEmail({
                 <td style="padding:0;">
                   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
                     <tr>
-                      <td width="50%" align="left" style="background-color:${colors.header}; padding:28px 28px 26px; color:#ffffff; font-family:Arial,sans-serif; vertical-align:middle; text-align:left;">
+                      <td width="${useBmyBranding ? '50%' : '100%'}" align="left" style="background-color:${colors.header}; padding:28px 28px 26px; color:#ffffff; font-family:Arial,sans-serif; vertical-align:middle; text-align:left;">
                         <table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:collapse; margin:0;">
                           <tr>
                             <td style="vertical-align:middle;">
@@ -197,13 +206,7 @@ function buildInvoiceCreatedEmail({
                           </tr>
                         </table>
                       </td>
-                      <td width="50%" align="right" style="background-color:${colors.header}; padding:18px 28px 10px; font-family:Arial,sans-serif; vertical-align:middle; text-align:right;">
-                        <div style="font-size:15px; line-height:1.9; text-align:right;">
-                          <div style="color:#ffffff;">PO BOX 605 Allen, TX 75013</div>
-                          <div><a href="mailto:info@bmybrand.com" style="color:#ffffff; text-decoration:none;">info@bmybrand.com</a></div>
-                          <div style="color:#ffffff;">+1 469 501 1401</div>
-                        </div>
-                      </td>
+${headerContact}
                     </tr>
                     <tr>
                       <td colspan="2" style="background-color:${colors.linkBar}; padding:9px 24px; text-align:right; font-family:Arial,sans-serif; font-size:14px; color:#ffffff;">
