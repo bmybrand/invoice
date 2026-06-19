@@ -515,9 +515,9 @@ export default function InvoiceView({
           showStatusBadge
           paymentFormContent={
             isPartiallyPaid ? (
-              <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 p-4">
-                <p className="text-sm font-semibold text-sky-300">Partially paid</p>
-                <p className="mt-1 text-xs leading-5 text-slate-300">{partialPaymentMessage}</p>
+              <div className="rounded-xl border border-sky-300 bg-sky-50 p-4">
+                <p className="text-sm font-bold text-sky-800">Partially paid</p>
+                <p className="mt-1 text-xs font-medium leading-5 text-slate-700">{partialPaymentMessage}</p>
               </div>
             ) : shouldShowPaymentForm ? (
               <InvoicePayForm
