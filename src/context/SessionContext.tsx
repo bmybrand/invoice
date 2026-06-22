@@ -85,6 +85,20 @@ export const SessionProvider = ({ children }: { children: React.ReactNode }) => 
     };
   }, [refreshSession, syncSessionInBackground]);
 
+  useEffect(() => {
+    if (loading) return
+
+    const loader = document.getElementById('initial-app-loader')
+    if (!loader) return
+
+    loader.classList.add('initial-app-loader--hidden')
+    const timeoutId = window.setTimeout(() => {
+      loader.remove()
+    }, 220)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [loading])
+
   return (
     <SessionContext.Provider value={{ session, user, token, refreshSession, loading, error }}>
       {children}

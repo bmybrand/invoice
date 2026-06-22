@@ -63,6 +63,10 @@ export default function RootLayout({
         suppressHydrationWarning
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <div id="initial-app-loader" className="initial-app-loader" role="status" aria-live="polite" aria-label="Loading application">
+          <div className="initial-app-loader__spinner" />
+          <p>Loading</p>
+        </div>
         <SessionProvider>
           {children}
         </SessionProvider>
