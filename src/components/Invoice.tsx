@@ -1514,6 +1514,11 @@ export default function Invoice() {
     if (nextInvoiceId === null) {
       setAddError('Invoice saved, but the share URL could not be prepared.')
       setActionMessage({ type: 'error', text: 'Invoice saved, but the share URL could not be prepared.' })
+    } else if (!isBmyBrand(resolvedBrand)) {
+      setActionMessage({
+        type: 'success',
+        text: `Invoice #${formatInvoiceCode(nextInvoiceId)} created successfully. Client email was skipped because the brand is not BMYBrand.`,
+      })
     } else {
       const emailError = await sendCreatedInvoiceEmail(nextInvoiceId)
       if (emailError) {
@@ -1713,18 +1718,25 @@ export default function Invoice() {
       return
     }
 
-    const emailError = await sendCreatedInvoiceEmail(nextInvoiceId)
     setDueInvoiceModal(null)
-    if (emailError) {
-      setActionMessage({
-        type: 'error',
-        text: `Due invoice #${formatInvoiceCode(nextInvoiceId)} created, but the email was not sent: ${emailError}`,
-      })
-    } else {
+    if (!isBmyBrand(sourceBrand)) {
       setActionMessage({
         type: 'success',
-        text: `Due invoice #${formatInvoiceCode(nextInvoiceId)} created for ${formatCurrencyAmount(requestedAmount, sourceCurrency)} and emailed to ${sourceInvoice.email}.`,
+        text: `Due invoice #${formatInvoiceCode(nextInvoiceId)} created for ${formatCurrencyAmount(requestedAmount, sourceCurrency)}. Client email was skipped because the brand is not BMYBrand.`,
       })
+    } else {
+      const emailError = await sendCreatedInvoiceEmail(nextInvoiceId)
+      if (emailError) {
+        setActionMessage({
+          type: 'error',
+          text: `Due invoice #${formatInvoiceCode(nextInvoiceId)} created, but the email was not sent: ${emailError}`,
+        })
+      } else {
+        setActionMessage({
+          type: 'success',
+          text: `Due invoice #${formatInvoiceCode(nextInvoiceId)} created for ${formatCurrencyAmount(requestedAmount, sourceCurrency)} and emailed to ${sourceInvoice.email}.`,
+        })
+      }
     }
     await fetchInvoices()
   }

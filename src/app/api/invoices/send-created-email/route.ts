@@ -344,6 +344,9 @@ export async function POST(request: NextRequest) {
     const invoiceCode = formatInvoiceCode(invoiceId)
     const clientName = String(invoiceRow.client_name || '').trim() || 'there'
     const brandName = String(invoiceRow.brand_name || '').trim() || 'BMYBrand'
+    if (!isBmyBrand(brandName)) {
+      return NextResponse.json({ success: true, skipped: true })
+    }
     const brandId = invoiceRow.brand_id == null ? null : Number(invoiceRow.brand_id)
     let brandLogoUrl: string | null = null
     let brandWebsiteUrl: string | null = null
