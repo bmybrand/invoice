@@ -4,8 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Plus_Jakarta_Sans } from 'next/font/google'
 import { useDashboardProfile } from '@/components/DashboardLayout'
 import { useSessionContext } from '@/context/SessionContext'
-import { downloadAuditReportPdf } from '@/lib/audit-report-pdf'
-import type { AuditReportDetailRow, AuditReportListRow } from '@/types/audit-report'
+import type { AuditReportListRow } from '@/types/audit-report'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 const PAGE_SIZE = 10
@@ -148,38 +147,58 @@ export default function WebsiteAudits() {
   const paginatedAudits = filteredAudits.slice(start, start + PAGE_SIZE)
 
   const handleDownloadPdf = useCallback(
-    async (auditId: string) => {
+    async (audit: AuditReportListRow) => {
       const accessToken = token?.trim() || ''
       if (!accessToken || downloadingId) return
 
-      setDownloadingId(auditId)
+      if (!audit.unlocked) {
+        setError('Unlock the audit report before downloading the PDF.')
+        return
+      }
+
+      if (!audit.lead_company?.trim()) {
+        setError('Company name is required before downloading the PDF.')
+        return
+      }
+
+      setDownloadingId(audit.id)
       setError(null)
 
       try {
-        const response = await fetch(`/api/audit-reports/${auditId}`, {
+        const response = await fetch(`/api/audit-reports/${audit.id}/pdf`, {
           headers: { Authorization: `Bearer ${accessToken}` },
         })
 
-        const result = (await response.json().catch(() => null)) as
-          | { error?: string; audit?: AuditReportDetailRow }
-          | null
-
-        if (!response.ok || !result?.audit) {
-          throw new Error(result?.error || 'Failed to load audit for PDF export')
+        if (!response.ok) {
+          const result = (await response.json().catch(() => null)) as { error?: string } | null
+          throw new Error(result?.error || 'Failed to download audit PDF')
         }
 
-        await downloadAuditReportPdf(result.audit)
+        const blob = await response.blob()
+        const disposition = response.headers.get('content-disposition') || ''
+        const filenameMatch = disposition.match(/filename="([^"]+)"/i)
+        const filename = filenameMatch?.[1] || `audit-${audit.id.slice(0, 8)}.pdf`
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = filename
+        link.click()
+        URL.revokeObjectURL(url)
+
+        if (!audit.drive_file_id) {
+          void fetchAudits()
+        }
       } catch (downloadError) {
         setError(
           downloadError instanceof Error
             ? downloadError.message
-            : 'Failed to generate PDF',
+            : 'Failed to download PDF',
         )
       } finally {
         setDownloadingId(null)
       }
     },
-    [downloadingId, token],
+    [downloadingId, fetchAudits, token],
   )
 
   if (!profileLoaded) {
@@ -286,7 +305,8 @@ export default function WebsiteAudits() {
                       <span className="text-white text-sm font-semibold truncate block">
                         {audit.lead_name || '—'}
                       </span>
-                      <span className="text-slate-400 text-xs truncate block">{audit.lead_email || '—'}</span>
+                      <span className="text-slate-400 text-xs truncate block">{audit.lead_company || '—'}</span>
+                      <span className="text-slate-500 text-xs truncate block">{audit.lead_email || '—'}</span>
                     </td>
                     <td className="px-4 py-4">
                       <span className="text-orange-400 text-sm font-bold">{audit.overall_score}/100</span>
@@ -314,12 +334,21 @@ export default function WebsiteAudits() {
                     <td className="px-4 py-4 text-right">
                       <button
                         type="button"
-                        onClick={() => void handleDownloadPdf(audit.id)}
-                        disabled={downloadingId === audit.id}
+                        onClick={() => void handleDownloadPdf(audit)}
+                        disabled={downloadingId === audit.id || !audit.unlocked || !audit.lead_company}
+                        title={
+                          !audit.unlocked
+                            ? 'Available after the lead unlocks the report'
+                            : !audit.lead_company
+                              ? 'Company name required'
+                              : audit.drive_file_id
+                                ? 'Download archived PDF from Google Drive'
+                                : 'Generate and archive PDF to Google Drive'
+                        }
                         className="inline-flex items-center gap-1.5 rounded-lg border border-orange-500/40 bg-orange-500/10 px-3 py-2 text-xs font-semibold text-orange-300 transition hover:bg-orange-500/20 disabled:opacity-50"
                       >
                         <DownloadIcon className="h-3.5 w-3.5" />
-                        {downloadingId === audit.id ? 'Generating...' : 'Download'}
+                        {downloadingId === audit.id ? 'Preparing...' : audit.drive_file_id ? 'Download' : 'Generate PDF'}
                       </button>
                     </td>
                   </tr>

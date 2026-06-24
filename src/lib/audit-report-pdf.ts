@@ -28,6 +28,11 @@ type PdfLayout = {
   logoDataUrl: string | null
 }
 
+export type AuditReportPdfResult = {
+  pdfBytes: Uint8Array
+  filename: string
+}
+
 function sanitizeFilenamePart(value: string) {
   return value
     .trim()
@@ -37,16 +42,43 @@ function sanitizeFilenamePart(value: string) {
     .slice(0, 40)
 }
 
-async function loadBrandLogoDataUrl(): Promise<string | null> {
+function getAuditHostname(siteUrl: string) {
   try {
-    const response = await fetch(LOGO_PATH)
-    if (!response.ok) return null
-    const blob = await response.blob()
-    return await new Promise((resolve) => {
-      const reader = new FileReader()
-      reader.onloadend = () => resolve(typeof reader.result === 'string' ? reader.result : null)
-      reader.readAsDataURL(blob)
-    })
+    return new URL(siteUrl).hostname.replace(/^www\./, '')
+  } catch {
+    return 'website'
+  }
+}
+
+export function buildAuditReportFilename(audit: AuditReportDetailRow) {
+  const companyPart = audit.lead_company
+    ? sanitizeFilenamePart(audit.lead_company)
+    : 'company'
+  const hostPart = sanitizeFilenamePart(getAuditHostname(audit.site_url))
+  return `${companyPart}-website-audit-${hostPart}.pdf`
+}
+
+async function loadBrandLogoDataUrl(): Promise<string | null> {
+  if (typeof window !== 'undefined') {
+    try {
+      const response = await fetch(LOGO_PATH)
+      if (!response.ok) return null
+      const blob = await response.blob()
+      return await new Promise((resolve) => {
+        const reader = new FileReader()
+        reader.onloadend = () => resolve(typeof reader.result === 'string' ? reader.result : null)
+        reader.readAsDataURL(blob)
+      })
+    } catch {
+      return null
+    }
+  }
+
+  try {
+    const { readFile } = await import('node:fs/promises')
+    const { join } = await import('node:path')
+    const logoBuffer = await readFile(join(process.cwd(), 'public', 'bmybrand-B.svg'))
+    return `data:image/svg+xml;base64,${logoBuffer.toString('base64')}`
   } catch {
     return null
   }
@@ -66,7 +98,11 @@ function drawPageHeader(layout: PdfLayout) {
 
   const logoSize = 10
   if (logoDataUrl) {
-    pdf.addImage(logoDataUrl, 'PNG', layout.marginX, 6, logoSize, logoSize)
+    try {
+      pdf.addImage(logoDataUrl, 'PNG', layout.marginX, 6, logoSize, logoSize)
+    } catch {
+      // Skip logo when the runtime cannot render the asset format.
+    }
   }
 
   pdf.setFont('helvetica', 'bold')
@@ -104,7 +140,7 @@ function formatLabel(value: string | null) {
 function drawMetaCard(layout: PdfLayout, y: number, audit: AuditReportDetailRow) {
   const { pdf, marginX, contentWidth } = layout
   const report = audit.report
-  const cardHeight = 42
+  const cardHeight = 46
 
   y = ensureSpace(layout, y, cardHeight)
   pdf.setFillColor(...BRAND.white)
@@ -117,6 +153,7 @@ function drawMetaCard(layout: PdfLayout, y: number, audit: AuditReportDetailRow)
   pdf.text('Audit Overview', marginX + 5, y + 8)
 
   const rows = [
+    ['Company', audit.lead_company || '—'],
     ['Website', audit.site_url],
     ['Score', `${report.overallScore}/100`],
     ['Issues', `${report.issueCount}+`],
@@ -216,7 +253,7 @@ function drawSection(layout: PdfLayout, y: number, section: AuditReportDetailRow
   return y + 4
 }
 
-export async function downloadAuditReportPdf(audit: AuditReportDetailRow): Promise<void> {
+export async function buildAuditReportPdf(audit: AuditReportDetailRow): Promise<AuditReportPdfResult> {
   const [{ jsPDF }] = await Promise.all([import('jspdf')])
   const logoDataUrl = await loadBrandLogoDataUrl()
 
@@ -255,14 +292,20 @@ export async function downloadAuditReportPdf(audit: AuditReportDetailRow): Promi
     drawPageFooter(layout, page, totalPages)
   }
 
-  const host = (() => {
-    try {
-      return new URL(audit.site_url).hostname.replace(/^www\./, '')
-    } catch {
-      return 'website'
-    }
-  })()
+  const arrayBuffer = pdf.output('arraybuffer') as ArrayBuffer
+  return {
+    pdfBytes: new Uint8Array(arrayBuffer),
+    filename: buildAuditReportFilename(audit),
+  }
+}
 
-  const filename = `audit-${sanitizeFilenamePart(host)}-${audit.id.slice(0, 8)}.pdf`
-  pdf.save(filename)
+export async function downloadAuditReportPdf(audit: AuditReportDetailRow): Promise<void> {
+  const { pdfBytes, filename } = await buildAuditReportPdf(audit)
+  const blob = new Blob([Buffer.from(pdfBytes)], { type: 'application/pdf' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
 }

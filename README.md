@@ -161,7 +161,8 @@ Open [http://localhost:3000](http://localhost:3000).
 | `GOOGLE_OAUTH_CLIENT_SECRET` | Yes | Google OAuth web client secret for Drive uploads |
 | `GOOGLE_OAUTH_REFRESH_TOKEN` | Yes | Refresh token for the Google account that owns Drive uploads |
 | `GOOGLE_OAUTH_SETUP_SECRET` | Setup only | Temporary secret used by the one-time OAuth setup route |
-| `GOOGLE_DRIVE_ROOT_FOLDER_ID` | Optional | Parent Drive folder where `avatars` and `chat-files` folders are created |
+| `GOOGLE_DRIVE_ROOT_FOLDER_ID` | Optional | Parent Drive folder where `avatars`, `chat-files`, and company audit folders are created |
+| `AUDIT_DRIVE_UPLOAD_SECRET` | Yes (audit PDFs) | Shared secret for brand-site unlock → CRM PDF archive webhook |
 | `STRIPE_SECRET_KEY` | Yes | Stripe secret key |
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Yes | Stripe publishable key |
 | `STRIPE_WEBHOOK_SECRET` | Yes | Stripe webhook signing secret |

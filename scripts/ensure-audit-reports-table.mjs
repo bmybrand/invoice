@@ -32,16 +32,18 @@ const connectionString =
   process.env.BMYB_SUPABASE_DB_URL?.trim() ||
   `postgresql://postgres.${projectRef}:${encodeURIComponent(password)}@${process.env.BMYB_SUPABASE_POOLER_HOST?.trim() || 'aws-1-us-east-2.pooler.supabase.com'}:6543/postgres`
 
-const sql = readFileSync(
+const sqlFiles = [
   join(rootDir, 'supabase/migrations/20260617_audit_reports.sql'),
-  'utf8',
-)
+  join(rootDir, 'supabase/migrations/20260624_audit_reports_drive.sql'),
+]
 
 const client = new pg.Client({ connectionString, ssl: { rejectUnauthorized: false } })
 
 try {
   await client.connect()
-  await client.query(sql)
+  for (const sqlPath of sqlFiles) {
+    await client.query(readFileSync(sqlPath, 'utf8'))
+  }
   const { rows } = await client.query(
     "SELECT to_regclass('public.audit_reports') AS table_name",
   )

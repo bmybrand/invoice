@@ -26,6 +26,8 @@ export type AuditReportListRow = {
   lead_name: string | null
   lead_email: string | null
   lead_company: string | null
+  drive_file_id: string | null
+  drive_uploaded_at: string | null
   created_at: string
 }
 

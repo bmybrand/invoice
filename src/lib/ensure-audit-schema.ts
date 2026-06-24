@@ -3,11 +3,6 @@ import { join } from 'node:path'
 import pg from 'pg'
 import { getBmybrandSupabaseProjectRef } from '@/lib/bmybrand-supabase'
 
-const MIGRATION_FILE = join(
-  process.cwd(),
-  'supabase/migrations/20260617_audit_reports.sql',
-)
-
 export { getBmybrandSupabaseProjectRef }
 
 export function isAuditTableMissingError(message: string | undefined): boolean {
@@ -52,7 +47,10 @@ export async function ensureAuditReportsTable(): Promise<void> {
   }
 
   const connectionString = buildAuditDatabaseConnectionString(projectRef, password)
-  const sql = readFileSync(MIGRATION_FILE, 'utf8')
+  const migrationFiles = [
+    '20260617_audit_reports.sql',
+    '20260624_audit_reports_drive.sql',
+  ]
   const client = new pg.Client({
     connectionString,
     ssl: { rejectUnauthorized: false },
@@ -60,7 +58,10 @@ export async function ensureAuditReportsTable(): Promise<void> {
 
   try {
     await client.connect()
-    await client.query(sql)
+    for (const fileName of migrationFiles) {
+      const sql = readFileSync(join(process.cwd(), 'supabase/migrations', fileName), 'utf8')
+      await client.query(sql)
+    }
   } finally {
     await client.end()
   }

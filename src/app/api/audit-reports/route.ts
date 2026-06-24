@@ -8,7 +8,7 @@ import {
 import { requireActiveEmployee } from '@/lib/server-employee-auth'
 
 const AUDIT_LIST_COLUMNS =
-  'id, site_url, industry, website_goal, overall_score, issue_count, summary, unlocked, lead_name, lead_email, lead_company, created_at'
+  'id, site_url, industry, website_goal, overall_score, issue_count, summary, unlocked, lead_name, lead_email, lead_company, drive_file_id, drive_uploaded_at, created_at'
 
 async function loadAuditReports() {
   const supabase = getBmybrandSupabaseAdmin()
