@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import Stripe from 'stripe'
 // Token support removed; use invoice_id query param instead
-import { findMatchingStripeGatewayForAmount, getInvoicePaymentContext } from '@/lib/server-stripe-gateways'
+import { getInvoicePaymentContext, resolveStripeGatewayForInvoice } from '@/lib/server-stripe-gateways'
 
 async function reconcileSuccessfulPayment(
   invoiceContext: Extract<Awaited<ReturnType<typeof getInvoicePaymentContext>>, { ok: true }>,
@@ -55,7 +55,11 @@ export default async function InvoicePayReturnPage({
     redirect(`${invoiceUrl}&payment=processing`)
   }
 
-  const gatewayLookup = await findMatchingStripeGatewayForAmount(invoiceContext.supabase, invoiceContext.amount)
+  const gatewayLookup = await resolveStripeGatewayForInvoice(
+    invoiceContext.supabase,
+    invoiceId,
+    invoiceContext.amount
+  )
   if (!gatewayLookup.ok) {
     redirect(`${invoiceUrl}&payment=processing`)
   }

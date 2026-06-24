@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import Stripe from 'stripe'
 
 type InvoiceRow = {
   id: number
@@ -299,6 +300,72 @@ export async function resolveStripeGatewayForInvoice(
   }
 
   return findMatchingStripeGatewayForAmount(supabase, amount)
+}
+
+type RetrievedPaymentIntentResult =
+  | {
+      ok: true
+      gateway: StripeGatewayMatch
+      paymentIntent: Stripe.PaymentIntent
+    }
+  | {
+      ok: false
+      status: number
+      error: string
+    }
+
+export async function retrieveInvoicePaymentIntent(
+  supabase: SupabaseClient,
+  invoiceId: number,
+  amount: number,
+  paymentIntentId: string
+): Promise<RetrievedPaymentIntentResult> {
+  const candidates: StripeGatewayMatch[] = []
+  const primaryLookup = await resolveStripeGatewayForInvoice(supabase, invoiceId, amount)
+
+  if (primaryLookup.ok) {
+    candidates.push(primaryLookup.gateway)
+  }
+
+  const gatewayList = await getActiveStripeGateways(supabase)
+  if (gatewayList.ok) {
+    for (const gateway of gatewayList.gateways) {
+      const alreadyAdded = candidates.some(
+        (candidate) => candidate.id === gateway.id && candidate.secretKey === gateway.secretKey
+      )
+      if (!alreadyAdded) {
+        candidates.push(gateway)
+      }
+    }
+  }
+
+  if (candidates.length === 0) {
+    if (!primaryLookup.ok) {
+      return primaryLookup
+    }
+    if (!gatewayList.ok) {
+      return gatewayList
+    }
+    return { ok: false, status: 400, error: 'No active payment gateways configured.' }
+  }
+
+  for (const gateway of candidates) {
+    try {
+      const stripe = new Stripe(gateway.secretKey)
+      const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId)
+      if (paymentIntent.metadata?.invoice_id === String(invoiceId)) {
+        return { ok: true, gateway, paymentIntent }
+      }
+    } catch {
+      continue
+    }
+  }
+
+  return {
+    ok: false,
+    status: 404,
+    error: 'Payment could not be verified with any configured gateway.',
+  }
 }
 
 async function getActiveStripeGateways(supabase: SupabaseClient): Promise<GatewayListResult> {

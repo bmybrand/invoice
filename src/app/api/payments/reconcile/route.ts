@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
-import Stripe from 'stripe'
-import { findMatchingStripeGatewayForAmount, getInvoicePaymentContext } from '@/lib/server-stripe-gateways'
+import { getInvoicePaymentContext, retrieveInvoicePaymentIntent } from '@/lib/server-stripe-gateways'
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as {
@@ -19,17 +18,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: invoiceContext.error }, { status: invoiceContext.status })
   }
 
-  const gatewayLookup = await findMatchingStripeGatewayForAmount(invoiceContext.supabase, invoiceContext.amount)
-  if (!gatewayLookup.ok) {
-    return NextResponse.json({ error: gatewayLookup.error }, { status: gatewayLookup.status })
+  const paymentLookup = await retrieveInvoicePaymentIntent(
+    invoiceContext.supabase,
+    invoiceId,
+    invoiceContext.amount,
+    paymentIntentId
+  )
+  if (!paymentLookup.ok) {
+    return NextResponse.json({ error: paymentLookup.error }, { status: paymentLookup.status })
   }
 
-  const stripe = new Stripe(gatewayLookup.gateway.secretKey)
-  const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId)
-
-  if (paymentIntent.metadata?.invoice_id !== String(invoiceId)) {
-    return NextResponse.json({ error: 'Payment does not belong to this invoice' }, { status: 403 })
-  }
+  const paymentIntent = paymentLookup.paymentIntent
 
   const transactionId =
     typeof paymentIntent.latest_charge === 'string'
