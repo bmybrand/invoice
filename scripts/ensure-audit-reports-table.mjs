@@ -35,6 +35,7 @@ const connectionString =
 const sqlFiles = [
   join(rootDir, 'supabase/migrations/20260617_audit_reports.sql'),
   join(rootDir, 'supabase/migrations/20260624_audit_reports_drive.sql'),
+  join(rootDir, 'supabase/migrations/20260624_audit_reports_archive.sql'),
 ]
 
 const client = new pg.Client({ connectionString, ssl: { rejectUnauthorized: false } })

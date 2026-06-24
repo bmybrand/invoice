@@ -50,6 +50,7 @@ export async function ensureAuditReportsTable(): Promise<void> {
   const migrationFiles = [
     '20260617_audit_reports.sql',
     '20260624_audit_reports_drive.sql',
+    '20260624_audit_reports_archive.sql',
   ]
   const client = new pg.Client({
     connectionString,
