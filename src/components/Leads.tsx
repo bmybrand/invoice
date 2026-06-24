@@ -17,6 +17,7 @@ const CONTACT_SERVICE_GROUP = new Set([
 const CONTACT_TAB_LABEL = 'Contact'
 const CUSTOM_QUOTE_TAB_LABEL = 'Custom Quote Request'
 const NEWSLETTER_TAB_LABEL = 'Newsletter Subscription'
+const WEBSITE_AUDIT_TAB_LABEL = 'Website Audit'
 
 type LeadRow = {
   id: number
@@ -29,6 +30,7 @@ type LeadRow = {
   service: string | null
   message: string | null
   form_type: string | null
+  company: string | null
 }
 
 function SearchIcon({ className = 'h-4 w-4' }: { className?: string }) {
@@ -101,12 +103,14 @@ function getLeadTabLabel(lead: Pick<LeadRow, 'form_type' | 'service'>) {
   if (formType === 'newsletter_subscription') return NEWSLETTER_TAB_LABEL
   if (formType === 'custom_quote_request') return CUSTOM_QUOTE_TAB_LABEL
   if (formType === 'contact') return CONTACT_TAB_LABEL
+  if (formType === 'website_audit') return WEBSITE_AUDIT_TAB_LABEL
 
   const service = (lead.service || '').trim()
   if (!service) return ''
   if (CONTACT_SERVICE_GROUP.has(service)) return CONTACT_TAB_LABEL
   if (service === NEWSLETTER_TAB_LABEL) return NEWSLETTER_TAB_LABEL
   if (service === CUSTOM_QUOTE_TAB_LABEL) return CUSTOM_QUOTE_TAB_LABEL
+  if (service === WEBSITE_AUDIT_TAB_LABEL) return WEBSITE_AUDIT_TAB_LABEL
   return service
 }
 
@@ -223,6 +227,7 @@ export default function Leads() {
     activeService && serviceTabs.includes(activeService) ? activeService : (serviceTabs[0] ?? '')
   const isNewsletterSubscription = effectiveActiveService === NEWSLETTER_TAB_LABEL
   const isContactTab = effectiveActiveService === CONTACT_TAB_LABEL
+  const isWebsiteAuditTab = effectiveActiveService === WEBSITE_AUDIT_TAB_LABEL
 
   const filteredLeads = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
@@ -240,6 +245,7 @@ export default function Leads() {
         lead.last_name,
         lead.email,
         lead.phone,
+        lead.company,
         lead.form_type,
         lead.service,
         lead.message,
@@ -254,7 +260,9 @@ export default function Leads() {
   const start = (safePage - 1) * PAGE_SIZE
   const end = start + PAGE_SIZE
   const paginatedLeads = filteredLeads.slice(start, start + PAGE_SIZE)
-  const columnCount = (isNewsletterSubscription ? 5 : isContactTab ? 8 : 7) + (isSuperAdmin ? 1 : 0)
+  const columnCount =
+    (isNewsletterSubscription ? 5 : isWebsiteAuditTab ? 6 : isContactTab ? 8 : 7) +
+    (isSuperAdmin ? 1 : 0)
 
   const handleDeleteLead = useCallback(async (lead: LeadRow) => {
     const accessToken = token?.trim() || ''
@@ -368,9 +376,14 @@ export default function Leads() {
                 <th className="px-4 sm:px-6 py-4 text-left">
                   <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Lead</span>
                 </th>
-                {!isNewsletterSubscription ? (
+                {!isNewsletterSubscription && !isWebsiteAuditTab ? (
                   <th className="px-4 sm:px-6 py-4 text-left">
                     <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Phone</span>
+                  </th>
+                ) : null}
+                {isWebsiteAuditTab ? (
+                  <th className="px-4 sm:px-6 py-4 text-left">
+                    <span className="block truncate whitespace-nowrap text-slate-400 text-xs font-bold uppercase tracking-wide">Company</span>
                   </th>
                 ) : null}
                 {isContactTab ? (
@@ -458,10 +471,17 @@ export default function Leads() {
                         </span>
                       </div>
                     </td>
-                    {!isNewsletterSubscription ? (
+                    {!isNewsletterSubscription && !isWebsiteAuditTab ? (
                       <td className="px-4 sm:px-6 py-4 min-w-0">
                         <span className="text-slate-300 text-sm truncate block whitespace-nowrap" title={lead.phone || '-'}>
                           {lead.phone || '-'}
+                        </span>
+                      </td>
+                    ) : null}
+                    {isWebsiteAuditTab ? (
+                      <td className="px-4 sm:px-6 py-4 min-w-0">
+                        <span className="text-slate-300 text-sm truncate block whitespace-nowrap" title={lead.company || '-'}>
+                          {lead.company || '-'}
                         </span>
                       </td>
                     ) : null}
@@ -609,6 +629,9 @@ export default function Leads() {
                 <p><span className="text-slate-500">Created:</span> {formatDateTime(selectedLead.created_at)}</p>
                 {selectedLead.service !== 'Newsletter Subscription' ? (
                   <p><span className="text-slate-500">Phone:</span> {selectedLead.phone || 'N/A'}</p>
+                ) : null}
+                {selectedLead.form_type === 'website_audit' ? (
+                  <p className="sm:col-span-2"><span className="text-slate-500">Company:</span> {selectedLead.company || 'N/A'}</p>
                 ) : null}
                 <p className="sm:col-span-2"><span className="text-slate-500">Access Page:</span> {formatAccessPage(selectedLead.access_page)}</p>
               </div>

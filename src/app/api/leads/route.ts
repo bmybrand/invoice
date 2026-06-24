@@ -9,7 +9,7 @@ export async function GET(request: Request) {
 
   const { data, error } = await auth.supabase
     .from('leads')
-    .select('id, created_at, access_page, first_name, last_name, email, phone, service, message, form_type')
+    .select('id, created_at, access_page, first_name, last_name, email, phone, service, message, form_type, company')
     .order('created_at', { ascending: false })
 
   if (error) {

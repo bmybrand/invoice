@@ -6,11 +6,12 @@ import {
   isAuditTableMissingError,
 } from '@/lib/ensure-audit-schema'
 import { requireActiveEmployee } from '@/lib/server-employee-auth'
+import type { AuditReportListRow } from '@/types/audit-report'
 
 const AUDIT_LIST_COLUMNS =
-  'id, site_url, industry, website_goal, overall_score, issue_count, summary, unlocked, lead_name, lead_email, lead_company, created_at'
+  'id, site_url, industry, website_goal, overall_score, issue_count, summary, unlocked, lead_name, lead_email, lead_company, drive_file_id, drive_uploaded_at, isdeleted, archived_at, created_at'
 
-async function loadAuditReports() {
+async function loadAuditReports(archived: boolean) {
   const supabase = getBmybrandSupabaseAdmin()
   if (!supabase) {
     return {
@@ -24,10 +25,13 @@ async function loadAuditReports() {
     }
   }
 
-  let result = await supabase
+  let query = supabase
     .from('audit_reports')
     .select(AUDIT_LIST_COLUMNS)
+    .eq('isdeleted', archived)
     .order('created_at', { ascending: false })
+
+  let result = await query
 
   if (result.error && isAuditTableMissingError(result.error.message)) {
     if (process.env.BMYB_SUPABASE_DB_PASSWORD?.trim()) {
@@ -36,6 +40,7 @@ async function loadAuditReports() {
         result = await supabase
           .from('audit_reports')
           .select(AUDIT_LIST_COLUMNS)
+          .eq('isdeleted', archived)
           .order('created_at', { ascending: false })
       } catch (setupError) {
         const message =
@@ -57,15 +62,40 @@ async function loadAuditReports() {
   }
 
   if (result.error) {
+    const message = result.error.message || 'Failed to load website audits'
+    const missingArchiveColumn =
+      message.includes('isdeleted') &&
+      (message.includes('does not exist') || message.includes('schema cache'))
+
+    if (!archived && missingArchiveColumn) {
+      const fallback = await supabase
+        .from('audit_reports')
+        .select(AUDIT_LIST_COLUMNS.replace(', isdeleted, archived_at', ''))
+        .order('created_at', { ascending: false })
+
+      if (fallback.error) {
+        return {
+          error: NextResponse.json({ error: message }, { status: 500 }),
+        }
+      }
+
+      const audits: AuditReportListRow[] = (fallback.data ?? []).map((row) => {
+        const record = row as unknown as Omit<AuditReportListRow, 'isdeleted' | 'archived_at'>
+        return {
+          ...record,
+          isdeleted: false,
+          archived_at: null,
+        }
+      })
+      return { audits }
+    }
+
     return {
-      error: NextResponse.json(
-        { error: result.error.message || 'Failed to load website audits' },
-        { status: 500 },
-      ),
+      error: NextResponse.json({ error: message }, { status: 500 }),
     }
   }
 
-  return { audits: result.data ?? [] }
+  return { audits: (result.data ?? []) as AuditReportListRow[] }
 }
 
 export async function GET(request: Request) {
@@ -74,7 +104,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
 
-  const loaded = await loadAuditReports()
+  const url = new URL(request.url)
+  const archived = url.searchParams.get('archived') === 'true'
+
+  const loaded = await loadAuditReports(archived)
   if ('error' in loaded && loaded.error) {
     return loaded.error
   }
