@@ -349,7 +349,7 @@ function formatGatewayLimitAmount(amount: number | null): string {
 }
 
 function formatPaymentGatewayOptionLabel(gateway: PaymentGatewayOption): string {
-  return `${gateway.name} (${formatGatewayLimitAmount(gateway.minAmount)} to ${formatGatewayLimitAmount(gateway.maxAmount)})`
+  return gateway.name
 }
 
 function resolveDefaultPaymentGatewayId(
