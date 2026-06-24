@@ -6,6 +6,7 @@ import {
   isAuditTableMissingError,
 } from '@/lib/ensure-audit-schema'
 import { requireActiveEmployee } from '@/lib/server-employee-auth'
+import type { AuditReportListRow } from '@/types/audit-report'
 
 const AUDIT_LIST_COLUMNS =
   'id, site_url, industry, website_goal, overall_score, issue_count, summary, unlocked, lead_name, lead_email, lead_company, drive_file_id, drive_uploaded_at, isdeleted, archived_at, created_at'
@@ -78,11 +79,14 @@ async function loadAuditReports(archived: boolean) {
         }
       }
 
-      const audits = (fallback.data ?? []).map((row) => ({
-        ...row,
-        isdeleted: false,
-        archived_at: null,
-      }))
+      const audits: AuditReportListRow[] = (fallback.data ?? []).map((row) => {
+        const record = row as unknown as Omit<AuditReportListRow, 'isdeleted' | 'archived_at'>
+        return {
+          ...record,
+          isdeleted: false,
+          archived_at: null,
+        }
+      })
       return { audits }
     }
 
@@ -91,7 +95,7 @@ async function loadAuditReports(archived: boolean) {
     }
   }
 
-  return { audits: result.data ?? [] }
+  return { audits: (result.data ?? []) as AuditReportListRow[] }
 }
 
 export async function GET(request: Request) {
