@@ -32,6 +32,7 @@ type InvoiceRow = {
   paid_amount: number
   invoice_type: string
   currency: 'USD' | 'CAD'
+  payment_gateway_id: number | null
 }
 
 function normalizeInvoiceCurrency(value: unknown): 'USD' | 'CAD' {
@@ -186,6 +187,10 @@ export default function InvoiceView({
       paid_amount: Number(paidAmount.toFixed(2)),
       invoice_type: (invoiceData.invoice_type as string) ?? 'Standard',
       currency: normalizeInvoiceCurrency(invoiceData.currency),
+      payment_gateway_id:
+        invoiceData.payment_gateway_id == null || invoiceData.payment_gateway_id === ''
+          ? null
+          : Number(invoiceData.payment_gateway_id),
     })
     setLoading(false)
   }, [invoiceId, invoiceToken, publicView])

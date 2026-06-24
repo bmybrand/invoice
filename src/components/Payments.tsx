@@ -103,6 +103,7 @@ type BulkInvoiceRow = {
   paid_amount: number
   invoice_type: string
   currency: BulkInvoiceCurrency
+  payment_gateway_id: number | null
 }
 
 function normalizeBulkInvoiceCurrency(value: unknown): BulkInvoiceCurrency {
@@ -919,6 +920,10 @@ export default function Payments() {
         paid_amount: Number((paidAmountByInvoiceId.get(invoiceId) ?? 0).toFixed(2)),
         invoice_type: String(row.invoice_type ?? 'Standard'),
         currency: normalizeBulkInvoiceCurrency(row.currency),
+        payment_gateway_id:
+          row.payment_gateway_id == null || row.payment_gateway_id === ''
+            ? null
+            : Number(row.payment_gateway_id),
       }
 
       byId.set(invoiceId, {
