@@ -1086,7 +1086,7 @@ export default function Invoice() {
     }, 180)
   }, [fetchInvoices])
 
-  const PAGE_SIZE = 4
+  const PAGE_SIZE = 10
 
   useEffect(() => {
     invoiceIdsRef.current = invoices.map((invoice) => invoice.id).filter((id) => Number.isFinite(id) && id > 0)
