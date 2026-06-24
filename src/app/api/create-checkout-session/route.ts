@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import Stripe from 'stripe'
-import { findMatchingStripeGatewayForAmount, getInvoicePaymentContext } from '@/lib/server-stripe-gateways'
+import { getInvoicePaymentContext, resolveStripeGatewayForInvoice } from '@/lib/server-stripe-gateways'
 import { requireBoundInvoiceToken } from '@/lib/server-invoice-access'
 
 export async function POST(req: Request) {
@@ -27,7 +27,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'This invoice has already been paid' }, { status: 409 })
     }
 
-    const gatewayLookup = await findMatchingStripeGatewayForAmount(invoiceContext.supabase, invoiceContext.amount)
+    const gatewayLookup = await resolveStripeGatewayForInvoice(
+      invoiceContext.supabase,
+      parsedInvoiceId,
+      invoiceContext.amount
+    )
     if (!gatewayLookup.ok) {
       return NextResponse.json({ error: gatewayLookup.error }, { status: gatewayLookup.status })
     }

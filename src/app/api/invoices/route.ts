@@ -80,12 +80,12 @@ export async function GET(request: Request) {
 
   const requestedClientId = Number(new URL(request.url).searchParams.get('clientId'))
   const invoiceSelectWithParentBrandIdAndCurrency = `
-    id, invoice_date, invoice_creator_id, client_id, parent_invoice_id, brand_id, client_name, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, currency, created_at,
+    id, invoice_date, invoice_creator_id, client_id, parent_invoice_id, brand_id, payment_gateway_id, client_name, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, currency, created_at,
     employees!invoice_creator_id(employee_name),
     clients!client_id(name)
   `
   const invoiceSelectWithBrandIdAndCurrency = `
-    id, invoice_date, invoice_creator_id, client_id, brand_id, client_name, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, currency, created_at,
+    id, invoice_date, invoice_creator_id, client_id, brand_id, payment_gateway_id, client_name, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, currency, created_at,
     employees!invoice_creator_id(employee_name),
     clients!client_id(name)
   `
@@ -129,6 +129,21 @@ export async function GET(request: Request) {
     )
     data = parentlessResult.data as Record<string, unknown>[] | null
     error = parentlessResult.error as { message: string } | null
+  }
+
+  if (error && error.message.toLowerCase().includes('payment_gateway_id') && error.message.toLowerCase().includes('does not exist')) {
+    const withoutGatewayResult = await applyAccessFilter(
+      serviceClient
+        .from('invoices')
+        .select(`
+          id, invoice_date, invoice_creator_id, client_id, parent_invoice_id, brand_id, client_name, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, currency, created_at,
+          employees!invoice_creator_id(employee_name),
+          clients!client_id(name)
+        `)
+        .order('created_at', { ascending: false })
+    )
+    data = withoutGatewayResult.data as Record<string, unknown>[] | null
+    error = withoutGatewayResult.error as { message: string } | null
   }
 
   if (error && error.message.toLowerCase().includes('brand_id') && error.message.toLowerCase().includes('does not exist')) {

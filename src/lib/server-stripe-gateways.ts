@@ -23,6 +23,10 @@ export type StripeGatewayMatch = {
 
 export type StripeGatewayLimit = Pick<StripeGatewayMatch, 'name' | 'minAmount' | 'maxAmount'>
 
+export type StripeGatewayOption = StripeGatewayLimit & {
+  id: number
+}
+
 type InvoicePaymentContext =
   | {
       ok: true
@@ -217,6 +221,10 @@ export async function getInvoicePaymentContext(invoiceId: number): Promise<Invoi
   return { ok: true, supabase, invoice, amount, currency: resolveInvoiceCurrency(invoice) }
 }
 
+function gatewaySupportsAmount(gateway: StripeGatewayMatch, amount: number): boolean {
+  return amount >= gateway.minAmount && (gateway.maxAmount == null || amount <= gateway.maxAmount)
+}
+
 export async function findMatchingStripeGatewayForAmount(
   supabase: SupabaseClient,
   amount: number
@@ -226,11 +234,7 @@ export async function findMatchingStripeGatewayForAmount(
     return gatewayList
   }
 
-  const gateways = gatewayList.gateways
-
-  const matchedGateway = gateways.find(
-    (gateway) => amount >= gateway.minAmount && (gateway.maxAmount == null || amount <= gateway.maxAmount)
-  )
+  const matchedGateway = gatewayList.gateways.find((gateway) => gatewaySupportsAmount(gateway, amount))
 
   if (!matchedGateway) {
     return {
@@ -241,6 +245,60 @@ export async function findMatchingStripeGatewayForAmount(
   }
 
   return { ok: true, gateway: matchedGateway }
+}
+
+export async function findStripeGatewayById(
+  supabase: SupabaseClient,
+  gatewayId: number,
+  amount?: number
+): Promise<GatewayLookupResult> {
+  const gatewayList = await getActiveStripeGateways(supabase)
+  if (!gatewayList.ok) {
+    return gatewayList
+  }
+
+  const matchedGateway = gatewayList.gateways.find((gateway) => gateway.id === gatewayId)
+
+  if (!matchedGateway) {
+    return {
+      ok: false,
+      status: 400,
+      error: 'Selected payment gateway is not available. Choose another gateway or update gateway settings.',
+    }
+  }
+
+  if (amount != null && !gatewaySupportsAmount(matchedGateway, amount)) {
+    return {
+      ok: false,
+      status: 400,
+      error: 'Invoice amount is outside the selected payment gateway limit. Choose another gateway or adjust the amount.',
+    }
+  }
+
+  return { ok: true, gateway: matchedGateway }
+}
+
+export async function resolveStripeGatewayForInvoice(
+  supabase: SupabaseClient,
+  invoiceId: number,
+  amount: number
+): Promise<GatewayLookupResult> {
+  const { data, error } = await supabase
+    .from('invoices')
+    .select('payment_gateway_id')
+    .eq('id', invoiceId)
+    .maybeSingle()
+
+  if (error && !error.message.toLowerCase().includes('payment_gateway_id')) {
+    return { ok: false, status: 500, error: error.message }
+  }
+
+  const gatewayId = Number((data as { payment_gateway_id?: number | null } | null)?.payment_gateway_id)
+  if (Number.isFinite(gatewayId) && gatewayId > 0) {
+    return findStripeGatewayById(supabase, gatewayId, amount)
+  }
+
+  return findMatchingStripeGatewayForAmount(supabase, amount)
 }
 
 async function getActiveStripeGateways(supabase: SupabaseClient): Promise<GatewayListResult> {
@@ -261,7 +319,10 @@ async function getActiveStripeGateways(supabase: SupabaseClient): Promise<Gatewa
   }
 }
 
-export async function validateStripeGatewayAmount(amount: number): Promise<GatewayLookupResult> {
+export async function validateStripeGatewayAmount(
+  amount: number,
+  gatewayId?: number | null
+): Promise<GatewayLookupResult> {
   const supabase = createServiceRoleSupabase()
 
   if (!supabase) {
@@ -280,7 +341,51 @@ export async function validateStripeGatewayAmount(amount: number): Promise<Gatew
     }
   }
 
+  const parsedGatewayId = Number(gatewayId)
+  if (Number.isFinite(parsedGatewayId) && parsedGatewayId > 0) {
+    return findStripeGatewayById(supabase, parsedGatewayId, amount)
+  }
+
   return findMatchingStripeGatewayForAmount(supabase, amount)
+}
+
+export async function listActiveStripeGatewayOptions(): Promise<
+  | {
+      ok: true
+      gateways: StripeGatewayOption[]
+    }
+  | {
+      ok: false
+      status: number
+      error: string
+    }
+> {
+  const supabase = createServiceRoleSupabase()
+
+  if (!supabase) {
+    return {
+      ok: false,
+      status: 503,
+      error: 'Server not configured. Add SUPABASE_SERVICE_ROLE_KEY to .env.local',
+    }
+  }
+
+  const gatewayList = await getActiveStripeGateways(supabase)
+  if (!gatewayList.ok) {
+    return gatewayList
+  }
+
+  return {
+    ok: true,
+    gateways: gatewayList.gateways
+      .filter((gateway): gateway is StripeGatewayMatch & { id: number } => gateway.id != null)
+      .map((gateway) => ({
+        id: gateway.id,
+        name: gateway.name,
+        minAmount: gateway.minAmount,
+        maxAmount: gateway.maxAmount,
+      })),
+  }
 }
 
 export async function listActiveStripeGatewayLimits(): Promise<

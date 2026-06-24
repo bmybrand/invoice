@@ -10,8 +10,12 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url)
   const amount = Number(url.searchParams.get('amount') ?? '')
+  const gatewayId = Number(url.searchParams.get('gatewayId') ?? '')
 
-  const gatewayLookup = await validateStripeGatewayAmount(amount)
+  const gatewayLookup = await validateStripeGatewayAmount(
+    amount,
+    Number.isFinite(gatewayId) && gatewayId > 0 ? gatewayId : null
+  )
   if (!gatewayLookup.ok) {
     const gatewayLimits = await listActiveStripeGatewayLimits()
 

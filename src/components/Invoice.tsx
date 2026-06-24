@@ -51,6 +51,7 @@ type InvoiceRow = {
   paid_amount: number
   invoice_type: string
   currency: InvoiceCurrency
+  payment_gateway_id: number | null
 }
 
 function isMissingBrandIdColumnError(error: { message?: string | null } | null | undefined) {
@@ -96,6 +97,13 @@ type ActionMenuState = {
 }
 
 type GatewayLimitInfo = {
+  name: string
+  minAmount: number
+  maxAmount: number | null
+}
+
+type PaymentGatewayOption = {
+  id: number
   name: string
   minAmount: number
   maxAmount: number | null
@@ -318,7 +326,11 @@ function getInvoiceGatewayValidationAmount(
 }
 
 function isGatewayLimitBlockingError(message: string | null): boolean {
-  return (message || '').includes('Invoice amount exceeds the active payment gateway limit')
+  const text = (message || '').toLowerCase()
+  return (
+    text.includes('invoice amount exceeds the active payment gateway limit') ||
+    text.includes('invoice amount is outside the selected payment gateway limit')
+  )
 }
 
 function isSuccessfulPaymentStatus(status: string | null | undefined): boolean {
@@ -334,6 +346,61 @@ function isSuccessfulPaymentStatus(status: string | null | undefined): boolean {
 function formatGatewayLimitAmount(amount: number | null): string {
   if (amount == null) return 'No maximum'
   return `$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+function formatPaymentGatewayOptionLabel(gateway: PaymentGatewayOption): string {
+  return `${gateway.name} (${formatGatewayLimitAmount(gateway.minAmount)} to ${formatGatewayLimitAmount(gateway.maxAmount)})`
+}
+
+function resolveDefaultPaymentGatewayId(
+  gateways: PaymentGatewayOption[],
+  preferredId?: number | null
+): number | null {
+  if (preferredId != null && gateways.some((gateway) => gateway.id === preferredId)) {
+    return preferredId
+  }
+  return gateways[0]?.id ?? null
+}
+
+function PaymentGatewaySelectField({
+  id,
+  gateways,
+  value,
+  onChange,
+  disabled = false,
+}: {
+  id: string
+  gateways: PaymentGatewayOption[]
+  value: number | null
+  onChange: (value: number | null) => void
+  disabled?: boolean
+}) {
+  if (gateways.length === 0) {
+    return <p className="mt-1 text-xs text-slate-500">No active payment gateways configured.</p>
+  }
+
+  return (
+    <select
+      id={id}
+      value={value ?? ''}
+      onChange={(e) => {
+        const nextValue = Number(e.target.value)
+        onChange(Number.isFinite(nextValue) && nextValue > 0 ? nextValue : null)
+      }}
+      disabled={disabled}
+      required
+      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20 disabled:cursor-not-allowed disabled:bg-slate-100"
+    >
+      <option value="" disabled>
+        Select payment gateway
+      </option>
+      {gateways.map((gateway) => (
+        <option key={gateway.id} value={gateway.id}>
+          {formatPaymentGatewayOptionLabel(gateway)}
+        </option>
+      ))}
+    </select>
+  )
 }
 
 function GatewayLimitAlert({
@@ -737,6 +804,8 @@ export default function Invoice() {
   const [addPayableAmount, setAddPayableAmount] = useState('')
   const [addInvoiceType, setAddInvoiceType] = useState<string>(INVOICE_TYPE_OPTIONS[0])
   const [addCurrency, setAddCurrency] = useState<InvoiceCurrency>('USD')
+  const [addPaymentGatewayId, setAddPaymentGatewayId] = useState<number | null>(null)
+  const [paymentGateways, setPaymentGateways] = useState<PaymentGatewayOption[]>([])
   const [savedAddInvoiceId, setSavedAddInvoiceId] = useState<number | null>(null)
   const [savedAddInvoiceUrl, setSavedAddInvoiceUrl] = useState('')
   const [addUrlCopied, setAddUrlCopied] = useState(false)
@@ -757,6 +826,7 @@ export default function Invoice() {
   const [editPaidAmountTotal, setEditPaidAmountTotal] = useState(0)
   const [editInvoiceType, setEditInvoiceType] = useState<string>(INVOICE_TYPE_OPTIONS[0])
   const [editCurrency, setEditCurrency] = useState<InvoiceCurrency>('USD')
+  const [editPaymentGatewayId, setEditPaymentGatewayId] = useState<number | null>(null)
   const [editInvoiceUrl, setEditInvoiceUrl] = useState('')
   const [editUrlCopied, setEditUrlCopied] = useState(false)
   const [editLoading, setEditLoading] = useState(false)
@@ -785,7 +855,10 @@ export default function Invoice() {
     return data.session?.access_token?.trim() || ''
   }
 
-  async function validateGatewayAmountForInvoice(amount: number): Promise<{
+  async function validateGatewayAmountForInvoice(
+    amount: number,
+    gatewayId: number | null
+  ): Promise<{
     error: string | null
     gateways: GatewayLimitInfo[]
   }> {
@@ -798,14 +871,15 @@ export default function Invoice() {
     }
 
     try {
-      const res = await fetch(
-        `/api/payment-gateways/validate-amount?amount=${encodeURIComponent(String(amount))}`,
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        }
-      )
+      const params = new URLSearchParams({ amount: String(amount) })
+      if (gatewayId != null) {
+        params.set('gatewayId', String(gatewayId))
+      }
+      const res = await fetch(`/api/payment-gateways/validate-amount?${params.toString()}`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      })
       const data = (await res.json().catch(() => ({}))) as {
         error?: string
         gateways?: GatewayLimitInfo[]
@@ -1011,6 +1085,10 @@ export default function Invoice() {
         paid_amount: Number((paidAmountByInvoiceId.get(invoiceId) ?? 0).toFixed(2)),
         invoice_type: (row.invoice_type as string) ?? INVOICE_TYPE_OPTIONS[0],
         currency: normalizeInvoiceCurrency(row.currency),
+        payment_gateway_id:
+          row.payment_gateway_id == null || row.payment_gateway_id === ''
+            ? null
+            : Number(row.payment_gateway_id),
       }
     })
     setInvoices((prev) => {
@@ -1075,6 +1153,42 @@ export default function Invoice() {
     }
     setBrands((data as BrandOption[]) ?? [])
   }, [])
+
+  const fetchPaymentGateways = useCallback(async () => {
+    if (accountType === 'client') {
+      setPaymentGateways([])
+      return
+    }
+
+    const accessToken = await resolveAccessToken()
+    if (!accessToken) {
+      setPaymentGateways([])
+      return
+    }
+
+    try {
+      const res = await fetch('/api/payment-gateways/active', {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      })
+      const data = (await res.json().catch(() => ({}))) as {
+        gateways?: PaymentGatewayOption[]
+        error?: string
+      }
+
+      if (!res.ok) {
+        logFetchError('Failed to fetch payment gateways', data.error || 'Request failed')
+        setPaymentGateways([])
+        return
+      }
+
+      setPaymentGateways(Array.isArray(data.gateways) ? data.gateways : [])
+    } catch (error) {
+      logFetchError('Failed to fetch payment gateways', error)
+      setPaymentGateways([])
+    }
+  }, [accountType, token])
 
   const scheduleInvoicesRefresh = useCallback(() => {
     if (realtimeRefreshTimeoutRef.current !== null) {
@@ -1206,6 +1320,18 @@ export default function Invoice() {
   }, [fetchBrands])
 
   useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void fetchPaymentGateways()
+    }, 0)
+    return () => window.clearTimeout(timeoutId)
+  }, [fetchPaymentGateways])
+
+  useEffect(() => {
+    if (!showAddModal) return
+    setAddPaymentGatewayId((current) => resolveDefaultPaymentGatewayId(paymentGateways, current))
+  }, [showAddModal, paymentGateways])
+
+  useEffect(() => {
     if (!showAddModal) return
     const defaultBrand = getDefaultInvoiceBrand()
     if (defaultBrand && !addBrand.trim()) {
@@ -1335,6 +1461,9 @@ export default function Invoice() {
         return { valid: false, message: 'Payable amount cannot be greater than the grand total.' }
       }
     }
+    if (paymentGateways.length > 0 && addPaymentGatewayId === null) {
+      return { valid: false, message: 'Select a payment gateway.' }
+    }
     return validateServiceLines(addServices)
   })()
 
@@ -1347,7 +1476,7 @@ export default function Invoice() {
       const subTotal = servicesSubtotal(addServices)
       const payableAmount = isAdvanceUnpaidStatus(addStatus) ? parseAmountValue(addPayableAmount) : 0
       const gatewayValidationAmount = getInvoiceGatewayValidationAmount(addStatus, subTotal, payableAmount)
-      const gatewayValidation = await validateGatewayAmountForInvoice(gatewayValidationAmount)
+      const gatewayValidation = await validateGatewayAmountForInvoice(gatewayValidationAmount, addPaymentGatewayId)
 
       if (!active) return
 
@@ -1368,7 +1497,7 @@ export default function Invoice() {
     return () => {
       active = false
     }
-  }, [showAddModal, addError, addValidation.valid, addServices, addStatus, addPayableAmount])
+  }, [showAddModal, addError, addValidation.valid, addServices, addStatus, addPayableAmount, addPaymentGatewayId])
 
   const editValidation = (() => {
     const editIsBmy = isBmyBrand(editBrand)
@@ -1404,6 +1533,9 @@ export default function Invoice() {
         return { valid: false, message: 'Payable amount cannot be greater than the remaining balance.' }
       }
     }
+    if (paymentGateways.length > 0 && editPaymentGatewayId === null) {
+      return { valid: false, message: 'Select a payment gateway.' }
+    }
     return validateServiceLines(editServices)
   })()
 
@@ -1436,7 +1568,7 @@ export default function Invoice() {
     const subTotal = servicesSubtotal(cleanServices)
     const payableAmount = isAdvanceUnpaidStatus(addStatus) ? parseAmountValue(addPayableAmount) : 0
     const gatewayValidationAmount = getInvoiceGatewayValidationAmount(addStatus, subTotal, payableAmount)
-    const gatewayValidation = await validateGatewayAmountForInvoice(gatewayValidationAmount)
+    const gatewayValidation = await validateGatewayAmountForInvoice(gatewayValidationAmount, addPaymentGatewayId)
     if (gatewayValidation.error) {
       setAddError(gatewayValidation.error)
       setAddGatewayLimits(gatewayValidation.gateways)
@@ -1470,11 +1602,19 @@ export default function Invoice() {
         payable_amount: payableAmount > 0 ? Number(payableAmount.toFixed(2)) : null,
         invoice_type: addInvoiceType,
         currency: addCurrency,
+        payment_gateway_id: addPaymentGatewayId,
       })
       .select('id')
       .single()
 
-    if (insertError && (isMissingBrandIdColumnError(insertError) || isMissingColumnError(insertError, 'currency'))) {
+    if (
+      insertError &&
+      (
+        isMissingBrandIdColumnError(insertError) ||
+        isMissingColumnError(insertError, 'currency') ||
+        isMissingColumnError(insertError, 'payment_gateway_id')
+      )
+    ) {
       ;({ data: insertedInvoice, error: insertError } = await supabase
         .from('invoices')
         .insert({
@@ -1549,6 +1689,7 @@ export default function Invoice() {
     setAddPayableAmount('')
     setAddInvoiceType(INVOICE_TYPE_OPTIONS[0])
     setAddCurrency('USD')
+    setAddPaymentGatewayId(resolveDefaultPaymentGatewayId(paymentGateways))
     setSavedAddInvoiceId(null)
     setSavedAddInvoiceUrl('')
     setAddUrlCopied(false)
@@ -1627,7 +1768,10 @@ export default function Invoice() {
 
     setDueInvoiceModal((prev) => prev ? { ...prev, loading: true, error: null, gatewayLimits: [], gatewayInfoOpen: false } : prev)
 
-    const gatewayValidation = await validateGatewayAmountForInvoice(requestedAmount)
+    const gatewayValidation = await validateGatewayAmountForInvoice(
+      requestedAmount,
+      sourceInvoice.payment_gateway_id
+    )
     if (gatewayValidation.error) {
       setDueInvoiceModal((prev) =>
         prev
@@ -1671,6 +1815,7 @@ export default function Invoice() {
         payable_amount: requestedAmount,
         invoice_type: sourceInvoice.invoice_type || INVOICE_TYPE_OPTIONS[0],
         currency: sourceCurrency,
+        payment_gateway_id: sourceInvoice.payment_gateway_id,
       })
       .select('id')
       .single()
@@ -1680,7 +1825,8 @@ export default function Invoice() {
       (
         isMissingBrandIdColumnError(insertError) ||
         isMissingColumnError(insertError, 'currency') ||
-        isMissingColumnError(insertError, 'parent_invoice_id')
+        isMissingColumnError(insertError, 'parent_invoice_id') ||
+        isMissingColumnError(insertError, 'payment_gateway_id')
       )
     ) {
       ;({ data: insertedInvoice, error: insertError } = await supabase
@@ -1793,6 +1939,7 @@ export default function Invoice() {
     setEditPaidAmountTotal(inv.paid_amount || 0)
     setEditInvoiceType(inv.invoice_type || INVOICE_TYPE_OPTIONS[0])
     setEditCurrency(normalizeInvoiceCurrency(inv.currency))
+    setEditPaymentGatewayId(resolveDefaultPaymentGatewayId(paymentGateways, inv.payment_gateway_id))
     setEditInvoiceUrl('')
     void getSignedInvoiceLink(inv.id).then((signedLink) => {
       setEditInvoiceUrl(`${window.location.origin}${signedLink}`)
@@ -1862,7 +2009,7 @@ export default function Invoice() {
             : remainingBalance
           : getInvoiceGatewayValidationAmount(editStatus, subTotal, payableAmount)
 
-      const gatewayValidation = await validateGatewayAmountForInvoice(gatewayValidationAmount)
+      const gatewayValidation = await validateGatewayAmountForInvoice(gatewayValidationAmount, editPaymentGatewayId)
       if (gatewayValidation.error) {
         setEditGatewayLimits(gatewayValidation.gateways)
         setEditGatewayInfoOpen(false)
@@ -1892,10 +2039,18 @@ export default function Invoice() {
         payable_amount: payableAmount > 0 ? Number(payableAmount.toFixed(2)) : null,
         invoice_type: editInvoiceType,
         currency: editCurrency,
+        payment_gateway_id: editPaymentGatewayId,
       })
       .eq('id', editingInvoice.id)
 
-    if (error && (isMissingBrandIdColumnError(error) || isMissingColumnError(error, 'currency'))) {
+    if (
+      error &&
+      (
+        isMissingBrandIdColumnError(error) ||
+        isMissingColumnError(error, 'currency') ||
+        isMissingColumnError(error, 'payment_gateway_id')
+      )
+    ) {
       ;({ error } = await supabase
         .from('invoices')
         .update({
@@ -2821,7 +2976,16 @@ export default function Invoice() {
                             <div>
                               <p className="text-sm font-bold text-slate-900">Payment Details</p>
                               <div className="mt-2 rounded-lg border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
-                                <p><span className="font-semibold text-slate-800">Card payments:</span> Stripe</p>
+                                <div>
+                                  <label htmlFor="add-payment-gateway" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Payment Gateway</label>
+                                  <PaymentGatewaySelectField
+                                    id="add-payment-gateway"
+                                    gateways={paymentGateways}
+                                    value={addPaymentGatewayId}
+                                    onChange={setAddPaymentGatewayId}
+                                    disabled={savedAddInvoiceId !== null}
+                                  />
+                                </div>
                                 <div className="mt-3">
                                   <label htmlFor="add-invoice-type" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Invoice Type</label>
                                   <select
@@ -3220,7 +3384,15 @@ export default function Invoice() {
                             <div>
                               <p className="text-sm font-bold text-slate-900">Payment Details</p>
                               <div className="mt-2 rounded-lg border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
-                                <p><span className="font-semibold text-slate-800">Card payments:</span> Stripe</p>
+                                <div>
+                                  <label htmlFor="edit-payment-gateway" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Payment Gateway</label>
+                                  <PaymentGatewaySelectField
+                                    id="edit-payment-gateway"
+                                    gateways={paymentGateways}
+                                    value={editPaymentGatewayId}
+                                    onChange={setEditPaymentGatewayId}
+                                  />
+                                </div>
                                 <div className="mt-3">
                                   <label htmlFor="edit-invoice-type" className="block text-xs font-bold uppercase tracking-wide text-slate-500">Invoice Type</label>
                                   <select

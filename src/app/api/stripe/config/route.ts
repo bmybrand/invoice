@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { findMatchingStripeGatewayForAmount, getInvoicePaymentContext } from '@/lib/server-stripe-gateways'
+import { getInvoicePaymentContext, resolveStripeGatewayForInvoice } from '@/lib/server-stripe-gateways'
 import { requireBoundInvoiceToken } from '@/lib/server-invoice-access'
 
 export async function GET(req: Request) {
@@ -21,7 +21,11 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: invoiceContext.error }, { status: invoiceContext.status })
   }
 
-  const gatewayLookup = await findMatchingStripeGatewayForAmount(invoiceContext.supabase, invoiceContext.amount)
+  const gatewayLookup = await resolveStripeGatewayForInvoice(
+    invoiceContext.supabase,
+    invoiceId,
+    invoiceContext.amount
+  )
   if (!gatewayLookup.ok) {
     return NextResponse.json({ error: gatewayLookup.error }, { status: gatewayLookup.status })
   }
