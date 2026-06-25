@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
 import { applyRateLimit, getRateLimitIdentity } from '@/lib/rate-limit'
+import { isEmailSendingEnabled } from '@/lib/server-app-settings'
 
 function escapeHtml(value: string): string {
   return value
@@ -196,6 +197,10 @@ export async function POST(request: Request) {
 
   if (!clientRow) {
     return NextResponse.json({ error: 'Pending registration request not found' }, { status: 404 })
+  }
+
+  if (!(await isEmailSendingEnabled(supabase))) {
+    return NextResponse.json({ success: true, skipped: true, reason: 'email_disabled' })
   }
 
   const handlerId = String((clientRow as { handler_id?: string | null }).handler_id || '').trim()

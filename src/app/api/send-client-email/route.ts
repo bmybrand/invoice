@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
 import { applyRateLimit, getRateLimitIdentity } from '@/lib/rate-limit'
+import { isEmailSendingEnabled } from '@/lib/server-app-settings'
 import { requireAdminOrSuperAdmin } from '@/lib/server-admin-auth'
 
 function escapeHtml(value: string): string {
@@ -149,6 +150,10 @@ export async function POST(req: NextRequest) {
     const auth = await requireAdminOrSuperAdmin(req)
     if (!auth.ok) {
       return NextResponse.json({ error: auth.error }, { status: auth.status })
+    }
+
+    if (!(await isEmailSendingEnabled(auth.supabase))) {
+      return NextResponse.json({ success: true, skipped: true, reason: 'email_disabled' })
     }
 
     const rateLimit = applyRateLimit({

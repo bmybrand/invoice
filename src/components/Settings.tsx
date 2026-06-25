@@ -251,6 +251,10 @@ export default function Settings() {
   const [submitting, setSubmitting] = useState(false)
   const [globalModeLoading, setGlobalModeLoading] = useState(false)
   const [globalGatewayMode, setGlobalGatewayMode] = useState<'Testing' | 'Live'>('Testing')
+  const [emailSendingEnabled, setEmailSendingEnabled] = useState(true)
+  const [emailSettingsLoading, setEmailSettingsLoading] = useState(true)
+  const [emailSettingsSaving, setEmailSettingsSaving] = useState(false)
+  const [emailSettingsError, setEmailSettingsError] = useState<string | null>(null)
   const suppressBackgroundRefreshRef = useRef(false)
   const refreshTimeoutRef = useRef<number | null>(null)
   const fetchVersionRef = useRef(0)
@@ -317,6 +321,66 @@ export default function Settings() {
     }
   }, [canViewGateways, currentUserAuthId, hasScopedGatewaysCache, token])
 
+  const loadEmailSettings = useCallback(async () => {
+    if (!canViewGateways) {
+      setEmailSendingEnabled(true)
+      setEmailSettingsLoading(false)
+      return
+    }
+
+    const accessToken = token?.trim() || ''
+    if (!accessToken) {
+      setEmailSettingsLoading(false)
+      return
+    }
+
+    setEmailSettingsLoading(true)
+    setEmailSettingsError(null)
+
+    const res = await fetchWithSession('/api/settings/email', accessToken)
+    const payload = (await res.json().catch(() => ({}))) as { enabled?: boolean; error?: string }
+
+    if (!res.ok) {
+      setEmailSettingsError(payload.error ?? 'Failed to load email settings.')
+      setEmailSettingsLoading(false)
+      return
+    }
+
+    setEmailSendingEnabled(payload.enabled !== false)
+    setEmailSettingsLoading(false)
+  }, [canViewGateways, token])
+
+  async function handleEmailSendingToggle(nextEnabled: boolean) {
+    if (!canViewGateways || emailSettingsSaving) return
+
+    const accessToken = token?.trim() || ''
+    if (!accessToken) {
+      setEmailSettingsError('Authentication expired. Sign in again and try again.')
+      return
+    }
+
+    const previousValue = emailSendingEnabled
+    setEmailSendingEnabled(nextEnabled)
+    setEmailSettingsSaving(true)
+    setEmailSettingsError(null)
+
+    const res = await fetchWithSession('/api/settings/email', accessToken, {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled: nextEnabled }),
+    })
+    const payload = (await res.json().catch(() => ({}))) as { enabled?: boolean; error?: string }
+
+    setEmailSettingsSaving(false)
+
+    if (!res.ok) {
+      setEmailSendingEnabled(previousValue)
+      setEmailSettingsError(payload.error ?? 'Failed to update email settings.')
+      return
+    }
+
+    setEmailSendingEnabled(payload.enabled !== false)
+  }
+
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       void loadGateways({ background: hasScopedGatewaysCache })
@@ -329,6 +393,14 @@ export default function Settings() {
       }
     }
   }, [hasScopedGatewaysCache, loadGateways])
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void loadEmailSettings()
+    }, 0)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [loadEmailSettings])
 
   const scheduleGatewayRefresh = useCallback(() => {
     suppressBackgroundRefreshRef.current = true
@@ -708,6 +780,50 @@ export default function Settings() {
 
   return (
     <div className={`${plusJakarta.className} flex w-full flex-col text-white`}>
+      {canViewGateways ? (
+        <div className="w-full pb-6">
+          <div className="rounded-xl border border-slate-700 bg-slate-800/80 p-4 sm:p-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <h2 className="text-lg font-bold text-white">Email Notifications</h2>
+                <p className="mt-1 text-sm text-slate-400">
+                  Turn system emails on or off for invoices, client approvals, and registration alerts.
+                </p>
+                {emailSettingsError ? (
+                  <p className="mt-2 text-sm text-rose-300">{emailSettingsError}</p>
+                ) : null}
+              </div>
+              <div className="flex items-center gap-3">
+                <span className={`text-sm font-semibold ${emailSendingEnabled ? 'text-emerald-400' : 'text-slate-400'}`}>
+                  {emailSettingsLoading
+                    ? 'Loading...'
+                    : emailSendingEnabled
+                      ? 'Emails enabled'
+                      : 'Emails disabled'}
+                </span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={emailSendingEnabled}
+                  aria-label="Toggle email sending"
+                  disabled={emailSettingsLoading || emailSettingsSaving || !canViewGateways}
+                  onClick={() => void handleEmailSendingToggle(!emailSendingEnabled)}
+                  className={`relative h-8 w-14 shrink-0 rounded-full transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                    emailSendingEnabled ? 'bg-emerald-500' : 'bg-slate-600'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-1 left-1 h-6 w-6 rounded-full bg-white shadow transition ${
+                      emailSendingEnabled ? 'translate-x-6' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="w-full pb-6">
         <div className="flex w-full flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-col gap-1">

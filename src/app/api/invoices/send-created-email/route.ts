@@ -4,6 +4,7 @@ import { env } from '@/lib/env'
 import { formatInvoiceCode } from '@/lib/invoice-code'
 import { getInvoiceLink } from '@/lib/invoice-token'
 import { applyRateLimit, getRateLimitIdentity } from '@/lib/rate-limit'
+import { isEmailSendingEnabled } from '@/lib/server-app-settings'
 import { requireActiveEmployee } from '@/lib/server-employee-auth'
 
 type InvoiceServiceLine = {
@@ -295,6 +296,10 @@ export async function POST(request: NextRequest) {
     })
     if (!rateLimit.ok) {
       return NextResponse.json({ error: 'Too many invoice email requests. Please try again shortly.' }, { status: 429 })
+    }
+
+    if (!(await isEmailSendingEnabled(auth.supabase))) {
+      return NextResponse.json({ success: true, skipped: true, reason: 'email_disabled' })
     }
 
     const body = await request.json().catch(() => null)

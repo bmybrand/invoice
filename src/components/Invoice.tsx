@@ -1660,12 +1660,17 @@ export default function Invoice() {
         text: `Invoice #${formatInvoiceCode(nextInvoiceId)} created successfully. Client email was skipped because the brand is not BMYBrand.`,
       })
     } else {
-      const emailError = await sendCreatedInvoiceEmail(nextInvoiceId)
-      if (emailError) {
-        setAddError(emailError)
+      const emailResult = await sendCreatedInvoiceEmail(nextInvoiceId)
+      if (emailResult === 'skipped_disabled') {
+        setActionMessage({
+          type: 'success',
+          text: `Invoice #${formatInvoiceCode(nextInvoiceId)} created successfully. Email sending is turned off in Settings.`,
+        })
+      } else if (emailResult !== 'sent') {
+        setAddError(emailResult)
         setActionMessage({
           type: 'error',
-          text: `Invoice #${formatInvoiceCode(nextInvoiceId)} created, but the email was not sent: ${emailError}`,
+          text: `Invoice #${formatInvoiceCode(nextInvoiceId)} created, but the email was not sent: ${emailResult}`,
         })
       } else {
         setActionMessage({
@@ -1871,11 +1876,16 @@ export default function Invoice() {
         text: `Due invoice #${formatInvoiceCode(nextInvoiceId)} created for ${formatCurrencyAmount(requestedAmount, sourceCurrency)}. Client email was skipped because the brand is not BMYBrand.`,
       })
     } else {
-      const emailError = await sendCreatedInvoiceEmail(nextInvoiceId)
-      if (emailError) {
+      const emailResult = await sendCreatedInvoiceEmail(nextInvoiceId)
+      if (emailResult === 'skipped_disabled') {
+        setActionMessage({
+          type: 'success',
+          text: `Due invoice #${formatInvoiceCode(nextInvoiceId)} created for ${formatCurrencyAmount(requestedAmount, sourceCurrency)}. Email sending is turned off in Settings.`,
+        })
+      } else if (emailResult !== 'sent') {
         setActionMessage({
           type: 'error',
-          text: `Due invoice #${formatInvoiceCode(nextInvoiceId)} created, but the email was not sent: ${emailError}`,
+          text: `Due invoice #${formatInvoiceCode(nextInvoiceId)} created, but the email was not sent: ${emailResult}`,
         })
       } else {
         setActionMessage({
@@ -1900,7 +1910,9 @@ export default function Invoice() {
     }
   }
 
-  async function sendCreatedInvoiceEmail(invoiceId: number): Promise<string | null> {
+  async function sendCreatedInvoiceEmail(
+    invoiceId: number
+  ): Promise<'sent' | 'skipped_disabled' | string> {
     const accessToken = await resolveAccessToken()
     if (!accessToken) {
       return 'Invoice created, but the email could not be sent because your session token was unavailable.'
@@ -1915,11 +1927,18 @@ export default function Invoice() {
         },
         body: JSON.stringify({ invoiceId }),
       })
-      const result = (await response.json().catch(() => null)) as { error?: string } | null
+      const result = (await response.json().catch(() => null)) as {
+        error?: string
+        skipped?: boolean
+        reason?: string
+      } | null
       if (!response.ok) {
         return result?.error || 'Invoice created, but the email could not be sent.'
       }
-      return null
+      if (result?.skipped && result.reason === 'email_disabled') {
+        return 'skipped_disabled'
+      }
+      return 'sent'
     } catch (error) {
       return error instanceof Error ? error.message : 'Invoice created, but the email could not be sent.'
     }
