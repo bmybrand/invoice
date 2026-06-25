@@ -706,20 +706,22 @@ export function InvoiceDocument({
             </div>
           </div>
 
-          <div>
-            <p className="text-sm font-bold text-slate-900">Terms & Conditions</p>
-            <p className="mt-1 text-xs leading-5 text-slate-500">
-              Please review our{' '}
-              <a href="https://bmybrand.com/terms-of-use" target="_blank" rel="noopener noreferrer" className="font-semibold text-orange-600 hover:text-orange-700">
-                Terms & Conditions
-              </a>{' '}
-              and{' '}
-              <a href="https://bmybrand.com/privacy-policy" target="_blank" rel="noopener noreferrer" className="font-semibold text-orange-600 hover:text-orange-700">
-                Privacy Policy
-              </a>
-              .
-            </p>
-          </div>
+          {showBmyFooter ? (
+            <div>
+              <p className="text-sm font-bold text-slate-900">Terms & Conditions</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">
+                Please review our{' '}
+                <a href="https://bmybrand.com/terms-of-use" target="_blank" rel="noopener noreferrer" className="font-semibold text-orange-600 hover:text-orange-700">
+                  Terms & Conditions
+                </a>{' '}
+                and{' '}
+                <a href="https://bmybrand.com/privacy-policy" target="_blank" rel="noopener noreferrer" className="font-semibold text-orange-600 hover:text-orange-700">
+                  Privacy Policy
+                </a>
+                .
+              </p>
+            </div>
+          ) : null}
         </div>
 
         <div className="invoice-totals-block w-full md:justify-self-end md:w-80">
@@ -3020,6 +3022,7 @@ export default function Invoice() {
                                 </div>
                               </div>
                             </div>
+                            {isBmyBrand(addBrand) ? (
                             <div>
                               <p className="text-sm font-bold text-slate-900">Terms & Conditions</p>
                               <p className="mt-1 text-xs leading-5 text-slate-500">
@@ -3034,6 +3037,7 @@ export default function Invoice() {
                                 .
                               </p>
                             </div>
+                            ) : null}
                           </div>
 
                           <div className="md:justify-self-end md:w-80">
@@ -3427,6 +3431,7 @@ export default function Invoice() {
                                 </div>
                               </div>
                             </div>
+                            {isBmyBrand(editBrand) ? (
                             <div>
                               <p className="text-sm font-bold text-slate-900">Terms & Conditions</p>
                               <p className="mt-1 text-xs leading-5 text-slate-500">
@@ -3441,6 +3446,7 @@ export default function Invoice() {
                                 .
                               </p>
                             </div>
+                            ) : null}
                           </div>
 
                           <div className="md:justify-self-end md:w-80">
