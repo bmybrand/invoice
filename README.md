@@ -175,7 +175,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | `MYSQL_DATABASE` | Local | Database name |
 | `CPANEL_BRIEF_FORMS_BRIDGE_URL` | Production | Full URL to `brief-forms.php` on cPanel |
 | `CPANEL_BRIEF_FORMS_BRIDGE_SECRET` | Production | Shared secret (must match `config.php` on server) |
-| `NEXT_PUBLIC_BRIEF_FORMS_PUBLIC_BASE_URL` | CRM deploy | Brand site base URL for staff **Copy Link** (e.g. `https://bmybrand.vercel.app`) |
+| `NEXT_PUBLIC_BRIEF_FORMS_PUBLIC_BASE_URL` | CRM deploy | Brand site base URL for staff **Copy Link** (e.g. `https://bmybrand.com`) |
 
 > **Note:** If both `CPANEL_BRIEF_FORMS_BRIDGE_*` and `MYSQL_*` are set, the **cPanel bridge is used first**. For local development, use only `MYSQL_*`.
 
@@ -186,12 +186,32 @@ Open [http://localhost:3000](http://localhost:3000).
 | **Brand** | `Bmybrand/rebranding/bmybrand` | Marketing site (`bmybrand.vercel.app`) |
 | **CRM** | `invoice_portal/invoice` | Staff dashboard + brief form UI + API |
 
-1. **CRM Vercel** — set `NEXT_PUBLIC_BRIEF_FORMS_PUBLIC_BASE_URL=https://bmybrand.vercel.app` so **Copy Link** uses the brand domain.
-2. **Brand Vercel** — set `INVOICE_PORTAL_ORIGIN` to your **CRM** production URL (e.g. `https://your-invoice-crm.vercel.app`). The brand app serves `/brief-forms/*` pages that embed the CRM form (iframe). Use the CRM URL here, not `bmybrand.vercel.app`.
+1. **CRM Vercel** — set `NEXT_PUBLIC_BRIEF_FORMS_PUBLIC_BASE_URL=https://bmybrand.com` so **Copy Link** uses your custom brand domain (not `*.vercel.app`). If staff use `dashboard.bmybrand.com`, the app also auto-derives `https://bmybrand.com` when the env still points at Vercel.
+2. **Brand Vercel** — set `INVOICE_PORTAL_ORIGIN` to your **CRM** production URL (e.g. `https://dashboard.bmybrand.com`). The brand app serves `/brief-forms/*` pages that embed the CRM form (iframe). Use the CRM URL here, not `bmybrand.com` or `bmybrand.vercel.app`.
 
 Both deployments need the same Supabase and cPanel bridge env vars so public forms can submit.
 
 **404 on brand links?** Deploy the latest **bmybrand** code (includes `app/brief-forms/[formType]`). On the **bmybrand** Vercel project (not CRM), set `INVOICE_PORTAL_ORIGIN` to your CRM production URL and redeploy. If you see “Brief form is not configured”, the env var is missing or points at the wrong host.
+
+**Hide `bmybrand.vercel.app` in the browser?** Clients should open `https://bmybrand.com/brief-forms/...` (CRM **Copy Link** uses that domain). Also on the **bmybrand** Vercel project:
+
+1. **Domains** — add `bmybrand.com` (and `www.bmybrand.com` if needed) and set it as the primary domain.
+2. **Redirect** — send `bmybrand.vercel.app` → `https://bmybrand.com` so old bookmarks still land on the custom domain. In the brand repo, add `vercel.json`:
+
+```json
+{
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "bmybrand.vercel.app" }],
+      "destination": "https://bmybrand.com/:path*",
+      "permanent": true
+    }
+  ]
+}
+```
+
+Redeploy the brand site after adding the redirect.
 
 ---
 
