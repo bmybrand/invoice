@@ -25,3 +25,92 @@ create policy "Published jobs are publicly readable"
   using (is_published = true);
 
 grant select on public.job_openings to anon, authenticated;
+
+insert into public.job_openings (
+  slug,
+  title,
+  summary,
+  department,
+  location,
+  workplace,
+  employment_type,
+  sort_order,
+  is_published
+)
+values
+  (
+    'senior-product-designer',
+    'Senior Product Designer',
+    'Lead thoughtful web and product experiences from early discovery through polished delivery, working closely with strategy, content, and engineering.',
+    'Design',
+    'Toronto, Canada',
+    'Hybrid',
+    'Full-time',
+    10,
+    true
+  ),
+  (
+    'full-stack-developer',
+    'Full-Stack Developer',
+    'Build responsive digital platforms, reliable integrations, and scalable product features using modern frontend and backend technologies.',
+    'Technology',
+    'Remote',
+    'Remote',
+    'Full-time',
+    20,
+    true
+  ),
+  (
+    'growth-marketing-strategist',
+    'Growth Marketing Strategist',
+    'Turn customer insight into measurable campaigns across content, paid media, conversion optimization, and lifecycle marketing.',
+    'Growth',
+    'Remote',
+    'Remote',
+    'Full-time',
+    30,
+    true
+  ),
+  (
+    'project-coordinator',
+    'Project Coordinator',
+    'Keep multidisciplinary client work moving with clear priorities, organized communication, dependable follow-through, and strong attention to detail.',
+    'Operations',
+    'Allen, Texas',
+    'Hybrid',
+    'Full-time',
+    40,
+    true
+  ),
+  (
+    'motion-ui-designer',
+    'Motion & UI Designer',
+    'Create expressive interface systems, motion concepts, and visual stories that make digital brands feel distinctive and intuitive.',
+    'Design',
+    'Remote',
+    'Remote',
+    'Contract',
+    50,
+    true
+  ),
+  (
+    'quality-assurance-engineer',
+    'Quality Assurance Engineer',
+    'Protect product quality by designing practical test plans, investigating edge cases, and partnering with developers throughout delivery.',
+    'Technology',
+    'Toronto, Canada',
+    'Hybrid',
+    'Full-time',
+    60,
+    true
+  )
+on conflict (slug) do update set
+  title = excluded.title,
+  summary = excluded.summary,
+  department = excluded.department,
+  location = excluded.location,
+  workplace = excluded.workplace,
+  employment_type = excluded.employment_type,
+  sort_order = excluded.sort_order,
+  is_published = excluded.is_published,
+  updated_at = now();
