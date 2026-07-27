@@ -270,13 +270,17 @@ function parseFaqs(value: string): Array<{ question: string; answer: string }> {
   }
 }
 
-function parseImages(value: string): Array<{ src: string; alt: string }> {
+function parseImages(value: string): Array<{ src: string; alt: string; columns?: number; rowStart?: boolean }> {
   try {
     const images = JSON.parse(value || '[]')
     return Array.isArray(images)
       ? images.map((image) => ({
           src: typeof image?.src === 'string' ? image.src : '',
           alt: typeof image?.alt === 'string' ? image.alt : '',
+          columns: typeof image?.columns === 'number'
+            ? Math.min(12, Math.max(1, Math.round(image.columns)))
+            : 6,
+          rowStart: typeof image?.rowStart === 'boolean' ? image.rowStart : undefined,
         }))
       : []
   } catch {
@@ -666,6 +670,41 @@ export default function BlogManager() {
     )
   }
 
+  function beginConclusionImageWidthResize(
+    event: React.PointerEvent<HTMLButtonElement>,
+    imageIndex: number,
+  ) {
+    event.preventDefault()
+    event.stopPropagation()
+
+    const imageElement = event.currentTarget.closest<HTMLElement>('[data-conclusion-image]')
+    const canvas = imageElement?.closest<HTMLElement>('[data-conclusion-image-canvas]')
+    if (!imageElement || !canvas) return
+
+    const startX = event.clientX
+    const images = parseImages(editor?.closingImages ?? '[]')
+    const startColumns = images[imageIndex]?.columns ?? 6
+    const columnWidth = canvas.getBoundingClientRect().width / 12
+
+    const handleMove = (moveEvent: PointerEvent) => {
+      const deltaColumns = Math.round((moveEvent.clientX - startX) / columnWidth)
+      const columns = Math.min(12, Math.max(1, startColumns + deltaColumns))
+      patchClosingImage(imageIndex, { columns })
+    }
+
+    const stopResize = () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', stopResize)
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+    }
+
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'ew-resize'
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', stopResize)
+  }
+
   function beginBlockWidthResize(
     event: React.PointerEvent<HTMLButtonElement>,
     blockIndex: number,
@@ -842,7 +881,10 @@ export default function BlogManager() {
     update('faqs', pretty(faqs))
   }
 
-  function patchClosingImage(index: number, patch: Partial<{ src: string; alt: string }>) {
+  function patchClosingImage(
+    index: number,
+    patch: Partial<{ src: string; alt: string; columns: number; rowStart: boolean }>,
+  ) {
     if (!editor) return
     const images = parseImages(editor.closingImages)
     images[index] = { ...images[index], ...patch }
@@ -856,9 +898,45 @@ export default function BlogManager() {
     update('closingImages', pretty(images))
   }
 
-  function addClosingImage() {
+  function dropConclusionImage(event: React.DragEvent<HTMLElement>, targetIndex: number) {
+    event.preventDefault()
+    event.stopPropagation()
     if (!editor) return
-    update('closingImages', pretty([...parseImages(editor.closingImages), { src: '', alt: '' }]))
+    const images = parseImages(editor.closingImages)
+    const paletteType = event.dataTransfer.getData('application/x-blog-flexible-block')
+    const conclusionSource = event.dataTransfer.getData('application/x-blog-conclusion-image-index')
+    const flexibleSource = event.dataTransfer.getData('application/x-blog-flexible-index')
+
+    if (paletteType === 'image') {
+      images.splice(targetIndex, 0, { src: '', alt: '', columns: 6 })
+      update('closingImages', pretty(images))
+      return
+    }
+
+    if (conclusionSource) {
+      const sourceIndex = Number(conclusionSource)
+      if (!Number.isInteger(sourceIndex) || sourceIndex < 0 || sourceIndex >= images.length) return
+      const [moved] = images.splice(sourceIndex, 1)
+      const adjustedTarget = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex
+      images.splice(adjustedTarget, 0, moved)
+      update('closingImages', pretty(images))
+      return
+    }
+
+    if (flexibleSource) {
+      const sourceIndex = Number(flexibleSource)
+      const blocks = getFlexibleBlocks()
+      const source = blocks[sourceIndex]
+      if (!Number.isInteger(sourceIndex) || source?.type !== 'image') return
+      blocks.splice(sourceIndex, 1)
+      setFlexibleBlocks(blocks)
+      images.splice(targetIndex, 0, {
+        src: source.image ?? '',
+        alt: source.alt ?? '',
+        columns: blockColumns(source),
+      })
+      update('closingImages', pretty(images))
+    }
   }
 
   async function saveBlog(event: React.FormEvent) {
@@ -1635,10 +1713,54 @@ export default function BlogManager() {
                   />
                 </section>
 
-                <section className="mt-8">
-                  <div className="grid gap-5 sm:grid-cols-2">
+                <section
+                  className="mt-8 rounded-2xl border border-dashed border-white/15 bg-white/[0.02] p-4"
+                  onDragOver={(event) => {
+                    const dragTypes = Array.from(event.dataTransfer.types)
+                    if (
+                      dragTypes.includes('application/x-blog-flexible-block')
+                      || dragTypes.includes('application/x-blog-conclusion-image-index')
+                      || dragTypes.includes('application/x-blog-flexible-index')
+                    ) {
+                      event.preventDefault()
+                      event.dataTransfer.dropEffect = dragTypes.includes('application/x-blog-flexible-block') ? 'copy' : 'move'
+                    }
+                  }}
+                  onDrop={(event) => dropConclusionImage(event, parseImages(editor.closingImages).length)}
+                >
+                  <div className="mb-4">
+                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-white/45">Images under Conclusion</p>
+                    <p className="mt-1 text-xs leading-5 text-white/35">Drag the Image block here, or move an existing article image here.</p>
+                  </div>
+                  <div data-conclusion-image-canvas className="grid grid-cols-12 items-start gap-4">
                     {parseImages(editor.closingImages).map((image, index) => (
-                      <div key={index}>
+                      <div
+                        key={index}
+                        data-conclusion-image
+                        onDragOver={(event) => {
+                          event.preventDefault()
+                          event.stopPropagation()
+                          event.dataTransfer.dropEffect = 'move'
+                        }}
+                        onDrop={(event) => dropConclusionImage(event, index)}
+                        className="relative rounded-xl border border-white/10 bg-[#090A22]/70 p-3"
+                        style={{
+                          gridColumn: `span ${image.columns ?? 6} / span ${image.columns ?? 6}`,
+                        }}
+                      >
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                          <span
+                            draggable
+                            onDragStart={(event) => {
+                              event.dataTransfer.effectAllowed = 'move'
+                              event.dataTransfer.setData('application/x-blog-conclusion-image-index', String(index))
+                            }}
+                            className="cursor-grab text-[11px] font-bold uppercase tracking-[0.14em] text-[#F45B25] active:cursor-grabbing"
+                          >
+                            â ¿ Image
+                          </span>
+                          <button type="button" onClick={() => removeClosingImage(index)} className={removeButtonClass}>Remove</button>
+                        </div>
                         <label
                           onDragOver={(event) => {
                             event.preventDefault()
@@ -1677,13 +1799,23 @@ export default function BlogManager() {
                         </label>
                         <div className="mt-2 flex items-center gap-2">
                           <input type="url" value={image.src} onChange={(e) => patchClosingImage(index, { src: e.target.value })} className={`${pageInputClass} text-xs text-white/45`} placeholder="Paste an image URL" />
-                          <button type="button" onClick={() => removeClosingImage(index)} className={removeButtonClass}>Remove</button>
                         </div>
                         <input value={image.alt} onChange={(e) => patchClosingImage(index, { alt: e.target.value })} className={`${pageInputClass} mt-1 text-xs text-white/45`} placeholder="Image description" />
+                        <button
+                          type="button"
+                          onPointerDown={(event) => beginConclusionImageWidthResize(event, index)}
+                          className="absolute -right-1 top-1/2 z-20 h-14 w-3 -translate-y-1/2 cursor-ew-resize rounded-full border border-[#F45B25]/70 bg-[#F45B25]/30 transition hover:bg-[#F45B25]/60"
+                          aria-label="Resize conclusion image width"
+                          title="Drag to resize width"
+                        />
                       </div>
                     ))}
+                    {parseImages(editor.closingImages).length === 0 && (
+                      <div className="col-span-12 flex min-h-28 items-center justify-center rounded-xl border border-dashed border-[#F45B25]/45 px-5 text-center text-sm font-bold text-white/45">
+                        Drag Image here
+                      </div>
+                    )}
                   </div>
-                  <button type="button" onClick={addClosingImage} className="mt-4 text-sm font-bold text-[#F45B25]">+ Add closing image</button>
                 </section>
 
                 <section className="mt-16">
