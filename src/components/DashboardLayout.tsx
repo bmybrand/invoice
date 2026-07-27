@@ -273,6 +273,8 @@ function NavIcon({ label, active }: { label: string; active: boolean }) {
       return <BrandIcon className={className} />
     case 'Blogs':
       return <BrandIcon className={className} />
+    case 'Opportunities':
+      return <BriefcaseFormIcon className={className} />
     case 'Invoice':
       return <InvoiceIcon className={className} />
     case 'Payment':
@@ -399,6 +401,7 @@ const allNavItems: Array<{ label: string; href: string }> = [
   { label: 'Payment', href: '/dashboard/payments' },
   { label: 'Brief Forms', href: '/dashboard/brief-forms' },
   { label: 'Blogs', href: '/dashboard/blogs' },
+  { label: 'Opportunities', href: '/dashboard/opportunities' },
   { label: 'Settings', href: '/dashboard/settings' },
 ]
 
@@ -498,7 +501,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   }, [router])
 
   const normalizedDashboardRole = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '')
-  const editorAllowedPaths = ['/dashboard/blogs']
+  const editorAllowedPaths = ['/dashboard/blogs', '/dashboard/opportunities']
   const editorRouteBlocked =
     profileLoaded &&
     accountType === 'employee' &&
@@ -515,10 +518,13 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           { label: 'Brief Forms', href: '/dashboard/brief-forms' },
         ]
       : normalizedDashboardRole === 'editor'
-        ? allNavItems.filter((item) => item.href === '/dashboard/blogs')
+        ? allNavItems.filter((item) => editorAllowedPaths.includes(item.href))
         : allNavItems.filter((item) => {
             const normalizedDepartment = (displayDepartment || '').trim().toLowerCase()
-            if (item.href === '/dashboard/blogs' && normalizedDashboardRole !== 'superadmin') {
+            if (
+              (item.href === '/dashboard/blogs' || item.href === '/dashboard/opportunities') &&
+              normalizedDashboardRole !== 'superadmin'
+            ) {
               return false
             }
             return !(normalizedDepartment.includes('finance') && item.href === '/dashboard/clients')
