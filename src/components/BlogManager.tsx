@@ -419,7 +419,7 @@ export default function BlogManager() {
   const editorModalRef = useRef<HTMLDivElement>(null)
 
   const role = normalizeRole(displayRole)
-  const canManage = accountType === 'employee' && (role === 'editor' || role === 'admin' || role === 'superadmin')
+  const canManage = accountType === 'employee' && (role === 'editor' || role === 'superadmin')
   const accessToken = token?.trim() || ''
   const editorIsOpen = editor !== null
 

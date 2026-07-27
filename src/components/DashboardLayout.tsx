@@ -498,7 +498,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   }, [router])
 
   const normalizedDashboardRole = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '')
-  const editorAllowedPaths = ['/dashboard/blogs', '/dashboard/careers']
+  const editorAllowedPaths = ['/dashboard/blogs']
   const editorRouteBlocked =
     profileLoaded &&
     accountType === 'employee' &&
@@ -518,7 +518,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         ? allNavItems.filter((item) => item.href === '/dashboard/blogs')
         : allNavItems.filter((item) => {
             const normalizedDepartment = (displayDepartment || '').trim().toLowerCase()
-            if (item.href === '/dashboard/blogs' && normalizedDashboardRole !== 'admin' && normalizedDashboardRole !== 'superadmin') {
+            if (item.href === '/dashboard/blogs' && normalizedDashboardRole !== 'superadmin') {
               return false
             }
             return !(normalizedDepartment.includes('finance') && item.href === '/dashboard/clients')

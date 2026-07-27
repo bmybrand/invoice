@@ -41,8 +41,8 @@ export async function requireBlogEditor(request: Request): Promise<BlogEditorAut
   if (employeeError) return { ok: false, status: 500, error: 'Failed to verify editor access' }
 
   const role = normalizeRole((employee as { role?: string } | null)?.role)
-  if (role !== 'editor' && role !== 'admin' && role !== 'superadmin') {
-    return { ok: false, status: 403, error: 'Only editors or administrators can manage blogs' }
+  if (role !== 'editor' && role !== 'superadmin') {
+    return { ok: false, status: 403, error: 'Only editors or super admins can manage blogs' }
   }
 
   return { ok: true, supabase, user, role }
