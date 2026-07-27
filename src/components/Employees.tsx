@@ -271,7 +271,7 @@ export default function Employees() {
   const [addPassword, setAddPassword] = useState('')
   const [addName, setAddName] = useState('')
   const [addAgentName, setAddAgentName] = useState('')
-  const [addRole, setAddRole] = useState<'user' | 'admin'>('user')
+  const [addRole, setAddRole] = useState<'user' | 'admin' | 'editor'>('user')
   const [addDepartment, setAddDepartment] = useState('')
   const [addLoading, setAddLoading] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
@@ -285,7 +285,7 @@ export default function Employees() {
   const [editingEmployee, setEditingEmployee] = useState<EmployeeRow | null>(null)
   const [editName, setEditName] = useState('')
   const [editAgentName, setEditAgentName] = useState('')
-  const [editRole, setEditRole] = useState<'user' | 'admin' | 'superadmin'>('user')
+  const [editRole, setEditRole] = useState<'user' | 'admin' | 'editor' | 'superadmin'>('user')
   const [editDepartment, setEditDepartment] = useState('')
   const [editPassword, setEditPassword] = useState('')
   const [editLoading, setEditLoading] = useState(false)
@@ -304,6 +304,7 @@ export default function Employees() {
     { value: '', label: 'All Roles' },
     { value: 'superadmin', label: 'Superadmin' },
     { value: 'admin', label: 'Admin' },
+    { value: 'editor', label: 'Editor' },
     { value: 'user', label: 'User' }
   ]
 
@@ -656,9 +657,9 @@ export default function Employees() {
         email: addEmail,
         password: addPassword,
         name: addName,
-        agentName: isSalesDepartment(addDepartment) ? addAgentName : '',
+        agentName: addRole !== 'editor' && isSalesDepartment(addDepartment) ? addAgentName : '',
         role: addRole,
-        department: addDepartment,
+        department: addRole === 'editor' ? '' : addDepartment,
       }),
     })
 
@@ -688,7 +689,7 @@ export default function Employees() {
     setEditAgentName(emp.agent_name || '')
     const role = (emp.role || '').trim().toLowerCase().replace(/\s+/g, '')
     setEditRole(
-      role === 'superadmin' ? 'superadmin' : role === 'admin' ? 'admin' : 'user'
+      role === 'superadmin' ? 'superadmin' : role === 'admin' ? 'admin' : role === 'editor' ? 'editor' : 'user'
     )
     setEditDepartment(emp.department || '')
     setEditPassword('')
@@ -759,7 +760,9 @@ export default function Employees() {
 
     const isEditingSuperAdmin = (editingEmployee.role || '').trim().toLowerCase().replace(/\s+/g, '') === 'superadmin'
     const isEditingSelf = editingEmployee.auth_id === profileCurrentUserAuthId
-    const nextDepartment = isEditingSelf ? (editingEmployee.department || '').trim() : editDepartment.trim()
+    const nextDepartment = editRole === 'editor'
+      ? ''
+      : isEditingSelf ? (editingEmployee.department || '').trim() : editDepartment.trim()
     const nextAgentName = isSalesDepartment(nextDepartment) ? editAgentName.trim() || null : null
 
     if (editRole === 'superadmin' && !isEditingSuperAdmin && currentUserEmployeeId) {
@@ -1398,11 +1401,12 @@ export default function Employees() {
                     <select
                       id="edit-role"
                       value={editRole}
-                      onChange={(e) => setEditRole(e.target.value as 'user' | 'admin' | 'superadmin')}
+                      onChange={(e) => setEditRole(e.target.value as 'user' | 'admin' | 'editor' | 'superadmin')}
                       className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                     >
                       <option value="user">User</option>
                       <option value="admin">Admin</option>
+                      <option value="editor">Editor</option>
                       {isSuperAdmin && (
                         <option value="superadmin">Superadmin</option>
                       )}
@@ -1413,7 +1417,7 @@ export default function Employees() {
                   </>
                 )}
               </div>
-              <div>
+              {editRole !== 'editor' && <div>
                 <label htmlFor="edit-department" className="block text-sm font-medium text-slate-300">Department</label>
                 <select
                   id="edit-department"
@@ -1434,7 +1438,7 @@ export default function Employees() {
                 {editingEmployee.auth_id === profileCurrentUserAuthId ? (
                   <p className="mt-0.5 text-xs text-slate-500">You cannot change your own department.</p>
                 ) : null}
-              </div>
+              </div>}
               {isSuperAdmin && (
                 <div>
                   <label htmlFor="edit-password" className="block text-sm font-medium text-slate-300">New password</label>
@@ -1486,7 +1490,7 @@ export default function Employees() {
               <CloseIcon />
             </button>
             <h2 className="text-lg font-bold text-white">Add New Employee</h2>
-            <p className="mt-1 text-sm text-slate-400">Create a user or admin. Super Admin is set separately (one only).</p>
+            <p className="mt-1 text-sm text-slate-400">Create a user, admin, or editor. Editors only manage website content.</p>
             <form
               onSubmit={handleAddSubmit}
               onInvalidCapture={handleRequiredFieldInvalid}
@@ -1552,14 +1556,15 @@ export default function Employees() {
                 <select
                   id="add-role"
                   value={addRole}
-                  onChange={(e) => setAddRole(e.target.value as 'user' | 'admin')}
+                  onChange={(e) => setAddRole(e.target.value as 'user' | 'admin' | 'editor')}
                   className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                 >
                   <option value="user">User</option>
                   <option value="admin">Admin</option>
+                  <option value="editor">Editor</option>
                 </select>
               </div>
-              <div>
+              {addRole !== 'editor' && <div>
                 <label htmlFor="add-department" className="block text-sm font-medium text-slate-300">Department</label>
                 <select
                   id="add-department"
@@ -1572,7 +1577,7 @@ export default function Employees() {
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                   ))}
                 </select>
-              </div>
+              </div>}
               {addError && (
                 <p className="rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-400">{addError}</p>
               )}

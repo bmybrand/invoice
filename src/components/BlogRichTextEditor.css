@@ -1,0 +1,122 @@
+.blog-ckeditor {
+  --ck-color-base-background: #0b1323;
+  --ck-color-base-foreground: #111c31;
+  --ck-color-base-border: #334155;
+  --ck-color-base-text: #e2e8f0;
+  --ck-color-text: #e2e8f0;
+  --ck-color-toolbar-background: #101a2e;
+  --ck-color-toolbar-border: #334155;
+  --ck-color-panel-background: #111c31;
+  --ck-color-panel-border: #334155;
+  --ck-color-input-background: #0b1323;
+  --ck-color-input-border: #475569;
+  --ck-color-input-text: #f8fafc;
+  --ck-color-button-default-background: transparent;
+  --ck-color-button-default-color: #cbd5e1;
+  --ck-color-button-default-hover-background: #1e293b;
+  --ck-color-button-default-hover-color: #ffffff;
+  --ck-color-button-default-active-background: #25334a;
+  --ck-color-button-on-background: #f45b25;
+  --ck-color-button-on-color: #ffffff;
+  --ck-color-button-on-hover-background: #dc4b1b;
+  --ck-color-focus-border: #f45b25;
+  --ck-color-list-background: #111c31;
+  --ck-color-list-button-hover-background: #1e293b;
+  --ck-color-list-button-on-background: #f45b25;
+  --ck-color-list-button-on-text: #ffffff;
+}
+
+.blog-ckeditor .ck.ck-toolbar,
+.blog-ckeditor .ck.ck-editor__main > .ck-editor__editable,
+.blog-ckeditor .ck.ck-dropdown__panel,
+.blog-ckeditor .ck.ck-balloon-panel {
+  background: #0b1323;
+  border-color: #334155;
+  color: #e2e8f0;
+}
+
+.blog-ckeditor .ck.ck-toolbar {
+  background: #101a2e;
+}
+
+.blog-ckeditor .ck-content {
+  color: #e2e8f0;
+}
+
+.blog-ckeditor .ck-content h1,
+.blog-ckeditor .ck-content h2,
+.blog-ckeditor .ck-content h3,
+.blog-ckeditor .ck-content h4 {
+  color: #ffffff;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.blog-ckeditor .ck-content h1 {
+  margin: 2.25rem 0 1rem;
+  font-size: 2.25rem;
+}
+
+.blog-ckeditor .ck-content h2 {
+  margin: 2rem 0 0.85rem;
+  font-size: 1.8rem;
+}
+
+.blog-ckeditor .ck-content h3 {
+  margin: 1.6rem 0 0.7rem;
+  font-size: 1.4rem;
+}
+
+.blog-ckeditor .ck-content h4 {
+  margin: 1.35rem 0 0.6rem;
+  font-size: 1.15rem;
+}
+
+.blog-ckeditor .ck-content ul,
+.blog-ckeditor .ck-content ol {
+  margin: 1rem 0 1.25rem;
+  padding-left: 1.5rem;
+}
+
+.blog-ckeditor .ck-content li {
+  margin-bottom: 0.45rem;
+}
+
+.blog-ckeditor .ck-content li::marker {
+  color: #f45b25;
+}
+
+.blog-ckeditor .ck-content a {
+  color: #fb7a4c;
+}
+
+.blog-ckeditor .ck-content blockquote {
+  border-left-color: #f45b25;
+  color: #cbd5e1;
+}
+
+.blog-ckeditor .ck-source-editing-area textarea {
+  background: #0b1323;
+  color: #e2e8f0;
+  caret-color: #f45b25;
+}
+
+.blog-ckeditor .ck-editor__editable_inline {
+  min-height: 420px;
+  max-height: 65vh;
+  overflow-y: auto;
+  padding: 1.25rem 1.5rem;
+}
+
+.blog-ckeditor .ck-source-editing-area,
+.blog-ckeditor .ck-source-editing-area textarea {
+  min-height: 420px;
+}
+
+@media (max-width: 640px) {
+  .blog-ckeditor .ck-editor__editable_inline,
+  .blog-ckeditor .ck-source-editing-area,
+  .blog-ckeditor .ck-source-editing-area textarea {
+    min-height: 320px;
+  }
+}

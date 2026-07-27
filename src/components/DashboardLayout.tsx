@@ -271,6 +271,8 @@ function NavIcon({ label, active }: { label: string; active: boolean }) {
       return <ChatIcon className={className} />
     case 'Brand Identity':
       return <BrandIcon className={className} />
+    case 'Blogs':
+      return <BrandIcon className={className} />
     case 'Invoice':
       return <InvoiceIcon className={className} />
     case 'Payment':
@@ -396,6 +398,7 @@ const allNavItems: Array<{ label: string; href: string }> = [
   { label: 'Invoice', href: '/dashboard/invoices' },
   { label: 'Payment', href: '/dashboard/payments' },
   { label: 'Brief Forms', href: '/dashboard/brief-forms' },
+  { label: 'Blogs', href: '/dashboard/blogs' },
   { label: 'Settings', href: '/dashboard/settings' },
 ]
 
@@ -494,6 +497,14 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     router.replace('/login')
   }, [router])
 
+  const normalizedDashboardRole = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '')
+  const editorAllowedPaths = ['/dashboard/blogs', '/dashboard/careers']
+  const editorRouteBlocked =
+    profileLoaded &&
+    accountType === 'employee' &&
+    normalizedDashboardRole === 'editor' &&
+    !editorAllowedPaths.some((allowedPath) => pathname === allowedPath || pathname.startsWith(`${allowedPath}/`))
+
   const visibleNavItems =
     accountType === 'client'
       ? [
@@ -503,10 +514,19 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           { label: 'Chat', href: '/dashboard/chat' },
           { label: 'Brief Forms', href: '/dashboard/brief-forms' },
         ]
-      : allNavItems.filter((item) => {
-          const normalizedDepartment = (displayDepartment || '').trim().toLowerCase()
-          return !(normalizedDepartment.includes('finance') && item.href === '/dashboard/clients')
-        })
+      : normalizedDashboardRole === 'editor'
+        ? allNavItems.filter((item) => item.href === '/dashboard/blogs')
+        : allNavItems.filter((item) => {
+            const normalizedDepartment = (displayDepartment || '').trim().toLowerCase()
+            if (item.href === '/dashboard/blogs' && normalizedDashboardRole !== 'admin' && normalizedDashboardRole !== 'superadmin') {
+              return false
+            }
+            return !(normalizedDepartment.includes('finance') && item.href === '/dashboard/clients')
+          })
+
+  useEffect(() => {
+    if (editorRouteBlocked) router.replace('/dashboard/blogs')
+  }, [editorRouteBlocked, router])
 
   const loadProfile = useCallback(async () => {
     if (profileLoadInFlightRef.current) {
@@ -1308,17 +1328,21 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         >
           <header className={`absolute left-0 top-0 z-10 flex h-20 w-full items-center justify-between gap-4 border-b border-slate-800 bg-gray-900 pr-4 backdrop-blur-md transition-[padding-left] duration-200 ease-out sm:pr-6 md:pr-8 lg:px-8 ${mainOffsetClass} lg:!pl-8`}>
             <div className="flex min-w-0 flex-1 items-center gap-3 pl-2 sm:gap-4 sm:pl-0">
-              <GlobalDashboardSearch
-                accountType={accountType}
-                displayRole={displayRole}
-                displayDepartment={displayDepartment}
-                currentUserAuthId={currentUserAuthId}
-                currentEmployeeId={currentEmployeeId}
-              />
+              {normalizedDashboardRole === 'editor' ? (
+                <p className="text-sm font-bold text-slate-300">Content Workspace</p>
+              ) : (
+                <GlobalDashboardSearch
+                  accountType={accountType}
+                  displayRole={displayRole}
+                  displayDepartment={displayDepartment}
+                  currentUserAuthId={currentUserAuthId}
+                  currentEmployeeId={currentEmployeeId}
+                />
+              )}
             </div>
 
             <div className="flex items-center justify-end gap-2 sm:gap-4">
-              {accountType === 'employee' && (
+              {accountType === 'employee' && normalizedDashboardRole !== 'editor' && (
                 <NotificationsBell accountType={accountType} displayRole={displayRole} />
               )}
               <button
@@ -1356,7 +1380,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             className="flex-1 overflow-auto p-4 pt-24 sm:p-6 sm:pt-28 md:p-8 md:pt-28"
           >
             <div key={pathname} className="page-fade-in">
-              {children}
+              {editorRouteBlocked ? (
+                <div className="flex min-h-[320px] items-center justify-center text-sm text-slate-400">Opening content workspace...</div>
+              ) : children}
             </div>
           </main>
         </div>

@@ -14,7 +14,6 @@ export type DriveMediaResult = {
   contentLength: number
 }
 
-const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive'
 const DRIVE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
 const DRIVE_FILES_URL = 'https://www.googleapis.com/drive/v3/files'
 const DRIVE_UPLOAD_URL =
@@ -65,6 +64,10 @@ async function getAccessToken() {
     | null
 
   if (!response.ok || !payload?.access_token) {
+    if (payload?.error === 'invalid_grant') {
+      cachedToken = null
+      throw new Error('Google Drive is disconnected. Reconnect Google Drive to issue a new refresh token.')
+    }
     throw new Error(payload?.error_description || payload?.error || 'Failed to authenticate with Google Drive.')
   }
 
@@ -77,7 +80,7 @@ async function getAccessToken() {
 }
 
 function driveUrl(fileId: string) {
-  return `https://drive.google.com/uc?export=view&id=${encodeURIComponent(fileId)}`
+  return `https://lh3.googleusercontent.com/d/${encodeURIComponent(fileId)}`
 }
 
 function escapeDriveQueryValue(value: string) {
