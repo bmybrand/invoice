@@ -3,9 +3,13 @@ create table if not exists public.job_openings (
   title text not null,
   summary text not null,
   description text not null default '',
+  about_company text not null default '',
+  posted_on text not null default '',
+  job_code text not null default '',
   responsibilities jsonb not null default '[]'::jsonb,
   requirements jsonb not null default '[]'::jsonb,
   benefits jsonb not null default '[]'::jsonb,
+  disclaimer text not null default '',
   apply_url text not null default '/contact?interest=careers',
   department text not null check (department in ('Design', 'Technology', 'Growth', 'Operations')),
   location text not null,
@@ -18,9 +22,13 @@ create table if not exists public.job_openings (
 );
 
 alter table public.job_openings add column if not exists description text not null default '';
+alter table public.job_openings add column if not exists about_company text not null default '';
+alter table public.job_openings add column if not exists posted_on text not null default '';
+alter table public.job_openings add column if not exists job_code text not null default '';
 alter table public.job_openings add column if not exists responsibilities jsonb not null default '[]'::jsonb;
 alter table public.job_openings add column if not exists requirements jsonb not null default '[]'::jsonb;
 alter table public.job_openings add column if not exists benefits jsonb not null default '[]'::jsonb;
+alter table public.job_openings add column if not exists disclaimer text not null default '';
 alter table public.job_openings add column if not exists apply_url text not null default '/contact?interest=careers';
 
 create index if not exists job_openings_published_order_idx

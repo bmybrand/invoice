@@ -9,9 +9,13 @@ type JobRow = {
   title: string
   summary: string
   description: string
+  about_company: string
+  posted_on: string
+  job_code: string
   responsibilities: string[]
   requirements: string[]
   benefits: string[]
+  disclaimer: string
   apply_url: string
   department: 'Design' | 'Technology' | 'Growth' | 'Operations'
   location: string
@@ -29,9 +33,13 @@ type JobEditorState = {
   title: string
   summary: string
   description: string
+  aboutCompany: string
+  postedOn: string
+  jobCode: string
   responsibilities: string
   requirements: string
   benefits: string
+  disclaimer: string
   applyUrl: string
   department: JobRow['department']
   location: string
@@ -47,9 +55,13 @@ const EMPTY_JOB: JobEditorState = {
   title: '',
   summary: '',
   description: '',
+  aboutCompany: '',
+  postedOn: '',
+  jobCode: '',
   responsibilities: '',
   requirements: '',
   benefits: '',
+  disclaimer: '',
   applyUrl: '/contact?interest=careers',
   department: 'Technology',
   location: '',
@@ -82,9 +94,13 @@ function editorFromJob(job: JobRow): JobEditorState {
     title: job.title,
     summary: job.summary,
     description: job.description || '',
+    aboutCompany: job.about_company || '',
+    postedOn: job.posted_on || '',
+    jobCode: job.job_code || '',
     responsibilities: (job.responsibilities ?? []).join('\n'),
     requirements: (job.requirements ?? []).join('\n'),
     benefits: (job.benefits ?? []).join('\n'),
+    disclaimer: job.disclaimer || '',
     applyUrl: job.apply_url || '/contact?interest=careers',
     department: job.department,
     location: job.location,
@@ -184,9 +200,13 @@ export default function JobManager() {
         title,
         summary: editor.summary.trim(),
         description: editor.description.trim(),
+        about_company: editor.aboutCompany.trim(),
+        posted_on: editor.postedOn.trim(),
+        job_code: editor.jobCode.trim(),
         responsibilities: editor.responsibilities.split('\n').map((item) => item.trim()).filter(Boolean),
         requirements: editor.requirements.split('\n').map((item) => item.trim()).filter(Boolean),
         benefits: editor.benefits.split('\n').map((item) => item.trim()).filter(Boolean),
+        disclaimer: editor.disclaimer.trim(),
         apply_url: editor.applyUrl.trim() || '/contact?interest=careers',
         department: editor.department,
         location: editor.location.trim(),
@@ -431,6 +451,14 @@ export default function JobManager() {
                   <input type="number" value={editor.sortOrder} onChange={(event) => update('sortOrder', event.target.value)} className={inputClass} />
                 </Field>
 
+                <Field label="Posted on">
+                  <input value={editor.postedOn} onChange={(event) => update('postedOn', event.target.value)} placeholder="Posted today / July 27, 2026" className={inputClass} />
+                </Field>
+
+                <Field label="Job code">
+                  <input value={editor.jobCode} onChange={(event) => update('jobCode', event.target.value)} placeholder="R53146" className={inputClass} />
+                </Field>
+
                 <label className="flex min-h-12 items-center gap-3 self-end rounded-xl border border-slate-700 bg-[#0b1323] px-4 py-3 text-sm font-bold text-slate-200">
                   <input type="checkbox" checked={editor.isPublished} onChange={(event) => update('isPublished', event.target.checked)} className="h-4 w-4 accent-orange-500" />
                   Published on website
@@ -450,31 +478,44 @@ export default function JobManager() {
                 </div>
 
                 <div className="md:col-span-2">
-                  <Field label="Full description">
+                  <Field label="About BmyBrand">
                     <textarea
-                      rows={8}
-                      value={editor.description}
-                      onChange={(event) => update('description', event.target.value)}
-                      placeholder="Add the full role introduction. Separate paragraphs with a blank line."
+                      rows={7}
+                      value={editor.aboutCompany}
+                      onChange={(event) => update('aboutCompany', event.target.value)}
+                      placeholder="Describe BmyBrand and the team. Separate paragraphs with a blank line."
                       className={`${inputClass} resize-y leading-6`}
                     />
                   </Field>
                 </div>
 
                 <div className="md:col-span-2">
-                  <Field label="Responsibilities — one per line">
+                  <Field label="The Position">
                     <textarea
                       rows={8}
-                      value={editor.responsibilities}
-                      onChange={(event) => update('responsibilities', event.target.value)}
-                      placeholder={'Lead projects from discovery to launch\nCollaborate with design and engineering\nShare progress clearly with the wider team'}
+                      value={editor.description}
+                      onChange={(event) => update('description', event.target.value)}
+                      placeholder="Describe the position, reporting relationships, working environment, and expectations. Separate paragraphs with a blank line."
                       className={`${inputClass} resize-y leading-6`}
                     />
                   </Field>
                 </div>
 
+                <div className="md:col-span-2">
+                  <Field label="Job responsibilities — one per line">
+                    <textarea
+                      rows={14}
+                      value={editor.responsibilities}
+                      onChange={(event) => update('responsibilities', event.target.value)}
+                      placeholder={'Team Leadership & Management:\nLead, mentor, and develop the team\nConduct regular one-on-ones and performance reviews\nTechnical Oversight & Contribution:\nProvide technical guidance\nParticipate in code reviews\nProcess & Delivery:\nOversee planning and sprint execution'}
+                      className={`${inputClass} resize-y leading-6`}
+                    />
+                    <p className="mt-2 text-xs leading-5 text-slate-500">End a line with a colon (:) to display it as a subsection heading.</p>
+                  </Field>
+                </div>
+
                 <div>
-                  <Field label="Requirements — one per line">
+                  <Field label="Job qualifications — one per line">
                     <textarea
                       rows={9}
                       value={editor.requirements}
@@ -492,6 +533,18 @@ export default function JobManager() {
                       value={editor.benefits}
                       onChange={(event) => update('benefits', event.target.value)}
                       placeholder={'Flexible work arrangements\nLearning and development support\nModern tools and clear systems'}
+                      className={`${inputClass} resize-y leading-6`}
+                    />
+                  </Field>
+                </div>
+
+                <div className="md:col-span-2">
+                  <Field label="Inclusion and equal-opportunity statement">
+                    <textarea
+                      rows={8}
+                      value={editor.disclaimer}
+                      onChange={(event) => update('disclaimer', event.target.value)}
+                      placeholder="Add the closing inclusion, accommodation, and equal-opportunity statement. Separate paragraphs with a blank line."
                       className={`${inputClass} resize-y leading-6`}
                     />
                   </Field>
