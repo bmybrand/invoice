@@ -1045,48 +1045,77 @@ export default function BlogManager() {
   }
 
   return (
-    <div className="space-y-6 pb-12">
-      <section className="rounded-[2rem] border border-slate-800 bg-[#0f172a] p-6 sm:p-8">
-        <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+    <div className="mx-auto w-full max-w-7xl pb-12">
+      <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.2em] text-orange-400">Content Management</p>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-orange-400">Website content</p>
             <h1 className="mt-2 text-2xl font-black text-white sm:text-3xl">Manage Blogs</h1>
-            <p className="mt-2 text-sm text-slate-400">Create, edit, publish, or remove articles shown on the BmyBrand website.</p>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">Add, edit, publish, reorder, or remove the articles displayed on the BmyBrand website.</p>
           </div>
-          <button type="button" onClick={() => { setEditor({ ...EMPTY_EDITOR }); setError(''); setSuccess('') }} className="rounded-xl bg-orange-500 px-5 py-3 text-sm font-bold text-white transition hover:bg-orange-600">+ Add Blog</button>
+          <button type="button" onClick={() => { setEditor({ ...EMPTY_EDITOR }); setError(''); setSuccess('') }} className="rounded-xl bg-orange-500 px-5 py-3 text-sm font-black text-white shadow-lg shadow-orange-950/20 transition hover:bg-orange-400">+ Add blog</button>
+      </div>
+
+      {(error || success) && (
+        <div
+          className={`mb-5 rounded-xl border px-4 py-3 text-sm ${
+            error
+              ? 'border-red-500/30 bg-red-500/10 text-red-200'
+              : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+          }`}
+        >
+          {error || success}
         </div>
-      </section>
+      )}
 
-      {error && <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-5 py-4 text-sm text-red-300">{error}</div>}
-      {success && <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-5 py-4 text-sm text-emerald-300">{success}</div>}
-
-      <section className="rounded-[2rem] border border-slate-800 bg-[#0f172a] p-5 sm:p-7">
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by title, slug, or category..." className={`${inputClass} mb-5`} />
-        <div className="space-y-3">
+      <section className="overflow-hidden rounded-2xl border border-slate-800 bg-[#0f172a]">
+        <div className="flex flex-col gap-3 border-b border-slate-800 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search title, slug, or category..." className={`${inputClass} sm:max-w-md`} />
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+            {filteredBlogs.length} {filteredBlogs.length === 1 ? 'article' : 'articles'}
+          </p>
+        </div>
+        <div className="divide-y divide-slate-800">
           {filteredBlogs.map((blog) => (
             <article
               key={blog.slug}
-              className="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-[#0b1323] p-4 transition lg:flex-row lg:items-center lg:justify-between"
+              className="grid gap-5 p-5 transition hover:bg-white/[0.02] lg:grid-cols-[1fr_auto] lg:items-center"
             >
-              <div className="min-w-0 [&>span]:hidden">
-                <span className="select-none text-xl font-black tracking-[-0.35em] text-slate-600" aria-hidden="true">••</span>
-                <div className="min-w-0">
+              <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: blog.accent }} />
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">{blog.category}</span>
-                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${blog.is_published ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-300'}`}>{blog.is_published ? 'Published' : 'Draft'}</span>
+                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.13em] ${
+                    blog.is_published ? 'bg-emerald-500/10 text-emerald-300' : 'bg-amber-500/10 text-amber-300'
+                  }`}>
+                    {blog.is_published ? 'Published' : 'Draft'}
+                  </span>
+                  <span className="inline-flex items-center gap-2 rounded-full bg-orange-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.13em] text-orange-300">
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: blog.accent }} />
+                    {blog.category}
+                  </span>
                 </div>
-                <h2 className="mt-2 truncate text-base font-bold text-white sm:text-lg">{blog.title}</h2>
-                <p className="mt-1 truncate text-xs text-slate-500">/{blog.slug} · Order {blog.sort_order}</p>
+                <h2 className="mt-3 text-xl font-black text-white">{blog.title}</h2>
+                <p className="mt-2 line-clamp-2 max-w-3xl text-sm leading-6 text-slate-400">{blog.excerpt}</p>
+                <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                  <span>/{blog.slug}</span>
+                  <span>•</span>
+                  <span>{blog.read_time}</span>
+                  <span>•</span>
+                  <span>Order {blog.sort_order}</span>
                 </div>
               </div>
               <div className="flex shrink-0 gap-2">
-                <button type="button" onClick={() => { setEditor(editorFromBlog(blog)); setError(''); setSuccess('') }} className="rounded-lg border border-slate-700 px-4 py-2 text-sm font-bold text-slate-200 hover:border-orange-500 hover:text-orange-400">Edit</button>
-                <button type="button" disabled={deletingSlug === blog.slug} onClick={() => void deleteBlog(blog)} className="rounded-lg border border-red-500/30 px-4 py-2 text-sm font-bold text-red-300 hover:bg-red-500/10 disabled:opacity-50">{deletingSlug === blog.slug ? 'Deleting...' : 'Delete'}</button>
+                <button type="button" onClick={() => { setEditor(editorFromBlog(blog)); setError(''); setSuccess('') }} className="rounded-lg border border-slate-700 px-4 py-2 text-sm font-bold text-slate-200 transition hover:border-orange-500 hover:text-orange-400">Edit</button>
+                <button type="button" disabled={deletingSlug === blog.slug} onClick={() => void deleteBlog(blog)} className="rounded-lg border border-red-500/30 px-4 py-2 text-sm font-bold text-red-300 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50">{deletingSlug === blog.slug ? 'Deleting...' : 'Delete'}</button>
               </div>
             </article>
           ))}
-          {filteredBlogs.length === 0 && <div className="py-14 text-center text-sm text-slate-500">No blogs found.</div>}
+          {filteredBlogs.length === 0 && (
+            <div className="py-16 text-center">
+              <p className="text-sm font-semibold text-slate-400">
+                {query ? 'No articles match your search.' : 'No blog articles have been added yet.'}
+              </p>
+              {!query && <p className="mt-2 text-xs text-slate-600">Create the first article when you are ready to publish.</p>}
+            </div>
+          )}
         </div>
       </section>
 
