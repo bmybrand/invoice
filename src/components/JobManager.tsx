@@ -8,6 +8,11 @@ type JobRow = {
   slug: string
   title: string
   summary: string
+  description: string
+  responsibilities: string[]
+  requirements: string[]
+  benefits: string[]
+  apply_url: string
   department: 'Design' | 'Technology' | 'Growth' | 'Operations'
   location: string
   workplace: 'Remote' | 'Hybrid' | 'On-site'
@@ -23,6 +28,11 @@ type JobEditorState = {
   slug: string
   title: string
   summary: string
+  description: string
+  responsibilities: string
+  requirements: string
+  benefits: string
+  applyUrl: string
   department: JobRow['department']
   location: string
   workplace: JobRow['workplace']
@@ -36,6 +46,11 @@ const EMPTY_JOB: JobEditorState = {
   slug: '',
   title: '',
   summary: '',
+  description: '',
+  responsibilities: '',
+  requirements: '',
+  benefits: '',
+  applyUrl: '/contact?interest=careers',
   department: 'Technology',
   location: '',
   workplace: 'Remote',
@@ -66,6 +81,11 @@ function editorFromJob(job: JobRow): JobEditorState {
     slug: job.slug,
     title: job.title,
     summary: job.summary,
+    description: job.description || '',
+    responsibilities: (job.responsibilities ?? []).join('\n'),
+    requirements: (job.requirements ?? []).join('\n'),
+    benefits: (job.benefits ?? []).join('\n'),
+    applyUrl: job.apply_url || '/contact?interest=careers',
     department: job.department,
     location: job.location,
     workplace: job.workplace,
@@ -163,6 +183,11 @@ export default function JobManager() {
         slug,
         title,
         summary: editor.summary.trim(),
+        description: editor.description.trim(),
+        responsibilities: editor.responsibilities.split('\n').map((item) => item.trim()).filter(Boolean),
+        requirements: editor.requirements.split('\n').map((item) => item.trim()).filter(Boolean),
+        benefits: editor.benefits.split('\n').map((item) => item.trim()).filter(Boolean),
+        apply_url: editor.applyUrl.trim() || '/contact?interest=careers',
         department: editor.department,
         location: editor.location.trim(),
         workplace: editor.workplace,
@@ -420,6 +445,65 @@ export default function JobManager() {
                       onChange={(event) => update('summary', event.target.value)}
                       placeholder="Describe the role, its impact, and the person you are looking for."
                       className={`${inputClass} resize-y leading-6`}
+                    />
+                  </Field>
+                </div>
+
+                <div className="md:col-span-2">
+                  <Field label="Full description">
+                    <textarea
+                      rows={8}
+                      value={editor.description}
+                      onChange={(event) => update('description', event.target.value)}
+                      placeholder="Add the full role introduction. Separate paragraphs with a blank line."
+                      className={`${inputClass} resize-y leading-6`}
+                    />
+                  </Field>
+                </div>
+
+                <div className="md:col-span-2">
+                  <Field label="Responsibilities — one per line">
+                    <textarea
+                      rows={8}
+                      value={editor.responsibilities}
+                      onChange={(event) => update('responsibilities', event.target.value)}
+                      placeholder={'Lead projects from discovery to launch\nCollaborate with design and engineering\nShare progress clearly with the wider team'}
+                      className={`${inputClass} resize-y leading-6`}
+                    />
+                  </Field>
+                </div>
+
+                <div>
+                  <Field label="Requirements — one per line">
+                    <textarea
+                      rows={9}
+                      value={editor.requirements}
+                      onChange={(event) => update('requirements', event.target.value)}
+                      placeholder={'Relevant professional experience\nStrong written communication\nA thoughtful portfolio or work examples'}
+                      className={`${inputClass} resize-y leading-6`}
+                    />
+                  </Field>
+                </div>
+
+                <div>
+                  <Field label="Benefits — one per line">
+                    <textarea
+                      rows={9}
+                      value={editor.benefits}
+                      onChange={(event) => update('benefits', event.target.value)}
+                      placeholder={'Flexible work arrangements\nLearning and development support\nModern tools and clear systems'}
+                      className={`${inputClass} resize-y leading-6`}
+                    />
+                  </Field>
+                </div>
+
+                <div className="md:col-span-2">
+                  <Field label="Apply URL">
+                    <input
+                      value={editor.applyUrl}
+                      onChange={(event) => update('applyUrl', event.target.value)}
+                      placeholder="/contact?interest=careers"
+                      className={inputClass}
                     />
                   </Field>
                 </div>

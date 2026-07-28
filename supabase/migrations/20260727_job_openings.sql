@@ -2,6 +2,11 @@ create table if not exists public.job_openings (
   slug text primary key,
   title text not null,
   summary text not null,
+  description text not null default '',
+  responsibilities jsonb not null default '[]'::jsonb,
+  requirements jsonb not null default '[]'::jsonb,
+  benefits jsonb not null default '[]'::jsonb,
+  apply_url text not null default '/contact?interest=careers',
   department text not null check (department in ('Design', 'Technology', 'Growth', 'Operations')),
   location text not null,
   workplace text not null check (workplace in ('Remote', 'Hybrid', 'On-site')),
@@ -11,6 +16,12 @@ create table if not exists public.job_openings (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.job_openings add column if not exists description text not null default '';
+alter table public.job_openings add column if not exists responsibilities jsonb not null default '[]'::jsonb;
+alter table public.job_openings add column if not exists requirements jsonb not null default '[]'::jsonb;
+alter table public.job_openings add column if not exists benefits jsonb not null default '[]'::jsonb;
+alter table public.job_openings add column if not exists apply_url text not null default '/contact?interest=careers';
 
 create index if not exists job_openings_published_order_idx
   on public.job_openings (is_published, sort_order, created_at desc);
@@ -114,3 +125,45 @@ on conflict (slug) do update set
   sort_order = excluded.sort_order,
   is_published = excluded.is_published,
   updated_at = now();
+
+update public.job_openings
+set
+  description = case
+    when description = '' then summary || E'\n\nYou will join a multidisciplinary team that values clear thinking, useful collaboration, and work that creates a visible result for clients.'
+    else description
+  end,
+  responsibilities = case
+    when responsibilities = '[]'::jsonb then jsonb_build_array(
+      'Own assigned work from early planning through dependable delivery.',
+      'Collaborate closely with strategy, design, growth, and technology teammates.',
+      'Communicate progress, risks, and decisions clearly with the wider team.',
+      'Improve working practices through feedback, documentation, and shared learning.'
+    )
+    else responsibilities
+  end,
+  requirements = case
+    when requirements = '[]'::jsonb then jsonb_build_array(
+      'Relevant professional experience and strong examples of completed work.',
+      'Clear written and verbal communication skills.',
+      'The ability to work independently while contributing actively to a team.',
+      'Good judgment, attention to detail, and a willingness to keep learning.'
+    )
+    else requirements
+  end,
+  benefits = case
+    when benefits = '[]'::jsonb then jsonb_build_array(
+      'Flexible work arrangements based on the role and team.',
+      'Learning, mentoring, and professional development support.',
+      'Modern tools and clear systems that reduce unnecessary friction.',
+      'Meaningful ownership and direct visibility into the impact of your work.'
+    )
+    else benefits
+  end
+where slug in (
+  'senior-product-designer',
+  'full-stack-developer',
+  'growth-marketing-strategist',
+  'project-coordinator',
+  'motion-ui-designer',
+  'quality-assurance-engineer'
+);

@@ -12,6 +12,10 @@ function text(value: unknown) {
   return String(value ?? '').trim()
 }
 
+function textArray(value: unknown) {
+  return Array.isArray(value) ? value.map(text).filter(Boolean) : []
+}
+
 function slug(value: unknown) {
   return text(value)
     .toLowerCase()
@@ -47,6 +51,11 @@ function buildPayload(body: JobPayload) {
       slug: nextSlug,
       title,
       summary,
+      description: text(body.description),
+      responsibilities: textArray(body.responsibilities),
+      requirements: textArray(body.requirements),
+      benefits: textArray(body.benefits),
+      apply_url: text(body.apply_url) || '/contact?interest=careers',
       department,
       location,
       workplace,
