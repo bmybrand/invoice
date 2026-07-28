@@ -23,6 +23,7 @@ type ApplicationRow = {
   cover_letter: string
   resume_file_name: string
   resume_file_size: number
+  resume_drive_file_id: string
   resume_drive_url: string
   status?: string
   created_at: string
@@ -94,6 +95,8 @@ export default function JobApplicationsManager() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [downloadingResumeId, setDownloadingResumeId] = useState('')
+  const [resumeDownloadError, setResumeDownloadError] = useState('')
 
   const role = normalizeRole(displayRole)
   const canView = accountType === 'employee' && (role === 'hr' || role === 'superadmin')
@@ -157,6 +160,41 @@ export default function JobApplicationsManager() {
   }, [applications, query, roleFilter, statusFilter])
 
   const newCount = applications.filter((item) => (item.status || 'new').toLowerCase() === 'new').length
+
+  async function downloadResume(application: ApplicationRow) {
+    if (!accessToken || downloadingResumeId) return
+
+    setDownloadingResumeId(application.id)
+    setResumeDownloadError('')
+
+    try {
+      const response = await fetch(
+        `/api/job-applications/${encodeURIComponent(application.id)}/resume`,
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      )
+
+      if (!response.ok) {
+        const result = (await response.json().catch(() => null)) as { error?: string } | null
+        throw new Error(result?.error || 'Unable to download this resume.')
+      }
+
+      const blob = await response.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = objectUrl
+      link.download = application.resume_file_name || 'resume'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+    } catch (downloadError) {
+      setResumeDownloadError(
+        downloadError instanceof Error ? downloadError.message : 'Unable to download this resume.',
+      )
+    } finally {
+      setDownloadingResumeId('')
+    }
+  }
 
   if (!profileLoaded || loading) {
     return <div className="flex min-h-[320px] items-center justify-center text-sm text-slate-400">Loading applications...</div>
@@ -337,12 +375,20 @@ export default function JobApplicationsManager() {
                     <Detail label="Resume">
                       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
                         <span>{selected.resume_file_name} - {formatFileSize(selected.resume_file_size)}</span>
-                        {selected.resume_drive_url ? (
-                          <a href={selected.resume_drive_url} target="_blank" rel="noreferrer" className="rounded-lg bg-orange-500 px-4 py-2 text-center text-xs font-black text-white transition hover:bg-orange-400">
-                            Open in Google Drive
-                          </a>
+                        {selected.resume_drive_file_id ? (
+                          <button
+                            type="button"
+                            onClick={() => void downloadResume(selected)}
+                            disabled={downloadingResumeId === selected.id}
+                            className="rounded-lg bg-orange-500 px-4 py-2 text-center text-xs font-black text-white transition hover:bg-orange-400 disabled:cursor-wait disabled:opacity-60"
+                          >
+                            {downloadingResumeId === selected.id ? 'Downloading...' : 'Download resume'}
+                          </button>
                         ) : <span className="text-xs text-amber-300">Drive link unavailable</span>}
                       </div>
+                      {resumeDownloadError && (
+                        <p className="mt-2 text-xs text-red-300">{resumeDownloadError}</p>
+                      )}
                     </Detail>
                   </div>
                 </div>

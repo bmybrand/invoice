@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import dynamic from 'next/dynamic'
 import { useDashboardProfile } from '@/components/DashboardLayout'
 import { useSessionContext } from '@/context/SessionContext'
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock'
 
 const RichTextEditor = dynamic(() => import('@/components/BlogRichTextEditor'), {
   ssr: false,
@@ -348,7 +349,7 @@ function BlockPalette({
   onDragStateChange,
 }: {
   onInsert: (type: FlexibleBlock['type']) => void
-  onDragStateChange: (dragging: boolean) => void
+  onDragStateChange: (dragging: boolean, type?: FlexibleBlock['type']) => void
 }) {
   return (
     <div className="sticky top-20 z-20 mb-6 rounded-xl border border-white/10 bg-[#1A1B3B]/95 p-4 shadow-xl backdrop-blur">
@@ -362,9 +363,9 @@ function BlockPalette({
             onDragStart={(event) => {
               event.dataTransfer.effectAllowed = 'copy'
               event.dataTransfer.setData('application/x-blog-flexible-block', type)
-              onDragStateChange(true)
+              onDragStateChange(true, type)
             }}
-            onDragEnd={() => onDragStateChange(false)}
+            onDragEnd={() => onDragStateChange(false, type)}
             onClick={() => onInsert(type)}
             className="cursor-grab rounded-lg border border-white/15 px-3 py-2 text-xs font-bold text-white/65 transition hover:border-[#F45B25] hover:text-[#F45B25] active:cursor-grabbing"
           >
@@ -417,6 +418,8 @@ export default function BlogManager() {
   const [flexibleDropIndex, setFlexibleDropIndex] = useState<number | null>(null)
   const [flexibleDragging, setFlexibleDragging] = useState(false)
   const [flexibleDragSourceIndex, setFlexibleDragSourceIndex] = useState<number | null>(null)
+  const [draggedPaletteBlockType, setDraggedPaletteBlockType] = useState<FlexibleBlock['type'] | null>(null)
+  const [conclusionImageDragging, setConclusionImageDragging] = useState(false)
   const [uploadingImageBlockIndex, setUploadingImageBlockIndex] = useState<number | null>(null)
   const [uploadingHeroImage, setUploadingHeroImage] = useState(false)
   const [uploadingClosingImageIndex, setUploadingClosingImageIndex] = useState<number | null>(null)
@@ -426,6 +429,13 @@ export default function BlogManager() {
   const canManage = accountType === 'employee' && (role === 'editor' || role === 'superadmin')
   const accessToken = token?.trim() || ''
   const editorIsOpen = editor !== null
+  useBodyScrollLock(editorIsOpen)
+  const conclusionImages = editor ? parseImages(editor.closingImages) : []
+  const draggedArticleBlock =
+    flexibleDragSourceIndex === null ? null : getFlexibleBlocks()[flexibleDragSourceIndex]
+  const conclusionImageDropActive =
+    conclusionImageDragging ||
+    (flexibleDragging && (draggedPaletteBlockType === 'image' || draggedArticleBlock?.type === 'image'))
 
   const loadBlogs = useCallback(async () => {
     if (!accessToken || !canManage) {
@@ -906,6 +916,10 @@ export default function BlogManager() {
     const paletteType = event.dataTransfer.getData('application/x-blog-flexible-block')
     const conclusionSource = event.dataTransfer.getData('application/x-blog-conclusion-image-index')
     const flexibleSource = event.dataTransfer.getData('application/x-blog-flexible-index')
+    setConclusionImageDragging(false)
+    setDraggedPaletteBlockType(null)
+    setFlexibleDragging(false)
+    setFlexibleDragSourceIndex(null)
 
     if (paletteType === 'image') {
       images.splice(targetIndex, 0, { src: '', alt: '', columns: 6 })
@@ -1283,9 +1297,10 @@ export default function BlogManager() {
                       </div>
                       <BlockPalette
                         onInsert={(type) => insertFlexibleBlock(getFlexibleBlocks().length, type)}
-                        onDragStateChange={(dragging) => {
+                        onDragStateChange={(dragging, type) => {
                           setFlexibleDragging(dragging)
                           setFlexibleDragSourceIndex(null)
+                          setDraggedPaletteBlockType(dragging ? type ?? null : null)
                         }}
                       />
                       <div
@@ -1332,6 +1347,8 @@ export default function BlogManager() {
                                   event.dataTransfer.setData('application/x-blog-flexible-index', String(blockIndex))
                                   setFlexibleDragging(true)
                                   setFlexibleDragSourceIndex(blockIndex)
+                                  setDraggedPaletteBlockType(null)
+                                  setConclusionImageDragging(false)
                                 }}
                                 onDragEnd={() => {
                                   setFlexibleDropIndex(null)
@@ -1742,7 +1759,7 @@ export default function BlogManager() {
                   />
                 </section>
 
-                <section
+                {(conclusionImages.length > 0 || conclusionImageDropActive) && <section
                   className="mt-8 rounded-2xl border border-dashed border-white/15 bg-white/[0.02] p-4"
                   onDragOver={(event) => {
                     const dragTypes = Array.from(event.dataTransfer.types)
@@ -1757,12 +1774,14 @@ export default function BlogManager() {
                   }}
                   onDrop={(event) => dropConclusionImage(event, parseImages(editor.closingImages).length)}
                 >
-                  <div className="mb-4">
-                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-white/45">Images under Conclusion</p>
-                    <p className="mt-1 text-xs leading-5 text-white/35">Drag the Image block here, or move an existing article image here.</p>
-                  </div>
+                  {conclusionImageDropActive && (
+                    <div className="mb-4">
+                      <p className="text-xs font-bold uppercase tracking-[0.14em] text-white/45">Images under Conclusion</p>
+                      <p className="mt-1 text-xs leading-5 text-white/35">Drop the Image block here.</p>
+                    </div>
+                  )}
                   <div data-conclusion-image-canvas className="grid grid-cols-12 items-start gap-4">
-                    {parseImages(editor.closingImages).map((image, index) => (
+                    {conclusionImages.map((image, index) => (
                       <div
                         key={index}
                         data-conclusion-image
@@ -1783,7 +1802,10 @@ export default function BlogManager() {
                             onDragStart={(event) => {
                               event.dataTransfer.effectAllowed = 'move'
                               event.dataTransfer.setData('application/x-blog-conclusion-image-index', String(index))
+                              setConclusionImageDragging(true)
+                              setDraggedPaletteBlockType(null)
                             }}
+                            onDragEnd={() => setConclusionImageDragging(false)}
                             className="cursor-grab text-[11px] font-bold uppercase tracking-[0.14em] text-[#F45B25] active:cursor-grabbing"
                           >
                             â ¿ Image
@@ -1839,13 +1861,13 @@ export default function BlogManager() {
                         />
                       </div>
                     ))}
-                    {parseImages(editor.closingImages).length === 0 && (
+                    {conclusionImageDropActive && (
                       <div className="col-span-12 flex min-h-28 items-center justify-center rounded-xl border border-dashed border-[#F45B25]/45 px-5 text-center text-sm font-bold text-white/45">
                         Drag Image here
                       </div>
                     )}
                   </div>
-                </section>
+                </section>}
 
                 <section className="mt-16">
                   <h2 className="mb-6 text-2xl font-black">Frequently Asked Questions</h2>
