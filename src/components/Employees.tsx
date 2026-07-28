@@ -271,7 +271,7 @@ export default function Employees() {
   const [addPassword, setAddPassword] = useState('')
   const [addName, setAddName] = useState('')
   const [addAgentName, setAddAgentName] = useState('')
-  const [addRole, setAddRole] = useState<'user' | 'admin' | 'editor'>('user')
+  const [addRole, setAddRole] = useState<'user' | 'admin' | 'editor' | 'hr'>('user')
   const [addDepartment, setAddDepartment] = useState('')
   const [addLoading, setAddLoading] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
@@ -285,7 +285,7 @@ export default function Employees() {
   const [editingEmployee, setEditingEmployee] = useState<EmployeeRow | null>(null)
   const [editName, setEditName] = useState('')
   const [editAgentName, setEditAgentName] = useState('')
-  const [editRole, setEditRole] = useState<'user' | 'admin' | 'editor' | 'superadmin'>('user')
+  const [editRole, setEditRole] = useState<'user' | 'admin' | 'editor' | 'hr' | 'superadmin'>('user')
   const [editDepartment, setEditDepartment] = useState('')
   const [editPassword, setEditPassword] = useState('')
   const [editLoading, setEditLoading] = useState(false)
@@ -305,6 +305,7 @@ export default function Employees() {
     { value: 'superadmin', label: 'Superadmin' },
     { value: 'admin', label: 'Admin' },
     { value: 'editor', label: 'Editor' },
+    { value: 'hr', label: 'HR' },
     { value: 'user', label: 'User' }
   ]
 
@@ -657,9 +658,9 @@ export default function Employees() {
         email: addEmail,
         password: addPassword,
         name: addName,
-        agentName: addRole !== 'editor' && isSalesDepartment(addDepartment) ? addAgentName : '',
+        agentName: addRole !== 'editor' && addRole !== 'hr' && isSalesDepartment(addDepartment) ? addAgentName : '',
         role: addRole,
-        department: addRole === 'editor' ? '' : addDepartment,
+        department: addRole === 'editor' || addRole === 'hr' ? '' : addDepartment,
       }),
     })
 
@@ -689,7 +690,7 @@ export default function Employees() {
     setEditAgentName(emp.agent_name || '')
     const role = (emp.role || '').trim().toLowerCase().replace(/\s+/g, '')
     setEditRole(
-      role === 'superadmin' ? 'superadmin' : role === 'admin' ? 'admin' : role === 'editor' ? 'editor' : 'user'
+      role === 'superadmin' ? 'superadmin' : role === 'admin' ? 'admin' : role === 'editor' ? 'editor' : role === 'hr' ? 'hr' : 'user'
     )
     setEditDepartment(emp.department || '')
     setEditPassword('')
@@ -760,7 +761,7 @@ export default function Employees() {
 
     const isEditingSuperAdmin = (editingEmployee.role || '').trim().toLowerCase().replace(/\s+/g, '') === 'superadmin'
     const isEditingSelf = editingEmployee.auth_id === profileCurrentUserAuthId
-    const nextDepartment = editRole === 'editor'
+    const nextDepartment = editRole === 'editor' || editRole === 'hr'
       ? ''
       : isEditingSelf ? (editingEmployee.department || '').trim() : editDepartment.trim()
     const nextAgentName = isSalesDepartment(nextDepartment) ? editAgentName.trim() || null : null
@@ -1348,7 +1349,7 @@ export default function Employees() {
                   className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 pr-12 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                 />
               </div>
-              {isSalesDepartment(editDepartment) && (
+              {editRole !== 'editor' && editRole !== 'hr' && isSalesDepartment(editDepartment) && (
                 <div className="relative">
                   <label htmlFor="edit-agent-name" className="block text-sm font-medium text-slate-300">Agent name</label>
                   <input
@@ -1401,12 +1402,13 @@ export default function Employees() {
                     <select
                       id="edit-role"
                       value={editRole}
-                      onChange={(e) => setEditRole(e.target.value as 'user' | 'admin' | 'editor' | 'superadmin')}
+                      onChange={(e) => setEditRole(e.target.value as 'user' | 'admin' | 'editor' | 'hr' | 'superadmin')}
                       className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                     >
                       <option value="user">User</option>
                       <option value="admin">Admin</option>
                       <option value="editor">Editor</option>
+                      <option value="hr">HR</option>
                       {isSuperAdmin && (
                         <option value="superadmin">Superadmin</option>
                       )}
@@ -1417,7 +1419,7 @@ export default function Employees() {
                   </>
                 )}
               </div>
-              {editRole !== 'editor' && <div>
+              {editRole !== 'editor' && editRole !== 'hr' && <div>
                 <label htmlFor="edit-department" className="block text-sm font-medium text-slate-300">Department</label>
                 <select
                   id="edit-department"
@@ -1490,7 +1492,7 @@ export default function Employees() {
               <CloseIcon />
             </button>
             <h2 className="text-lg font-bold text-white">Add New Employee</h2>
-            <p className="mt-1 text-sm text-slate-400">Create a user, admin, or editor. Editors only manage website content.</p>
+            <p className="mt-1 text-sm text-slate-400">Create a user, admin, editor, or HR account. HR only manages career applications.</p>
             <form
               onSubmit={handleAddSubmit}
               onInvalidCapture={handleRequiredFieldInvalid}
@@ -1510,7 +1512,7 @@ export default function Employees() {
                   className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                 />
               </div>
-              {isSalesDepartment(addDepartment) && (
+              {addRole !== 'editor' && addRole !== 'hr' && isSalesDepartment(addDepartment) && (
                 <div>
                   <label htmlFor="add-agent-name" className="block text-sm font-medium text-slate-300">Agent name</label>
                   <input
@@ -1556,15 +1558,16 @@ export default function Employees() {
                 <select
                   id="add-role"
                   value={addRole}
-                  onChange={(e) => setAddRole(e.target.value as 'user' | 'admin' | 'editor')}
+                  onChange={(e) => setAddRole(e.target.value as 'user' | 'admin' | 'editor' | 'hr')}
                   className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                 >
                   <option value="user">User</option>
                   <option value="admin">Admin</option>
                   <option value="editor">Editor</option>
+                  <option value="hr">HR</option>
                 </select>
               </div>
-              {addRole !== 'editor' && <div>
+              {addRole !== 'editor' && addRole !== 'hr' && <div>
                 <label htmlFor="add-department" className="block text-sm font-medium text-slate-300">Department</label>
                 <select
                   id="add-department"

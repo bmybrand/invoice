@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server'
 import { requireSuperAdmin } from '@/lib/server-superadmin-auth'
 
-function normalizeRole(value: unknown): 'user' | 'admin' | 'editor' {
+function normalizeRole(value: unknown): 'user' | 'admin' | 'editor' | 'hr' {
   const role = String(value ?? 'user').trim().toLowerCase()
   if (role === 'admin') return 'admin'
   if (role === 'editor') return 'editor'
+  if (role === 'hr') return 'hr'
   return 'user'
 }
 
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Password must be at least 8 characters long' }, { status: 400 })
   }
 
-  if (role !== 'editor' && !department) {
+  if (role !== 'editor' && role !== 'hr' && !department) {
     return NextResponse.json({ error: 'Department is required' }, { status: 400 })
   }
 
@@ -59,7 +60,7 @@ export async function POST(request: Request) {
       employee_name: name,
       agent_name: agentName || null,
       role,
-      department: role === 'editor' ? '' : department,
+      department: role === 'editor' || role === 'hr' ? '' : department,
       isdeleted: false,
     })
     .select('id, auth_id, employee_name, agent_name, email, role, department')

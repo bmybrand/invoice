@@ -275,6 +275,8 @@ function NavIcon({ label, active }: { label: string; active: boolean }) {
       return <BrandIcon className={className} />
     case 'Opportunities':
       return <BriefcaseFormIcon className={className} />
+    case 'Applications':
+      return <UsersIcon className={className} />
     case 'Invoice':
       return <InvoiceIcon className={className} />
     case 'Payment':
@@ -402,6 +404,7 @@ const allNavItems: Array<{ label: string; href: string }> = [
   { label: 'Brief Forms', href: '/dashboard/brief-forms' },
   { label: 'Blogs', href: '/dashboard/blogs' },
   { label: 'Opportunities', href: '/dashboard/opportunities' },
+  { label: 'Applications', href: '/dashboard/applications' },
   { label: 'Settings', href: '/dashboard/settings' },
 ]
 
@@ -502,11 +505,14 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   const normalizedDashboardRole = (displayRole || '').trim().toLowerCase().replace(/\s+/g, '')
   const editorAllowedPaths = ['/dashboard/blogs', '/dashboard/opportunities']
-  const editorRouteBlocked =
+  const hrAllowedPaths = ['/dashboard/applications']
+  const limitedRoleRouteBlocked =
     profileLoaded &&
     accountType === 'employee' &&
-    normalizedDashboardRole === 'editor' &&
-    !editorAllowedPaths.some((allowedPath) => pathname === allowedPath || pathname.startsWith(`${allowedPath}/`))
+    ((normalizedDashboardRole === 'editor' &&
+      !editorAllowedPaths.some((allowedPath) => pathname === allowedPath || pathname.startsWith(`${allowedPath}/`))) ||
+      (normalizedDashboardRole === 'hr' &&
+        !hrAllowedPaths.some((allowedPath) => pathname === allowedPath || pathname.startsWith(`${allowedPath}/`))))
 
   const visibleNavItems =
     accountType === 'client'
@@ -519,20 +525,27 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         ]
       : normalizedDashboardRole === 'editor'
         ? allNavItems.filter((item) => editorAllowedPaths.includes(item.href))
+        : normalizedDashboardRole === 'hr'
+          ? allNavItems.filter((item) => hrAllowedPaths.includes(item.href))
         : allNavItems.filter((item) => {
             const normalizedDepartment = (displayDepartment || '').trim().toLowerCase()
             if (
-              (item.href === '/dashboard/blogs' || item.href === '/dashboard/opportunities') &&
+              (item.href === '/dashboard/blogs' ||
+                item.href === '/dashboard/opportunities') &&
               normalizedDashboardRole !== 'superadmin'
             ) {
+              return false
+            }
+            if (item.href === '/dashboard/applications' && normalizedDashboardRole !== 'superadmin') {
               return false
             }
             return !(normalizedDepartment.includes('finance') && item.href === '/dashboard/clients')
           })
 
   useEffect(() => {
-    if (editorRouteBlocked) router.replace('/dashboard/blogs')
-  }, [editorRouteBlocked, router])
+    if (!limitedRoleRouteBlocked) return
+    router.replace(normalizedDashboardRole === 'hr' ? '/dashboard/applications' : '/dashboard/blogs')
+  }, [limitedRoleRouteBlocked, normalizedDashboardRole, router])
 
   const loadProfile = useCallback(async () => {
     if (profileLoadInFlightRef.current) {
@@ -1334,8 +1347,10 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         >
           <header className={`absolute left-0 top-0 z-10 flex h-20 w-full items-center justify-between gap-4 border-b border-slate-800 bg-gray-900 pr-4 backdrop-blur-md transition-[padding-left] duration-200 ease-out sm:pr-6 md:pr-8 lg:px-8 ${mainOffsetClass} lg:!pl-8`}>
             <div className="flex min-w-0 flex-1 items-center gap-3 pl-2 sm:gap-4 sm:pl-0">
-              {normalizedDashboardRole === 'editor' ? (
-                <p className="text-sm font-bold text-slate-300">Content Workspace</p>
+              {normalizedDashboardRole === 'editor' || normalizedDashboardRole === 'hr' ? (
+                <p className="text-sm font-bold text-slate-300">
+                  {normalizedDashboardRole === 'hr' ? 'HR Workspace' : 'Content Workspace'}
+                </p>
               ) : (
                 <GlobalDashboardSearch
                   accountType={accountType}
@@ -1348,7 +1363,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             </div>
 
             <div className="flex items-center justify-end gap-2 sm:gap-4">
-              {accountType === 'employee' && normalizedDashboardRole !== 'editor' && (
+              {accountType === 'employee' && normalizedDashboardRole !== 'editor' && normalizedDashboardRole !== 'hr' && (
                 <NotificationsBell accountType={accountType} displayRole={displayRole} />
               )}
               <button
@@ -1386,8 +1401,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             className="flex-1 overflow-auto p-4 pt-24 sm:p-6 sm:pt-28 md:p-8 md:pt-28"
           >
             <div key={pathname} className="page-fade-in">
-              {editorRouteBlocked ? (
-                <div className="flex min-h-[320px] items-center justify-center text-sm text-slate-400">Opening content workspace...</div>
+              {limitedRoleRouteBlocked ? (
+                <div className="flex min-h-[320px] items-center justify-center text-sm text-slate-400">Opening your workspace...</div>
               ) : children}
             </div>
           </main>
