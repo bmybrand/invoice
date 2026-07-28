@@ -80,27 +80,27 @@ export async function GET(request: Request) {
 
   const requestedClientId = Number(new URL(request.url).searchParams.get('clientId'))
   const invoiceSelectWithParentBrandIdAndCurrency = `
-    id, invoice_date, invoice_creator_id, client_id, parent_invoice_id, brand_id, payment_gateway_id, client_name, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, currency, created_at,
+    id, invoice_date, due_date, invoice_creator_id, client_id, parent_invoice_id, brand_id, payment_gateway_id, client_name, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, currency, created_at,
     employees!invoice_creator_id(employee_name),
     clients!client_id(name)
   `
   const invoiceSelectWithBrandIdAndCurrency = `
-    id, invoice_date, invoice_creator_id, client_id, brand_id, payment_gateway_id, client_name, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, currency, created_at,
+    id, invoice_date, due_date, invoice_creator_id, client_id, brand_id, payment_gateway_id, client_name, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, currency, created_at,
     employees!invoice_creator_id(employee_name),
     clients!client_id(name)
   `
   const invoiceSelectWithBrandId = `
-    id, invoice_date, invoice_creator_id, client_id, brand_id, client_name, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, created_at,
+    id, invoice_date, due_date, invoice_creator_id, client_id, brand_id, client_name, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, created_at,
     employees!invoice_creator_id(employee_name),
     clients!client_id(name)
   `
   const invoiceSelectWithCurrency = `
-    id, invoice_date, invoice_creator_id, client_id, client_name, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, currency, created_at,
+    id, invoice_date, due_date, invoice_creator_id, client_id, client_name, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, currency, created_at,
     employees!invoice_creator_id(employee_name),
     clients!client_id(name)
   `
   const invoiceSelectLegacy = `
-    id, invoice_date, invoice_creator_id, client_id, client_name, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, created_at,
+    id, invoice_date, due_date, invoice_creator_id, client_id, client_name, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, created_at,
     employees!invoice_creator_id(employee_name),
     clients!client_id(name)
   `
@@ -136,7 +136,7 @@ export async function GET(request: Request) {
       serviceClient
         .from('invoices')
         .select(`
-          id, invoice_date, invoice_creator_id, client_id, parent_invoice_id, brand_id, client_name, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, currency, created_at,
+          id, invoice_date, due_date, invoice_creator_id, client_id, parent_invoice_id, brand_id, client_name, brand_name, email, service, phone, amount, status, payable_amount, invoice_type, currency, created_at,
           employees!invoice_creator_id(employee_name),
           clients!client_id(name)
         `)

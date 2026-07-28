@@ -35,6 +35,7 @@ type BmyRecipientMode = 'registered' | 'manual'
 type InvoiceRow = {
   id: number
   invoice_date: string
+  due_date: string
   invoice_creator_id: number
   invoice_creator: string
   client_id: number | null
@@ -666,7 +667,7 @@ export function InvoiceDocument({
             </div>
             <div className="flex justify-between border-b border-slate-100 pb-2 text-sm">
               <span className="text-slate-500">Due Date</span>
-              <span className="font-bold text-slate-900">{addDaysToISODate(invoice.invoice_date || new Date().toISOString().slice(0, 10), 30)}</span>
+              <span className="font-bold text-slate-900">{invoice.due_date || addDaysToISODate(invoice.invoice_date || new Date().toISOString().slice(0, 10), 30)}</span>
             </div>
             {showStatusBadge && (
               <div className="pt-1">
@@ -803,6 +804,7 @@ export default function Invoice() {
   const [addServices, setAddServices] = useState<ServiceLine[]>([{ description: '', qty: 1, price: '' }])
   const [addPhone, setAddPhone] = useState('')
   const [addStatus, setAddStatus] = useState('Pending')
+  const [addDueDate, setAddDueDate] = useState(() => addDaysToISODate(new Date().toISOString().slice(0, 10), 30))
   const [addPayableAmount, setAddPayableAmount] = useState('')
   const [addInvoiceType, setAddInvoiceType] = useState<string>(INVOICE_TYPE_OPTIONS[0])
   const [addCurrency, setAddCurrency] = useState<InvoiceCurrency>('USD')
@@ -824,6 +826,7 @@ export default function Invoice() {
   const [editServices, setEditServices] = useState<ServiceLine[]>([{ description: '', qty: 1, price: '' }])
   const [editPhone, setEditPhone] = useState('')
   const [editStatus, setEditStatus] = useState('Pending')
+  const [editDueDate, setEditDueDate] = useState('')
   const [editPayableAmount, setEditPayableAmount] = useState('')
   const [editPaidAmountTotal, setEditPaidAmountTotal] = useState(0)
   const [editInvoiceType, setEditInvoiceType] = useState<string>(INVOICE_TYPE_OPTIONS[0])
@@ -1071,6 +1074,7 @@ export default function Invoice() {
       return {
         id: invoiceId,
         invoice_date: (row.invoice_date as string) ?? '',
+        due_date: (row.due_date as string) ?? '',
         invoice_creator_id: (row.invoice_creator_id as number) ?? 0,
         invoice_creator: empObj?.employee_name ?? '--',
         client_id: (row.client_id as number) ?? null,
@@ -1587,10 +1591,14 @@ export default function Invoice() {
     const resolvedBrandId = getInvoiceBrandMeta(resolvedBrand)?.id ?? null
     const addInvoiceClientId = isBmyBrand(resolvedBrand) && addBmyRecipientMode === 'manual' ? null : addClientId
 
+    const invoiceDate = new Date().toISOString().slice(0, 10)
+    const resolvedDueDate = addDueDate || addDaysToISODate(invoiceDate, 30)
+
     let { data: insertedInvoice, error: insertError } = await supabase
       .from('invoices')
       .insert({
-        invoice_date: new Date().toISOString().slice(0, 10),
+        invoice_date: invoiceDate,
+        due_date: resolvedDueDate,
         invoice_creator_id: currentEmployeeId,
         client_id: addInvoiceClientId,
         brand_id: resolvedBrandId,
@@ -1620,7 +1628,8 @@ export default function Invoice() {
       ;({ data: insertedInvoice, error: insertError } = await supabase
         .from('invoices')
         .insert({
-          invoice_date: new Date().toISOString().slice(0, 10),
+          invoice_date: invoiceDate,
+          due_date: resolvedDueDate,
           invoice_creator_id: currentEmployeeId,
           client_id: addInvoiceClientId,
           brand_name: resolvedBrand,
@@ -1693,6 +1702,7 @@ export default function Invoice() {
     setAddServices([{ description: '', qty: 1, price: '' }])
     setAddPhone('')
     setAddStatus('Pending')
+    setAddDueDate(addDaysToISODate(new Date().toISOString().slice(0, 10), 30))
     setAddPayableAmount('')
     setAddInvoiceType(INVOICE_TYPE_OPTIONS[0])
     setAddCurrency('USD')
@@ -1804,10 +1814,14 @@ export default function Invoice() {
       price: requestedAmount.toFixed(2),
     }
 
+    const dueInvoiceDate = new Date().toISOString().slice(0, 10)
+    const dueInvoiceDueDate = addDaysToISODate(dueInvoiceDate, 30)
+
     let { data: insertedInvoice, error: insertError } = await supabase
       .from('invoices')
       .insert({
-        invoice_date: new Date().toISOString().slice(0, 10),
+        invoice_date: dueInvoiceDate,
+        due_date: dueInvoiceDueDate,
         invoice_creator_id: currentEmployeeId,
         client_id: sourceInvoice.client_id,
         parent_invoice_id: sourceInvoice.id,
@@ -1839,7 +1853,8 @@ export default function Invoice() {
       ;({ data: insertedInvoice, error: insertError } = await supabase
         .from('invoices')
         .insert({
-          invoice_date: new Date().toISOString().slice(0, 10),
+          invoice_date: dueInvoiceDate,
+          due_date: dueInvoiceDueDate,
           invoice_creator_id: currentEmployeeId,
           client_id: sourceInvoice.client_id,
           brand_name: sourceBrand,
@@ -1956,6 +1971,7 @@ export default function Invoice() {
     setEditServices(inv.service.length > 0 ? inv.service : [{ description: '', qty: 1, price: '' }])
     setEditPhone(inv.phone || '')
     setEditStatus(inv.status || 'Pending')
+    setEditDueDate(inv.due_date || addDaysToISODate(inv.invoice_date || new Date().toISOString().slice(0, 10), 30))
     setEditPayableAmount(inv.payable_amount == null ? '' : String(inv.payable_amount))
     setEditPaidAmountTotal(inv.paid_amount || 0)
     setEditInvoiceType(inv.invoice_type || INVOICE_TYPE_OPTIONS[0])
@@ -2057,6 +2073,7 @@ export default function Invoice() {
         phone: editPhone.trim(),
         amount: Number(subTotal.toFixed(2)),
         status: editStatus,
+        due_date: editDueDate || addDaysToISODate(editingInvoice.invoice_date || new Date().toISOString().slice(0, 10), 30),
         payable_amount: payableAmount > 0 ? Number(payableAmount.toFixed(2)) : null,
         invoice_type: editInvoiceType,
         currency: editCurrency,
@@ -2083,6 +2100,7 @@ export default function Invoice() {
           phone: editPhone.trim(),
           amount: Number(subTotal.toFixed(2)),
           status: editStatus,
+          due_date: editDueDate || addDaysToISODate(editingInvoice.invoice_date || new Date().toISOString().slice(0, 10), 30),
           payable_amount: payableAmount > 0 ? Number(payableAmount.toFixed(2)) : null,
           invoice_type: editInvoiceType,
         })
@@ -2945,7 +2963,14 @@ export default function Invoice() {
                               </div>
                               <div className="flex justify-between border-b border-slate-100 pb-2 text-sm">
                                 <span className="text-slate-500">Due Date</span>
-                                <span className="font-bold text-slate-900">{addDaysToISODate(new Date().toISOString().slice(0, 10), 30)}</span>
+                                <input
+                                  aria-label="Invoice due date"
+                                  type="date"
+                                  value={addDueDate}
+                                  min={new Date().toISOString().slice(0, 10)}
+                                  onChange={(event) => setAddDueDate(event.target.value)}
+                                  className="w-[145px] rounded-md border border-slate-300 bg-white px-2 py-1 text-right font-bold text-slate-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                                />
                               </div>
                             </div>
                           </div>
@@ -3355,7 +3380,14 @@ export default function Invoice() {
                               </div>
                               <div className="flex justify-between border-b border-slate-100 pb-2 text-sm">
                                 <span className="text-slate-500">Due Date</span>
-                                <span className="font-bold text-slate-900">{addDaysToISODate(editingInvoice.invoice_date || new Date().toISOString().slice(0, 10), 30)}</span>
+                                <input
+                                  aria-label="Invoice due date"
+                                  type="date"
+                                  value={editDueDate}
+                                  min={editingInvoice.invoice_date || undefined}
+                                  onChange={(event) => setEditDueDate(event.target.value)}
+                                  className="w-[145px] rounded-md border border-slate-300 bg-white px-2 py-1 text-right font-bold text-slate-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                                />
                               </div>
                             </div>
                           </div>

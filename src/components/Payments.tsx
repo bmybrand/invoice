@@ -89,6 +89,7 @@ type BulkInvoiceCurrency = 'USD' | 'CAD'
 type BulkInvoiceRow = {
   id: number
   invoice_date: string
+  due_date: string
   invoice_creator_id: number
   invoice_creator: string
   client_id: number | null
@@ -906,6 +907,7 @@ export default function Payments() {
       const invoice: BulkInvoiceRow = {
         id: invoiceId,
         invoice_date: String(row.invoice_date ?? ''),
+        due_date: String(row.due_date ?? ''),
         invoice_creator_id: Number(row.invoice_creator_id ?? 0),
         invoice_creator: empObj?.employee_name ?? '--',
         client_id: row.client_id == null ? null : Number(row.client_id),

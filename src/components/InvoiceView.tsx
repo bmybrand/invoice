@@ -18,6 +18,7 @@ type BrandOption = {
 type InvoiceRow = {
   id: number
   invoice_date: string
+  due_date: string
   invoice_creator_id: number
   invoice_creator: string
   client_id: number | null
@@ -173,6 +174,7 @@ export default function InvoiceView({
     setInvoice({
       id: resolvedInvoiceId,
       invoice_date: (invoiceData.invoice_date as string) ?? '',
+      due_date: (invoiceData.due_date as string) ?? '',
       invoice_creator_id: (invoiceData.invoice_creator_id as number) ?? 0,
       invoice_creator: empObj?.employee_name ?? '--',
       client_id: (invoiceData.client_id as number) ?? null,
