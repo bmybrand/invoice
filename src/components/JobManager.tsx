@@ -40,7 +40,6 @@ type JobEditorState = {
   requirements: string
   benefits: string
   disclaimer: string
-  applyUrl: string
   department: JobRow['department']
   location: string
   workplace: JobRow['workplace']
@@ -62,7 +61,6 @@ const EMPTY_JOB: JobEditorState = {
   requirements: '',
   benefits: '',
   disclaimer: '',
-  applyUrl: '/contact?interest=careers',
   department: 'Technology',
   location: '',
   workplace: 'Remote',
@@ -101,7 +99,6 @@ function editorFromJob(job: JobRow): JobEditorState {
     requirements: (job.requirements ?? []).join('\n'),
     benefits: (job.benefits ?? []).join('\n'),
     disclaimer: job.disclaimer || '',
-    applyUrl: job.apply_url || '/contact?interest=careers',
     department: job.department,
     location: job.location,
     workplace: job.workplace,
@@ -207,7 +204,6 @@ export default function JobManager() {
         requirements: editor.requirements.split('\n').map((item) => item.trim()).filter(Boolean),
         benefits: editor.benefits.split('\n').map((item) => item.trim()).filter(Boolean),
         disclaimer: editor.disclaimer.trim(),
-        apply_url: editor.applyUrl.trim() || '/contact?interest=careers',
         department: editor.department,
         location: editor.location.trim(),
         workplace: editor.workplace,
@@ -550,16 +546,6 @@ export default function JobManager() {
                   </Field>
                 </div>
 
-                <div className="md:col-span-2">
-                  <Field label="Apply URL">
-                    <input
-                      value={editor.applyUrl}
-                      onChange={(event) => update('applyUrl', event.target.value)}
-                      placeholder="/contact?interest=careers"
-                      className={inputClass}
-                    />
-                  </Field>
-                </div>
               </div>
 
               {error && <div className="mt-5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>}
