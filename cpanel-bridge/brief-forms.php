@@ -65,6 +65,7 @@ $validFormTypes = [
     'logo-design',
     'graphic-design',
     'video-animation',
+    'smm',
 ];
 
 $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
