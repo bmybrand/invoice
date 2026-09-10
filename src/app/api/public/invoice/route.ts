@@ -50,7 +50,7 @@ export async function GET(req: Request) {
       .maybeSingle(),
     supabase
       .from('brands')
-      .select('id, brand_name, brand_url, invoice_base_url, logo_url')
+      .select('id, brand_name, brand_url, invoice_base_url, logo_url, favicon_url')
       .neq('isdeleted', true)
       .order('brand_name'),
   ])

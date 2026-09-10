@@ -13,6 +13,12 @@ type BrandOption = {
   brand_name: string
   brand_url: string
   logo_url: string
+  favicon_url: string
+}
+
+function isBmyBrandName(value: string): boolean {
+  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9]/g, '')
+  return normalized === 'bmybrand' || normalized === 'bmy'
 }
 
 type InvoiceRow = {
@@ -22,6 +28,7 @@ type InvoiceRow = {
   invoice_creator_id: number
   invoice_creator: string
   client_id: number | null
+  brand_id: number | null
   client_name: string
   brand_name: string
   email: string
@@ -125,7 +132,7 @@ export default function InvoiceView({
     } else {
       const result = await Promise.all([
         supabase.from('invoices').select('*, employees!invoice_creator_id(employee_name), clients!client_id(name)').eq('id', invoiceId).maybeSingle(),
-        supabase.from('brands').select('id, brand_name, brand_url, logo_url').neq('isdeleted', true).order('brand_name'),
+        supabase.from('brands').select('id, brand_name, brand_url, logo_url, favicon_url').neq('isdeleted', true).order('brand_name'),
       ])
 
       invoiceData = (result[0].data as Record<string, unknown> | null) ?? null
@@ -178,6 +185,7 @@ export default function InvoiceView({
       invoice_creator_id: (invoiceData.invoice_creator_id as number) ?? 0,
       invoice_creator: empObj?.employee_name ?? '--',
       client_id: (invoiceData.client_id as number) ?? null,
+      brand_id: invoiceData.brand_id == null ? null : Number(invoiceData.brand_id),
       client_name: clientName,
       brand_name: (invoiceData.brand_name as string) ?? '',
       email: (invoiceData.email as string) ?? '',
@@ -203,8 +211,56 @@ export default function InvoiceView({
 
   const brandMeta = useMemo(() => {
     if (!invoice) return null
-    return brands.find((b) => b.brand_name === invoice.brand_name) ?? null
+    return brands.find((b) =>
+      (invoice.brand_id != null && Number(b.id) === invoice.brand_id) || b.brand_name === invoice.brand_name
+    ) ?? null
   }, [brands, invoice])
+
+  useEffect(() => {
+    if (!publicView || !invoice) return
+
+    const faviconUrl =
+      brandMeta?.favicon_url?.trim() ||
+      brandMeta?.logo_url?.trim() ||
+      (isBmyBrandName(invoice.brand_name) ? '/favicon.ico' : '/invoice-favicon.svg?v=2')
+    const title = `${invoice.brand_name || 'Invoice'} | Invoice`
+    const overrideId = 'invoice-brand-favicon'
+    let applying = false
+
+    const applyBrandHead = () => {
+      if (applying) return
+      applying = true
+
+      if (document.title !== title) document.title = title
+
+      const iconLinks = document.head.querySelectorAll<HTMLLinkElement>(
+        'link[rel="icon"], link[rel="shortcut icon"]'
+      )
+      iconLinks.forEach((link) => {
+        if (link.id !== overrideId && link.getAttribute('href') !== faviconUrl) {
+          link.setAttribute('href', faviconUrl)
+        }
+      })
+
+      let override = document.getElementById(overrideId) as HTMLLinkElement | null
+      if (!override) {
+        override = document.createElement('link')
+        override.id = overrideId
+        override.rel = 'icon'
+      }
+      if (override.getAttribute('href') !== faviconUrl) override.setAttribute('href', faviconUrl)
+      override.type = faviconUrl.includes('.svg') ? 'image/svg+xml' : ''
+      if (document.head.lastElementChild !== override) document.head.appendChild(override)
+
+      applying = false
+    }
+
+    applyBrandHead()
+    const observer = new MutationObserver(() => window.queueMicrotask(applyBrandHead))
+    observer.observe(document.head, { childList: true, subtree: true })
+
+    return () => observer.disconnect()
+  }, [brandMeta, invoice, publicView])
   const normalizedStatus = (invoice?.status || '').toLowerCase()
   const paidAmount = Number(invoice?.paid_amount ?? 0)
   const invoiceTotal = parseAmountValue(invoice?.amount)
