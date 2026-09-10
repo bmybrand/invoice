@@ -1,16 +1,28 @@
 import InvoiceRouteShell from '@/components/InvoiceRouteShell'
 import { decryptInvoiceToken, readInvoiceToken } from '@/lib/invoice-token'
+import { buildInvoiceMetadata } from '@/lib/server-invoice-metadata'
+
+type InvoiceSearchParams = { id?: string; token?: string }
+
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams?: Promise<InvoiceSearchParams> | InvoiceSearchParams
+}) {
+  const resolvedParams = searchParams instanceof Promise ? await searchParams : searchParams
+  return buildInvoiceMetadata(resolvedParams?.token, 'view')
+}
 
 export default async function PublicInvoicePage({
   searchParams,
 }: {
-  searchParams?: Promise<{ id?: string; token?: string }> | { id?: string; token?: string }
+  searchParams?: Promise<InvoiceSearchParams> | InvoiceSearchParams
 }) {
   const resolvedParams = searchParams instanceof Promise ? await searchParams : searchParams
   const tokenParam = resolvedParams?.token
 
   let invoiceId: number
-  let invoiceToken: string | null = tokenParam ?? null
+  const invoiceToken: string | null = tokenParam ?? null
   let tokenExpired = false
 
   if (tokenParam) {

@@ -1,10 +1,22 @@
 import InvoicePayRouteShell from '@/components/InvoicePayRouteShell'
 import { readInvoiceToken } from '@/lib/invoice-token'
+import { buildInvoiceMetadata } from '@/lib/server-invoice-metadata'
+
+type InvoicePaySearchParams = { id?: string; token?: string }
+
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams?: Promise<InvoicePaySearchParams> | InvoicePaySearchParams
+}) {
+  const resolvedParams = searchParams instanceof Promise ? await searchParams : searchParams
+  return buildInvoiceMetadata(resolvedParams?.token, 'pay')
+}
 
 export default async function InvoicePayPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ id?: string; token?: string }> | { id?: string; token?: string }
+  searchParams?: Promise<InvoicePaySearchParams> | InvoicePaySearchParams
 }) {
   const resolvedParams = searchParams instanceof Promise ? await searchParams : searchParams
   const tokenParam = resolvedParams?.token
