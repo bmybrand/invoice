@@ -17,6 +17,11 @@ const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
 const PAGE_SIZE = 4
 
+const HIDDEN_EMPLOYEE_CARD_NAMES = new Set([
+  'hussain shaja',
+  'ibrahim zafar',
+])
+
 type EmployeeRow = {
   id: number
   auth_id: string
@@ -54,6 +59,14 @@ function getDepartmentStyle(dept: string): string {
 
 function isSalesDepartment(department: string | null | undefined) {
   return (department || '').trim().toLowerCase().includes('sales')
+}
+
+function shouldShowEmployeeCard(employee: Pick<EmployeeRow, 'employee_name' | 'agent_name'>) {
+  const normalizedNames = [employee.employee_name, employee.agent_name]
+    .map((name) => (name || '').trim().toLowerCase().replace(/\s+/g, ' '))
+    .filter(Boolean)
+
+  return normalizedNames.every((name) => !HIDDEN_EMPLOYEE_CARD_NAMES.has(name))
 }
 
 function SearchIcon({ className = 'h-4 w-4' }: { className?: string }) {
@@ -394,7 +407,7 @@ export default function Employees() {
   }, [isAdmin, isSuperAdmin, profileCurrentUserAuthId])
 
   const filteredEmployees = (() => {
-    let list = employees
+    let list = employees.filter(shouldShowEmployeeCard)
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase()
       list = list.filter(
