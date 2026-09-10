@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireSuperAdmin } from '@/lib/server-superadmin-auth'
+import { normalizeInvoiceBaseUrl } from '@/lib/invoice-public-url'
 
 type RouteParams = { id: string }
 
@@ -26,11 +27,17 @@ export async function PATCH(
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null
   const brandName = String(body?.brand_name ?? '').trim()
   const brandUrl = String(body?.brand_url ?? '').trim()
+  const invoiceBaseUrl = String(body?.invoice_base_url ?? '').trim()
   const logoUrl = String(body?.logo_url ?? '').trim()
   const faviconUrl = String(body?.favicon_url ?? '').trim()
 
   if (!brandName) {
     return NextResponse.json({ error: 'Brand name is required' }, { status: 400 })
+  }
+
+  const normalizedInvoiceBaseUrl = normalizeInvoiceBaseUrl(invoiceBaseUrl)
+  if (invoiceBaseUrl && !normalizedInvoiceBaseUrl) {
+    return NextResponse.json({ error: 'Invoice URL must be a valid HTTP or HTTPS URL' }, { status: 400 })
   }
 
   const { data: brand, error: fetchError } = await auth.supabase
@@ -48,6 +55,7 @@ export async function PATCH(
     .update({
       brand_name: brandName,
       brand_url: brandUrl || null,
+      invoice_base_url: normalizedInvoiceBaseUrl,
       logo_url: logoUrl || null,
       favicon_url: faviconUrl || null,
     })

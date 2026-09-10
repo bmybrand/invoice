@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { env } from '@/lib/env'
 import { readInvoiceToken } from '@/lib/invoice-token'
+import { getUrlHostname } from '@/lib/invoice-public-url'
 
 const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
   auth: {
@@ -49,7 +50,7 @@ export async function GET(req: Request) {
       .maybeSingle(),
     supabase
       .from('brands')
-      .select('id, brand_name, brand_url, logo_url')
+      .select('id, brand_name, brand_url, invoice_base_url, logo_url')
       .neq('isdeleted', true)
       .order('brand_name'),
   ])
@@ -64,6 +65,25 @@ export async function GET(req: Request) {
 
   if (brandsError) {
     return NextResponse.json({ error: brandsError.message }, { status: 500 })
+  }
+
+  const requestHostname = url.hostname.toLowerCase()
+  if (requestHostname !== 'dashboard.bmybrand.com') {
+    const requestedHostBrand = (brands ?? []).find(
+      (brand) => getUrlHostname(brand.invoice_base_url) === requestHostname
+    )
+
+    if (requestedHostBrand) {
+      const invoiceBrandId = invoice.brand_id == null ? null : Number(invoice.brand_id)
+      const invoiceBrandName = String(invoice.brand_name || '').trim().toLowerCase()
+      const hostMatchesInvoice =
+        (invoiceBrandId != null && invoiceBrandId === Number(requestedHostBrand.id)) ||
+        (!invoiceBrandId && invoiceBrandName === String(requestedHostBrand.brand_name || '').trim().toLowerCase())
+
+      if (!hostMatchesInvoice) {
+        return NextResponse.json({ error: 'Invoice not found for this brand domain' }, { status: 404 })
+      }
+    }
   }
 
   const { data: paymentRows, error: paymentsError } = await supabase

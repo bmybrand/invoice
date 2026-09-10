@@ -16,6 +16,7 @@ type BrandRow = {
   id: number
   brand_name: string
   brand_url: string
+  invoice_base_url: string
   logo_url: string
   favicon_url: string
   created_at?: string
@@ -132,6 +133,7 @@ export default function Brand() {
   const [showArchivedModal, setShowArchivedModal] = useState(false)
   const [addName, setAddName] = useState('')
   const [addUrl, setAddUrl] = useState('')
+  const [addInvoiceBaseUrl, setAddInvoiceBaseUrl] = useState('')
   const [addLogoUrl, setAddLogoUrl] = useState('')
   const [addFaviconUrl, setAddFaviconUrl] = useState('')
   const [addLoading, setAddLoading] = useState(false)
@@ -140,6 +142,7 @@ export default function Brand() {
   const [editingBrand, setEditingBrand] = useState<BrandRow | null>(null)
   const [editName, setEditName] = useState('')
   const [editUrl, setEditUrl] = useState('')
+  const [editInvoiceBaseUrl, setEditInvoiceBaseUrl] = useState('')
   const [editLogoUrl, setEditLogoUrl] = useState('')
   const [editFaviconUrl, setEditFaviconUrl] = useState('')
   const [editLoading, setEditLoading] = useState(false)
@@ -164,7 +167,7 @@ export default function Brand() {
     }
     const { data, error } = await supabase
       .from('brands')
-      .select('id, brand_name, brand_url, logo_url, favicon_url, created_at')
+      .select('id, brand_name, brand_url, invoice_base_url, logo_url, favicon_url, created_at')
       .neq('isdeleted', true)
       .order('created_at', { ascending: false })
     if (!isBackgroundRefresh) {
@@ -195,7 +198,7 @@ export default function Brand() {
 
     const { data, error } = await supabase
       .from('brands')
-      .select('id, brand_name, brand_url, logo_url, favicon_url, created_at')
+      .select('id, brand_name, brand_url, invoice_base_url, logo_url, favicon_url, created_at')
       .eq('isdeleted', true)
       .order('created_at', { ascending: false })
 
@@ -223,6 +226,7 @@ export default function Brand() {
             id: Number(row.id),
             brand_name: row.brand_name || '',
             brand_url: row.brand_url || '',
+            invoice_base_url: row.invoice_base_url || '',
             logo_url: row.logo_url || '',
             favicon_url: row.favicon_url || '',
             created_at: row.created_at,
@@ -324,6 +328,7 @@ export default function Brand() {
       body: JSON.stringify({
         brand_name: addName,
         brand_url: addUrl,
+        invoice_base_url: addInvoiceBaseUrl,
         logo_url: addLogoUrl,
         favicon_url: addFaviconUrl,
       }),
@@ -341,6 +346,7 @@ export default function Brand() {
     setShowAddModal(false)
     setAddName('')
     setAddUrl('')
+    setAddInvoiceBaseUrl('')
     setAddLogoUrl('')
     setAddFaviconUrl('')
     setActionMessage({ type: 'success', text: `Brand ${addName.trim()} added successfully.` })
@@ -351,6 +357,7 @@ export default function Brand() {
     setEditingBrand(brand)
     setEditName(brand.brand_name || '')
     setEditUrl(brand.brand_url || '')
+    setEditInvoiceBaseUrl(brand.invoice_base_url || '')
     setEditLogoUrl(brand.logo_url || '')
     setEditFaviconUrl(brand.favicon_url || '')
     setEditError(null)
@@ -379,6 +386,7 @@ export default function Brand() {
       body: JSON.stringify({
         brand_name: editName,
         brand_url: editUrl,
+        invoice_base_url: editInvoiceBaseUrl,
         logo_url: editLogoUrl,
         favicon_url: editFaviconUrl,
       }),
@@ -785,6 +793,18 @@ export default function Brand() {
                 />
               </div>
               <div>
+                <label htmlFor="add-invoice-base-url" className="block text-sm font-medium text-slate-300">Invoice URL</label>
+                <input
+                  id="add-invoice-base-url"
+                  type="url"
+                  value={addInvoiceBaseUrl}
+                  onChange={(e) => setAddInvoiceBaseUrl(e.target.value)}
+                  placeholder="https://invoice.example.com"
+                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                />
+                <p className="mt-1 text-xs text-slate-500">Optional domain used when copying public invoice links.</p>
+              </div>
+              <div>
                 <label htmlFor="add-logo-url" className="block text-sm font-medium text-slate-300">Logo URL</label>
                 <input
                   id="add-logo-url"
@@ -985,6 +1005,18 @@ export default function Brand() {
                   placeholder="e.g. nike.com"
                   className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                 />
+              </div>
+              <div>
+                <label htmlFor="edit-invoice-base-url" className="block text-sm font-medium text-slate-300">Invoice URL</label>
+                <input
+                  id="edit-invoice-base-url"
+                  type="url"
+                  value={editInvoiceBaseUrl}
+                  onChange={(e) => setEditInvoiceBaseUrl(e.target.value)}
+                  placeholder="https://invoice.example.com"
+                  className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                />
+                <p className="mt-1 text-xs text-slate-500">Optional domain used when copying public invoice links.</p>
               </div>
               <div>
                 <label htmlFor="edit-logo-url" className="block text-sm font-medium text-slate-300">Logo URL</label>

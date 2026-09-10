@@ -6,6 +6,7 @@ import { getInvoiceLink } from '@/lib/invoice-token'
 import { applyRateLimit, getRateLimitIdentity } from '@/lib/rate-limit'
 import { isEmailSendingEnabled } from '@/lib/server-app-settings'
 import { requireActiveEmployee } from '@/lib/server-employee-auth'
+import { buildInvoicePublicUrl } from '@/lib/invoice-public-url'
 
 type InvoiceServiceLine = {
   description?: string | null
@@ -345,7 +346,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invoice does not have a valid client email address' }, { status: 400 })
     }
 
-    const invoiceUrl = new URL(getInvoiceLink(invoiceId), request.nextUrl.origin).toString()
     const invoiceCode = formatInvoiceCode(invoiceId)
     const clientName = String(invoiceRow.client_name || '').trim() || 'there'
     const brandName = String(invoiceRow.brand_name || '').trim() || 'BMYBrand'
@@ -355,11 +355,12 @@ export async function POST(request: NextRequest) {
     const brandId = invoiceRow.brand_id == null ? null : Number(invoiceRow.brand_id)
     let brandLogoUrl: string | null = null
     let brandWebsiteUrl: string | null = null
+    let invoiceBaseUrl: string | null = null
 
     if (Number.isFinite(brandId) && brandId && brandId > 0) {
       const { data: brand } = await auth.supabase
         .from('brands')
-        .select('logo_url, brand_url')
+        .select('logo_url, brand_url, invoice_base_url')
         .eq('id', brandId)
         .maybeSingle()
 
@@ -369,12 +370,15 @@ export async function POST(request: NextRequest) {
       brandWebsiteUrl = typeof (brand as { brand_url?: unknown } | null)?.brand_url === 'string'
         ? String((brand as { brand_url?: string }).brand_url || '').trim() || null
         : null
+      invoiceBaseUrl = typeof (brand as { invoice_base_url?: unknown } | null)?.invoice_base_url === 'string'
+        ? String((brand as { invoice_base_url?: string }).invoice_base_url || '').trim() || null
+        : null
     }
 
-    if ((!brandLogoUrl || !brandWebsiteUrl) && brandName) {
+    if ((!brandLogoUrl || !brandWebsiteUrl || !invoiceBaseUrl) && brandName) {
       const { data: brand } = await auth.supabase
         .from('brands')
-        .select('logo_url, brand_url')
+        .select('logo_url, brand_url, invoice_base_url')
         .eq('brand_name', brandName)
         .neq('isdeleted', true)
         .maybeSingle()
@@ -389,7 +393,14 @@ export async function POST(request: NextRequest) {
           ? String((brand as { brand_url?: string }).brand_url || '').trim() || null
           : null
       }
+      if (!invoiceBaseUrl) {
+        invoiceBaseUrl = typeof (brand as { invoice_base_url?: unknown } | null)?.invoice_base_url === 'string'
+          ? String((brand as { invoice_base_url?: string }).invoice_base_url || '').trim() || null
+          : null
+      }
     }
+
+    const invoiceUrl = buildInvoicePublicUrl(getInvoiceLink(invoiceId), invoiceBaseUrl, request.nextUrl.origin)
 
     const resend = new Resend(env.RESEND_API_KEY)
 

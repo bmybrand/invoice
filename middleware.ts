@@ -2,6 +2,27 @@ import { createServerClient } from '@supabase/ssr'
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 
+const INVOICE_ONLY_HOST_REDIRECTS: Record<string, string> = {
+  'invoice.americanwebexperts.com': 'https://americanwebexperts.com',
+}
+
+function isInvoiceOnlyAllowedPath(pathname: string): boolean {
+  if (pathname === '/invoice' || pathname.startsWith('/invoice/')) return true
+  if (pathname.startsWith('/_next/')) return true
+  if (/\.[a-z0-9]+$/i.test(pathname)) return true
+
+  const allowedApiPaths = [
+    '/api/public/invoice',
+    '/api/create-payment-intent',
+    '/api/create-checkout-session',
+    '/api/payments/reconcile',
+    '/api/stripe/config',
+    '/api/proxy-image',
+  ]
+
+  return allowedApiPaths.some((path) => pathname === path || pathname.startsWith(`${path}/`))
+}
+
 function getSupabaseConfig() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key =
@@ -61,6 +82,16 @@ function isProtectedApiMutation(pathname: string, method: string) {
 }
 
 export async function middleware(request: NextRequest) {
+  const hostname = request.nextUrl.hostname.toLowerCase()
+  const invoiceOnlyRedirect = INVOICE_ONLY_HOST_REDIRECTS[hostname]
+
+  if (invoiceOnlyRedirect && !isInvoiceOnlyAllowedPath(request.nextUrl.pathname)) {
+    if (request.nextUrl.pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
+    return NextResponse.redirect(new URL(invoiceOnlyRedirect))
+  }
+
   const config = getSupabaseConfig()
   if (!config) {
     return NextResponse.next()
@@ -137,5 +168,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/', '/login', '/dashboard/:path*', '/register/pending', '/api/:path*'],
+  matcher: ['/:path*'],
 }

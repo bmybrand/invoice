@@ -12,6 +12,7 @@ import { formatInvoiceCode } from '@/lib/invoice-code'
 import { clearRequiredFieldInvalid, handleRequiredFieldInvalid } from '@/lib/form-validation'
 import { logFetchError } from '@/lib/fetch-error'
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock'
+import { buildInvoicePublicUrl } from '@/lib/invoice-public-url'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
@@ -20,6 +21,7 @@ type BrandOption = {
   id: number
   brand_name: string
   brand_url: string
+  invoice_base_url?: string
   logo_url: string
 }
 
@@ -1149,7 +1151,7 @@ export default function Invoice() {
   const fetchBrands = useCallback(async () => {
     const { data, error } = await supabase
       .from('brands')
-      .select('id, brand_name, brand_url, logo_url')
+      .select('id, brand_name, brand_url, invoice_base_url, logo_url')
       .neq('isdeleted', true)
       .order('brand_name')
     if (error) {
@@ -1659,7 +1661,9 @@ export default function Invoice() {
       setSavedAddInvoiceUrl('')
     } else {
       const signedLink = await getSignedInvoiceLink(nextInvoiceId)
-      setSavedAddInvoiceUrl(`${window.location.origin}${signedLink}`)
+      setSavedAddInvoiceUrl(
+        buildInvoicePublicUrl(signedLink, getInvoiceBrandMeta(resolvedBrand)?.invoice_base_url, window.location.origin)
+      )
     }
     setAddUrlCopied(false)
     if (nextInvoiceId === null) {
@@ -1979,10 +1983,14 @@ export default function Invoice() {
     setEditPaymentGatewayId(resolveDefaultPaymentGatewayId(paymentGateways, inv.payment_gateway_id))
     setEditInvoiceUrl('')
     void getSignedInvoiceLink(inv.id).then((signedLink) => {
-      setEditInvoiceUrl(`${window.location.origin}${signedLink}`)
+      setEditInvoiceUrl(
+        buildInvoicePublicUrl(signedLink, getInvoiceBrandMeta(inv.brand_name)?.invoice_base_url, window.location.origin)
+      )
     }).catch(() => {
       void getSignedInvoiceLink(inv.id).then((signedLink) => {
-        setEditInvoiceUrl(`${window.location.origin}${signedLink}`)
+        setEditInvoiceUrl(
+          buildInvoicePublicUrl(signedLink, getInvoiceBrandMeta(inv.brand_name)?.invoice_base_url, window.location.origin)
+        )
       })
     })
     setEditUrlCopied(false)
@@ -2493,7 +2501,11 @@ export default function Invoice() {
                               e.stopPropagation()
                               setOpenActionMenu(null)
                               const invoicePath = await getSignedInvoiceLink(inv.id)
-                              const invoiceUrl = `${window.location.origin}${invoicePath}`
+                              const invoiceUrl = buildInvoicePublicUrl(
+                                invoicePath,
+                                getInvoiceBrandMeta(inv.brand_name)?.invoice_base_url,
+                                window.location.origin
+                              )
 
                               try {
                                 await navigator.clipboard.writeText(invoiceUrl)
