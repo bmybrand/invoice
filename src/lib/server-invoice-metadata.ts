@@ -80,7 +80,7 @@ async function loadInvoiceBrandMetadata(token: string | null | undefined): Promi
 
   return {
     brandName,
-    faviconUrl: configuredFavicon || logoFallback || (isBmyBrand(brandName) ? '/favicon.ico' : '/invoice-favicon.svg?v=1'),
+    faviconUrl: configuredFavicon || logoFallback || (isBmyBrand(brandName) ? '/bmybrand-favicon.ico' : '/invoice-favicon.svg?v=2'),
     websiteUrl: safeHttpUrl(brand?.brand_url),
   }
 }

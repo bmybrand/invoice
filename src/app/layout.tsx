@@ -29,6 +29,10 @@ export const metadata: Metadata = {
   },
   description: siteDescription,
   applicationName: "Bmybrand",
+  icons: {
+    icon: [{ url: "/bmybrand-favicon.ico" }],
+    shortcut: [{ url: "/bmybrand-favicon.ico" }],
+  },
   openGraph: {
     type: "website",
     url: siteUrl,

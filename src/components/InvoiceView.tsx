@@ -222,7 +222,7 @@ export default function InvoiceView({
     const faviconUrl =
       brandMeta?.favicon_url?.trim() ||
       brandMeta?.logo_url?.trim() ||
-      (isBmyBrandName(invoice.brand_name) ? '/favicon.ico' : '/invoice-favicon.svg?v=2')
+      (isBmyBrandName(invoice.brand_name) ? '/bmybrand-favicon.ico' : '/invoice-favicon.svg?v=2')
     const title = `${invoice.brand_name || 'Invoice'} | Invoice`
     const overrideId = 'invoice-brand-favicon'
     let applying = false

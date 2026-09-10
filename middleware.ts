@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server'
 
 const INVOICE_ONLY_HOST_REDIRECTS: Record<string, string> = {
   'invoice.americanwebexperts.com': 'https://americanwebexperts.com',
+  'invoice.texaswebstudio.co': 'https://texaswebstudio.co',
 }
 
 function isInvoiceOnlyAllowedPath(pathname: string): boolean {
