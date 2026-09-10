@@ -53,6 +53,15 @@ const briefFormOptions = [
     formType: 'video-animation',
     status: 'Ready',
   },
+  {
+    title: 'SMM',
+    description: 'Collect business priorities, target audience, competitors, brand voice, and social content assets.',
+    accent: 'from-rose-500/18 via-orange-500/8 to-transparent',
+    tag: 'Social',
+    href: '/dashboard/brief-forms/smm',
+    formType: 'smm',
+    status: 'Ready',
+  },
 ] as const
 
 function ArrowIcon() {
@@ -109,7 +118,7 @@ export default function BriefFormsPage() {
             </h1>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-400 sm:text-base">
               Start the right intake flow for each service line. The SEO, Website, Logo Design, Graphic
-              Design, and Video Animation questionnaires are live now.
+              Design, Video Animation, and SMM questionnaires are live now.
             </p>
             {showSubmissions ? (
               <Link
@@ -127,7 +136,7 @@ export default function BriefFormsPage() {
               <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Forms</p>
               <div className="mt-2 flex items-end justify-between gap-3">
                 <p className="text-2xl font-black text-white">{briefFormOptions.length}</p>
-                <p className="text-sm font-bold text-emerald-300">5 live now</p>
+                <p className="text-sm font-bold text-emerald-300">6 live now</p>
               </div>
             </div>
           </div>

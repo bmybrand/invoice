@@ -4,6 +4,7 @@ export const BRIEF_FORM_TYPES = [
   'logo-design',
   'graphic-design',
   'video-animation',
+  'smm',
 ] as const
 
 export type BriefFormType = (typeof BRIEF_FORM_TYPES)[number]

@@ -6,6 +6,7 @@ export const BRIEF_FORM_LABELS: Record<BriefFormType, string> = {
   'logo-design': 'Logo Design',
   'graphic-design': 'Graphic Design',
   'video-animation': 'Video Animation',
+  smm: 'SMM',
 }
 
 export function getBriefFormLabel(formType: string): string {
