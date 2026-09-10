@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, type CSSProperties, type ReactNode } from 'react'
 import { Plus_Jakarta_Sans } from 'next/font/google'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -22,6 +22,8 @@ type BrandOption = {
   brand_name: string
   brand_url: string
   invoice_base_url?: string
+  invoice_primary_color?: string
+  invoice_secondary_color?: string
   logo_url: string
 }
 
@@ -600,9 +602,15 @@ export function InvoiceDocument({
       ? 'Paid Amount'
       : 'Payable Amount'
   const showBmyFooter = isBmyBrand(invoice.brand_name)
+  const invoicePrimaryColor = brandMeta?.invoice_primary_color || '#ea580c'
+  const invoiceSecondaryColor = brandMeta?.invoice_secondary_color || '#0f172a'
+  const invoiceThemeStyle = {
+    '--invoice-primary': invoicePrimaryColor,
+    '--invoice-secondary': invoiceSecondaryColor,
+  } as CSSProperties
 
   return (
-    <div id={rootId} className="relative flex min-h-[1120px] flex-col overflow-visible bg-white shadow-xl md:min-h-[1280px] print:min-h-0 print:overflow-visible">
+    <div id={rootId} style={invoiceThemeStyle} className="relative flex min-h-[1120px] flex-col overflow-visible bg-white shadow-xl md:min-h-[1280px] print:min-h-0 print:overflow-visible">
       {showPaidWatermark && displayStatus === 'Paid' && (
         <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
           <span className="-rotate-[24deg] select-none text-[180px] font-black uppercase leading-none tracking-[0.12em] text-emerald-500/8">
@@ -611,7 +619,7 @@ export function InvoiceDocument({
         </div>
       )}
       <div className="flex flex-1 flex-col">
-      <div className="invoice-header invoice-print-header flex items-center justify-between bg-slate-900 px-10 py-8">
+      <div style={{ backgroundColor: invoiceSecondaryColor }} className="invoice-header invoice-print-header flex items-center justify-between px-10 py-8">
         <div className="flex items-center gap-4">
           <div className="h-16 w-44 flex items-center justify-start">
             {brandMeta?.logo_url ? (
@@ -622,13 +630,14 @@ export function InvoiceDocument({
           </div>
         </div>
         <div className="text-right">
-          <p className="text-4xl font-black uppercase tracking-wide text-orange-600">Invoice</p>
+          <p style={{ color: invoicePrimaryColor }} className="text-4xl font-black uppercase tracking-wide">Invoice</p>
           {includeDownloadButton && canDownloadPdf && (
             <div className="no-print print-hide-download print:hidden mt-3 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={onDownload}
-                className="inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-xs font-bold text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-300"
+                style={{ backgroundColor: invoicePrimaryColor }}
+                className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold text-white brightness-100 transition hover:brightness-90 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-300"
                 title="Download invoice PDF"
               >
                 <span className="inline-block h-2 w-2 rounded-sm bg-white" />
@@ -714,11 +723,11 @@ export function InvoiceDocument({
               <p className="text-sm font-bold text-slate-900">Terms & Conditions</p>
               <p className="mt-1 text-xs leading-5 text-slate-500">
                 Please review our{' '}
-                <a href="https://bmybrand.com/terms-of-use" target="_blank" rel="noopener noreferrer" className="font-semibold text-orange-600 hover:text-orange-700">
+                <a href="https://bmybrand.com/terms-of-use" target="_blank" rel="noopener noreferrer" style={{ color: invoicePrimaryColor }} className="font-semibold hover:opacity-80">
                   Terms & Conditions
                 </a>{' '}
                 and{' '}
-                <a href="https://bmybrand.com/privacy-policy" target="_blank" rel="noopener noreferrer" className="font-semibold text-orange-600 hover:text-orange-700">
+                <a href="https://bmybrand.com/privacy-policy" target="_blank" rel="noopener noreferrer" style={{ color: invoicePrimaryColor }} className="font-semibold hover:opacity-80">
                   Privacy Policy
                 </a>
                 .
@@ -741,8 +750,8 @@ export function InvoiceDocument({
             </div>
             {showPayableSummary ? (
               <>
-                <div className="rounded-xl bg-orange-600 p-4 text-white">
-                  <span className="block text-xs font-bold uppercase tracking-wide text-orange-100">{payableSummaryLabel}</span>
+                <div style={{ backgroundColor: invoicePrimaryColor }} className="rounded-xl p-4 text-white">
+                  <span className="block text-xs font-bold uppercase tracking-wide text-white/80">{payableSummaryLabel}</span>
                   <p className="mt-2 text-2xl font-black">
                     {formatCurrencyAmount(payableAmount ?? 0, invoiceCurrency)}
                   </p>
@@ -1151,7 +1160,7 @@ export default function Invoice() {
   const fetchBrands = useCallback(async () => {
     const { data, error } = await supabase
       .from('brands')
-      .select('id, brand_name, brand_url, invoice_base_url, logo_url')
+      .select('id, brand_name, brand_url, invoice_base_url, invoice_primary_color, invoice_secondary_color, logo_url')
       .neq('isdeleted', true)
       .order('brand_name')
     if (error) {

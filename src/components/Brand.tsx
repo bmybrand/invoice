@@ -17,6 +17,8 @@ type BrandRow = {
   brand_name: string
   brand_url: string
   invoice_base_url: string
+  invoice_primary_color: string
+  invoice_secondary_color: string
   logo_url: string
   favicon_url: string
   created_at?: string
@@ -134,6 +136,8 @@ export default function Brand() {
   const [addName, setAddName] = useState('')
   const [addUrl, setAddUrl] = useState('')
   const [addInvoiceBaseUrl, setAddInvoiceBaseUrl] = useState('')
+  const [addInvoicePrimaryColor, setAddInvoicePrimaryColor] = useState('#ea580c')
+  const [addInvoiceSecondaryColor, setAddInvoiceSecondaryColor] = useState('#0f172a')
   const [addLogoUrl, setAddLogoUrl] = useState('')
   const [addFaviconUrl, setAddFaviconUrl] = useState('')
   const [addLoading, setAddLoading] = useState(false)
@@ -143,6 +147,8 @@ export default function Brand() {
   const [editName, setEditName] = useState('')
   const [editUrl, setEditUrl] = useState('')
   const [editInvoiceBaseUrl, setEditInvoiceBaseUrl] = useState('')
+  const [editInvoicePrimaryColor, setEditInvoicePrimaryColor] = useState('#ea580c')
+  const [editInvoiceSecondaryColor, setEditInvoiceSecondaryColor] = useState('#0f172a')
   const [editLogoUrl, setEditLogoUrl] = useState('')
   const [editFaviconUrl, setEditFaviconUrl] = useState('')
   const [editLoading, setEditLoading] = useState(false)
@@ -167,7 +173,7 @@ export default function Brand() {
     }
     const { data, error } = await supabase
       .from('brands')
-      .select('id, brand_name, brand_url, invoice_base_url, logo_url, favicon_url, created_at')
+      .select('id, brand_name, brand_url, invoice_base_url, invoice_primary_color, invoice_secondary_color, logo_url, favicon_url, created_at')
       .neq('isdeleted', true)
       .order('created_at', { ascending: false })
     if (!isBackgroundRefresh) {
@@ -198,7 +204,7 @@ export default function Brand() {
 
     const { data, error } = await supabase
       .from('brands')
-      .select('id, brand_name, brand_url, invoice_base_url, logo_url, favicon_url, created_at')
+      .select('id, brand_name, brand_url, invoice_base_url, invoice_primary_color, invoice_secondary_color, logo_url, favicon_url, created_at')
       .eq('isdeleted', true)
       .order('created_at', { ascending: false })
 
@@ -227,6 +233,8 @@ export default function Brand() {
             brand_name: row.brand_name || '',
             brand_url: row.brand_url || '',
             invoice_base_url: row.invoice_base_url || '',
+            invoice_primary_color: row.invoice_primary_color || '#ea580c',
+            invoice_secondary_color: row.invoice_secondary_color || '#0f172a',
             logo_url: row.logo_url || '',
             favicon_url: row.favicon_url || '',
             created_at: row.created_at,
@@ -329,6 +337,8 @@ export default function Brand() {
         brand_name: addName,
         brand_url: addUrl,
         invoice_base_url: addInvoiceBaseUrl,
+        invoice_primary_color: addInvoicePrimaryColor,
+        invoice_secondary_color: addInvoiceSecondaryColor,
         logo_url: addLogoUrl,
         favicon_url: addFaviconUrl,
       }),
@@ -347,6 +357,8 @@ export default function Brand() {
     setAddName('')
     setAddUrl('')
     setAddInvoiceBaseUrl('')
+    setAddInvoicePrimaryColor('#ea580c')
+    setAddInvoiceSecondaryColor('#0f172a')
     setAddLogoUrl('')
     setAddFaviconUrl('')
     setActionMessage({ type: 'success', text: `Brand ${addName.trim()} added successfully.` })
@@ -358,6 +370,8 @@ export default function Brand() {
     setEditName(brand.brand_name || '')
     setEditUrl(brand.brand_url || '')
     setEditInvoiceBaseUrl(brand.invoice_base_url || '')
+    setEditInvoicePrimaryColor(brand.invoice_primary_color || '#ea580c')
+    setEditInvoiceSecondaryColor(brand.invoice_secondary_color || '#0f172a')
     setEditLogoUrl(brand.logo_url || '')
     setEditFaviconUrl(brand.favicon_url || '')
     setEditError(null)
@@ -387,6 +401,8 @@ export default function Brand() {
         brand_name: editName,
         brand_url: editUrl,
         invoice_base_url: editInvoiceBaseUrl,
+        invoice_primary_color: editInvoicePrimaryColor,
+        invoice_secondary_color: editInvoiceSecondaryColor,
         logo_url: editLogoUrl,
         favicon_url: editFaviconUrl,
       }),
@@ -804,6 +820,16 @@ export default function Brand() {
                 />
                 <p className="mt-1 text-xs text-slate-500">Optional domain used when copying public invoice links.</p>
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="text-sm font-medium text-slate-300">
+                  Primary color
+                  <input type="color" value={addInvoicePrimaryColor} onChange={(e) => setAddInvoicePrimaryColor(e.target.value)} className="mt-2 h-11 w-full cursor-pointer rounded-lg border border-slate-600 bg-slate-900 p-1" />
+                </label>
+                <label className="text-sm font-medium text-slate-300">
+                  Secondary color
+                  <input type="color" value={addInvoiceSecondaryColor} onChange={(e) => setAddInvoiceSecondaryColor(e.target.value)} className="mt-2 h-11 w-full cursor-pointer rounded-lg border border-slate-600 bg-slate-900 p-1" />
+                </label>
+              </div>
               <div>
                 <label htmlFor="add-logo-url" className="block text-sm font-medium text-slate-300">Logo URL</label>
                 <input
@@ -1017,6 +1043,16 @@ export default function Brand() {
                   className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                 />
                 <p className="mt-1 text-xs text-slate-500">Optional domain used when copying public invoice links.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="text-sm font-medium text-slate-300">
+                  Primary color
+                  <input type="color" value={editInvoicePrimaryColor} onChange={(e) => setEditInvoicePrimaryColor(e.target.value)} className="mt-2 h-11 w-full cursor-pointer rounded-lg border border-slate-600 bg-slate-900 p-1" />
+                </label>
+                <label className="text-sm font-medium text-slate-300">
+                  Secondary color
+                  <input type="color" value={editInvoiceSecondaryColor} onChange={(e) => setEditInvoiceSecondaryColor(e.target.value)} className="mt-2 h-11 w-full cursor-pointer rounded-lg border border-slate-600 bg-slate-900 p-1" />
+                </label>
               </div>
               <div>
                 <label htmlFor="edit-logo-url" className="block text-sm font-medium text-slate-300">Logo URL</label>

@@ -82,6 +82,8 @@ type BulkBrandOption = {
   brand_name: string
   brand_url: string
   logo_url: string
+  invoice_primary_color?: string
+  invoice_secondary_color?: string
 }
 
 type BulkInvoiceCurrency = 'USD' | 'CAD'
@@ -875,7 +877,7 @@ export default function Payments() {
         .from('invoices')
         .select('*, employees!invoice_creator_id(employee_name), clients!client_id(name)')
         .in('id', invoiceIds),
-      supabase.from('brands').select('id, brand_name, brand_url, logo_url').neq('isdeleted', true),
+      supabase.from('brands').select('id, brand_name, brand_url, logo_url, invoice_primary_color, invoice_secondary_color').neq('isdeleted', true),
       supabase.from('payment_submissions').select('invoice_id, amount_paid, payment_status').in('invoice_id', invoiceIds),
     ])
 

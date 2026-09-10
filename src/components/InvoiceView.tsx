@@ -14,6 +14,8 @@ type BrandOption = {
   brand_url: string
   logo_url: string
   favicon_url: string
+  invoice_primary_color: string
+  invoice_secondary_color: string
 }
 
 function isBmyBrandName(value: string): boolean {
@@ -132,7 +134,7 @@ export default function InvoiceView({
     } else {
       const result = await Promise.all([
         supabase.from('invoices').select('*, employees!invoice_creator_id(employee_name), clients!client_id(name)').eq('id', invoiceId).maybeSingle(),
-        supabase.from('brands').select('id, brand_name, brand_url, logo_url, favicon_url').neq('isdeleted', true).order('brand_name'),
+        supabase.from('brands').select('id, brand_name, brand_url, logo_url, favicon_url, invoice_primary_color, invoice_secondary_color').neq('isdeleted', true).order('brand_name'),
       ])
 
       invoiceData = (result[0].data as Record<string, unknown> | null) ?? null
