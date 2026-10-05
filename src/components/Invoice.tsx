@@ -236,6 +236,42 @@ function CopyIcon({ className = 'h-4 w-4' }: { className?: string }) {
   )
 }
 
+function CalendarIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M6.75 3v2.25M17.25 3v2.25M3.75 8.25h16.5M4.5 6.75h15A1.5 1.5 0 0121 8.25v11.25A1.5 1.5 0 0119.5 21h-15A1.5 1.5 0 013 19.5V8.25A1.5 1.5 0 014.5 6.75z"
+      />
+    </svg>
+  )
+}
+
+function DownloadIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A1.5 1.5 0 004.5 20.25h15a1.5 1.5 0 001.5-1.5V16.5M7.5 10.5 12 15m0 0 4.5-4.5M12 15V3" />
+    </svg>
+  )
+}
+
+function ExportIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v3.75A1.5 1.5 0 0118 19.5H6a1.5 1.5 0 01-1.5-1.5v-3.75M12 3.75v10.5m0 0L8.25 10.5M12 14.25l3.75-3.75" />
+    </svg>
+  )
+}
+
+function ResetIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.227V5.12M19.25 9.348A7.5 7.5 0 105.75 16.5" />
+    </svg>
+  )
+}
+
 function getStatusStyle(status: string): string {
   const s = (status || '').toLowerCase()
   if (s.includes('partial')) return 'bg-sky-500/10 text-sky-300 border-sky-500/20'
@@ -1443,6 +1479,7 @@ export default function Invoice() {
     }
     return list
   })()
+  const hasActiveAdminFilters = Boolean(fromDate || toDate || statusFilter !== 'all' || searchQuery.trim())
   const totalPages = Math.max(1, Math.ceil(filteredInvoices.length / PAGE_SIZE))
   const start = (currentPage - 1) * PAGE_SIZE
   const paginatedInvoices = filteredInvoices.slice(start, start + PAGE_SIZE)
@@ -2294,6 +2331,14 @@ export default function Invoice() {
     triggerBrowserDownload(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), buildExportFilename('csv'))
   }
 
+  function handleResetAdminFilters() {
+    setFromDate('')
+    setToDate('')
+    setStatusFilter('all')
+    setSearchQuery('')
+    setCurrentPage(1)
+  }
+
   function getProgressMessage(progress: number) {
     if (progress >= 100) return 'Done!'
     if (progress >= 80) return 'Almost done, packaging files...'
@@ -2655,40 +2700,74 @@ export default function Invoice() {
           </div>
 
           {isAdminOrSuperAdmin && (
-            <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
-              <label className="flex min-w-40 flex-col gap-1.5">
-                <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">From</span>
-                <input
-                  type="date"
-                  value={fromDate}
-                  onChange={(e) => setFromDate(e.target.value)}
-                  className="h-12 rounded-xl border border-slate-700 bg-[#141e32] px-4 text-sm text-slate-300 focus:outline-none focus:ring-1 focus:ring-orange-500/50"
-                />
-              </label>
-              <label className="flex min-w-40 flex-col gap-1.5">
-                <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">To</span>
-                <input
-                  type="date"
-                  value={toDate}
-                  onChange={(e) => setToDate(e.target.value)}
-                  className="h-12 rounded-xl border border-slate-700 bg-[#141e32] px-4 text-sm text-slate-300 focus:outline-none focus:ring-1 focus:ring-orange-500/50"
-                />
-              </label>
-              <div className="flex flex-wrap gap-2">
+            <div className="flex flex-col gap-3 border-t border-slate-700/80 pt-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="flex items-center gap-2 text-slate-400">
+                  <CalendarIcon className="h-4 w-4 shrink-0 text-orange-400/80" />
+                  <span className="text-xs font-bold uppercase tracking-wide">Invoice date</span>
+                </div>
+                <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
+                  <div className="grid min-w-0 flex-1 grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+                    <label className="relative block min-w-0">
+                      <span className="sr-only">From date</span>
+                      <span className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                        From
+                      </span>
+                      <input
+                        type="date"
+                        value={fromDate}
+                        max={toDate || undefined}
+                        onChange={(e) => setFromDate(e.target.value)}
+                        className="h-12 w-full rounded-xl border border-slate-700 bg-[#141e32] pl-14 pr-3 text-sm text-slate-200 transition hover:border-slate-600 focus:border-orange-500/50 focus:outline-none focus:ring-1 focus:ring-orange-500/40 [color-scheme:dark]"
+                      />
+                    </label>
+                    <span className="hidden text-center text-xs font-medium text-slate-500 sm:block" aria-hidden>
+                      —
+                    </span>
+                    <label className="relative block min-w-0">
+                      <span className="sr-only">To date</span>
+                      <span className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                        To
+                      </span>
+                      <input
+                        type="date"
+                        value={toDate}
+                        min={fromDate || undefined}
+                        onChange={(e) => setToDate(e.target.value)}
+                        className="h-12 w-full rounded-xl border border-slate-700 bg-[#141e32] pl-14 pr-3 text-sm text-slate-200 transition hover:border-slate-600 focus:border-orange-500/50 focus:outline-none focus:ring-1 focus:ring-orange-500/40 [color-scheme:dark]"
+                      />
+                    </label>
+                  </div>
+                  {hasActiveAdminFilters ? (
+                    <button
+                      type="button"
+                      onClick={handleResetAdminFilters}
+                      className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-600/80 bg-slate-900/40 px-4 text-sm font-semibold text-slate-300 transition hover:border-slate-500 hover:bg-slate-800 hover:text-white"
+                    >
+                      <ResetIcon className="h-4 w-4" />
+                      Reset
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 lg:justify-end">
                 <button
                   type="button"
                   onClick={handleExportCsv}
                   disabled={filteredInvoices.length === 0}
-                  className="h-12 rounded-xl border border-slate-600 bg-slate-900/60 px-4 text-sm font-semibold text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-slate-600 bg-slate-900/50 px-4 text-sm font-semibold text-slate-200 transition hover:border-slate-500 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
+                  <ExportIcon className="h-4 w-4 text-slate-400" />
                   Export CSV
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowDownloadInvoicesModal(true)}
                   disabled={filteredInvoices.length === 0}
-                  className="h-12 rounded-xl bg-orange-500 px-4 text-sm font-semibold text-white shadow-[0px_4px_20px_0px_rgba(249,115,22,0.2)] transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 text-sm font-semibold text-white shadow-[0px_4px_20px_0px_rgba(249,115,22,0.2)] transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
                 >
+                  <DownloadIcon className="h-4 w-4" />
                   Download PDFs
                 </button>
               </div>
