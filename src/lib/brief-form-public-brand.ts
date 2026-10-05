@@ -153,6 +153,15 @@ export function matchPublicBriefFormBrand(
   return null
 }
 
+/** Sync resolve from URL/referrer/hostname using presets only (no DB). Prevents brand flash. */
+export function resolvePublicBriefFormBrandSync(options: {
+  brandQuery?: string | null
+  hostname?: string | null
+  referrer?: string | null
+}): PublicBriefFormBrand {
+  return matchPublicBriefFormBrand([], options) ?? BRIEF_FORM_BRAND_PRESETS.bmybrand
+}
+
 export function publicBriefFormBrandLabel(brand: PublicBriefFormBrand | null | undefined): string {
   const name = brand?.brand_name?.trim()
   return name ? `${name} Intake` : 'BMYBrand Intake'
