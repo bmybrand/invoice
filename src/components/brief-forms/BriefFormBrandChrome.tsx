@@ -1,6 +1,7 @@
 'use client'
 
 import Image from 'next/image'
+import type { ReactNode } from 'react'
 import { usePublicBriefFormBrand } from '@/context/PublicBriefFormBrandContext'
 
 export function BriefFormBrandBadge({ publicView = false }: { publicView?: boolean }) {
@@ -51,7 +52,7 @@ export function BriefFormAccentSubmitButton({
   className = '',
 }: {
   submitting: boolean
-  children: React.ReactNode
+  children: ReactNode
   className?: string
 }) {
   const { accent } = usePublicBriefFormBrand()
