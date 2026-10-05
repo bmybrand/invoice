@@ -4,7 +4,7 @@ import Link from 'next/link'
 import type { BriefFormPrefill } from '@/lib/brief-form-prefill'
 import { canSubmitBriefForm } from '@/lib/brief-form-access'
 import { BriefFormCopyButton, BriefFormCopySection } from '@/components/brief-forms/BriefFormActions'
-import { BriefFormBrandBadge, BriefFormBrandFooter, BriefFormAccentSubmitButton } from '@/components/brief-forms/BriefFormBrandChrome'
+import { BriefFormBrandBadge, BriefFormBrandFooter, BriefFormAccentSubmitButton, BriefFormContactPhoneLink } from '@/components/brief-forms/BriefFormBrandChrome'
 
 import { useBriefFormSubmit } from '@/lib/use-brief-form-submit'
 
@@ -284,7 +284,7 @@ export default function WebsiteBriefForm({
                   </p>
                   <p>
                     In case of any concerns that you would like to discuss over the phone related to this form,
-                    call us at <a href="tel:+4695011401" className="font-semibold text-orange-500 hover:text-orange-600">+46 950 114 01</a>.
+                    call us at <BriefFormContactPhoneLink />.
                     Note: After design approval and during development phase you cannot ask to stop your project,
                     and no refunds will be applicable.
                   </p>

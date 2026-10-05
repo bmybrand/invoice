@@ -35,7 +35,11 @@ export function canonicalizeBriefFormBrandSlug(value: string | null | undefined)
 
 export const BRIEF_FORM_BRAND_PRESETS: Record<
   'bmybrand' | 'texaswebstudio',
-  PublicBriefFormBrand
+  PublicBriefFormBrand & {
+    contact_phone_display: string
+    contact_phone_tel: string
+    contact_email: string
+  }
 > = {
   bmybrand: {
     id: -1,
@@ -46,6 +50,9 @@ export const BRIEF_FORM_BRAND_PRESETS: Record<
     invoice_secondary_color: '#0f172a',
     logo_url: null,
     favicon_url: null,
+    contact_phone_display: '+1 469 501 1401',
+    contact_phone_tel: '+14695011401',
+    contact_email: 'info@bmybrand.com',
   },
   texaswebstudio: {
     id: -2,
@@ -56,6 +63,9 @@ export const BRIEF_FORM_BRAND_PRESETS: Record<
     invoice_secondary_color: '#0b1220',
     logo_url: null,
     favicon_url: null,
+    contact_phone_display: '(737) 263-1331',
+    contact_phone_tel: '+17372631331',
+    contact_email: 'support@texaswebstudio.co',
   },
 }
 
@@ -180,6 +190,20 @@ export function publicBriefFormBrandCopyright(brand: PublicBriefFormBrand | null
   const year = new Date().getFullYear()
   const name = brand?.brand_name?.trim() || 'BMYBrand'
   return `Copyright ${year} ${name}. All Rights Reserved`
+}
+
+export function getBriefFormBrandContact(brand: PublicBriefFormBrand | null | undefined): {
+  phoneDisplay: string
+  phoneTel: string
+  email: string
+} {
+  const key = canonicalizeBriefFormBrandSlug(brand?.brand_name) ?? 'bmybrand'
+  const preset = BRIEF_FORM_BRAND_PRESETS[key]
+  return {
+    phoneDisplay: preset.contact_phone_display,
+    phoneTel: preset.contact_phone_tel,
+    email: preset.contact_email,
+  }
 }
 
 export function normalizePublicBrandRows(data: unknown[] | null): PublicBriefFormBrand[] {

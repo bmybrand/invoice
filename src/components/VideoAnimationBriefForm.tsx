@@ -4,7 +4,7 @@ import Link from 'next/link'
 import type { BriefFormPrefill } from '@/lib/brief-form-prefill'
 import { canSubmitBriefForm } from '@/lib/brief-form-access'
 import { BriefFormCopyButton, BriefFormCopySection } from '@/components/brief-forms/BriefFormActions'
-import { BriefFormBrandBadge, BriefFormBrandFooter, BriefFormAccentSubmitButton } from '@/components/brief-forms/BriefFormBrandChrome'
+import { BriefFormBrandBadge, BriefFormBrandFooter, BriefFormAccentSubmitButton, BriefFormContactEmailLink, BriefFormContactPhoneLink } from '@/components/brief-forms/BriefFormBrandChrome'
 
 import { useBriefFormSubmit } from '@/lib/use-brief-form-submit'
 
@@ -201,11 +201,7 @@ export default function VideoAnimationBriefForm({
                 <p>Once this form completed, please send it back to your Project Account manager.</p>
                 <p>
                   Thank you for taking time out of your day to fill out this brief for Animation. Please save
-                  this file for your reference and email it to us at{' '}
-                  <a href="mailto:info@bmybrand.com" className="font-semibold text-orange-500 hover:text-orange-600">
-                    info@bmybrand.com
-                  </a>
-                  .
+                  this file for your reference and email it to us at <BriefFormContactEmailLink />.
                 </p>
                 <p>
                   One of our team member will contact you shortly. Please feel free to contact us. We are
@@ -227,11 +223,7 @@ export default function VideoAnimationBriefForm({
                 </p>
                 <p>
                   In case of any concerns that you would like to discuss over the phone related to this form,
-                  call us at{' '}
-                  <a href="tel:+14695011401" className="font-semibold text-orange-500 hover:text-orange-600">
-                    +1 469 501 1401
-                  </a>
-                  . Note: After design approval and during development phase you cannot ask to stop your
+                  call us at <BriefFormContactPhoneLink />. Note: After design approval and during development phase you cannot ask to stop your
                   project, and no refunds will be applicable.
                 </p>
               </div>

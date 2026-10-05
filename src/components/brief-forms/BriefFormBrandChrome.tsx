@@ -3,6 +3,7 @@
 import Image from 'next/image'
 import type { ReactNode } from 'react'
 import { usePublicBriefFormBrand } from '@/context/PublicBriefFormBrandContext'
+import { getBriefFormBrandContact } from '@/lib/brief-form-public-brand'
 
 export function BriefFormBrandBadge({ publicView = false }: { publicView?: boolean }) {
   const { label, logoUrl, accent, isTexas } = usePublicBriefFormBrand()
@@ -66,5 +67,27 @@ export function BriefFormAccentSubmitButton({
     >
       {children}
     </button>
+  )
+}
+
+export function BriefFormContactPhoneLink({ className = 'font-semibold' }: { className?: string }) {
+  const { brand, accent } = usePublicBriefFormBrand()
+  const { phoneDisplay, phoneTel } = getBriefFormBrandContact(brand)
+
+  return (
+    <a href={`tel:${phoneTel}`} className={className} style={{ color: accent }}>
+      {phoneDisplay}
+    </a>
+  )
+}
+
+export function BriefFormContactEmailLink({ className = 'font-semibold' }: { className?: string }) {
+  const { brand, accent } = usePublicBriefFormBrand()
+  const { email } = getBriefFormBrandContact(brand)
+
+  return (
+    <a href={`mailto:${email}`} className={className} style={{ color: accent }}>
+      {email}
+    </a>
   )
 }
