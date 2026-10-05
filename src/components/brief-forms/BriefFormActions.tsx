@@ -1,8 +1,10 @@
 'use client'
 
 import { useState } from 'react'
+import { BriefFormBrandSelect } from '@/components/brief-forms/BriefFormBrandSelect'
+import { useBriefFormBrandContext } from '@/context/BriefFormBrandContext'
 import type { BriefFormType } from '@/lib/brief-form-types'
-import { getBriefFormPublicUrl } from '@/lib/brief-form-public-url'
+import { buildBriefFormPublicUrlForBrand } from '@/lib/brief-form-brand-url'
 
 type CopyState = 'idle' | 'copied' | 'error'
 
@@ -23,10 +25,11 @@ export function BriefFormCopyButton({
   publicView?: boolean
 }) {
   const [copyState, setCopyState] = useState<CopyState>('idle')
+  const { selectedBrand } = useBriefFormBrandContext()
 
   async function handleCopyLink() {
     try {
-      await navigator.clipboard.writeText(getBriefFormPublicUrl(formType))
+      await navigator.clipboard.writeText(buildBriefFormPublicUrlForBrand(formType, selectedBrand))
       setCopyState('copied')
       window.setTimeout(() => setCopyState('idle'), 2000)
     } catch {
@@ -53,10 +56,11 @@ export function BriefFormCopyButton({
 
 export function BriefFormCopySection({ formType }: { formType: BriefFormType }) {
   const [copyState, setCopyState] = useState<CopyState>('idle')
+  const { brands, selectedBrand, setSelectedBrandId, loading } = useBriefFormBrandContext()
 
   async function handleCopyLink() {
     try {
-      const publicUrl = getBriefFormPublicUrl(formType)
+      const publicUrl = buildBriefFormPublicUrlForBrand(formType, selectedBrand)
       await navigator.clipboard.writeText(publicUrl)
       setCopyState('copied')
       window.setTimeout(() => setCopyState('idle'), 2000)
@@ -72,9 +76,16 @@ export function BriefFormCopySection({ formType }: { formType: BriefFormType }) 
         <div>
           <p className="text-lg font-bold text-slate-950">Send to client</p>
           <p className="mt-1 text-sm text-slate-500">
-            Copy the public link on your brand site and send it to your client so they can complete and
-            submit the form.
+            Choose which brand site the client should use, then copy the public link and send it to them.
           </p>
+          <div className="mt-4 max-w-md">
+            <BriefFormBrandSelect
+              brands={brands}
+              selectedBrandId={selectedBrand?.id ?? null}
+              onChange={setSelectedBrandId}
+              disabled={loading}
+            />
+          </div>
         </div>
         <button
           type="button"

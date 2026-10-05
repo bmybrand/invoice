@@ -4,7 +4,9 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useState } from 'react'
 import { useDashboardProfile } from '@/components/DashboardLayout'
-import { getBriefFormPublicUrl } from '@/lib/brief-form-public-url'
+import { BriefFormBrandSelect } from '@/components/brief-forms/BriefFormBrandSelect'
+import { useBriefFormBrandContext } from '@/context/BriefFormBrandContext'
+import { buildBriefFormPublicUrlForBrand } from '@/lib/brief-form-brand-url'
 import { canViewBriefFormSubmissions } from '@/lib/brief-form-submissions-access'
 
 const briefFormOptions = [
@@ -83,6 +85,7 @@ function CopyIcon() {
 
 export default function BriefFormsPage() {
   const [copiedForm, setCopiedForm] = useState<string | null>(null)
+  const { brands, selectedBrand, setSelectedBrandId, loading: brandsLoading } = useBriefFormBrandContext()
   const { accountType, displayRole, displayDepartment, profileLoaded } = useDashboardProfile()
   const showSubmissions = profileLoaded &&
     canViewBriefFormSubmissions({
@@ -93,7 +96,7 @@ export default function BriefFormsPage() {
 
   async function handleCopyLink(formType: (typeof briefFormOptions)[number]['formType']) {
     try {
-      await navigator.clipboard.writeText(getBriefFormPublicUrl(formType))
+      await navigator.clipboard.writeText(buildBriefFormPublicUrlForBrand(formType, selectedBrand))
       setCopiedForm(formType)
       window.setTimeout(() => setCopiedForm((current) => current === formType ? null : current), 2000)
     } catch {
@@ -120,6 +123,14 @@ export default function BriefFormsPage() {
               Start the right intake flow for each service line. The SEO, Website, Logo Design, Graphic
               Design, Video Animation, and SMM questionnaires are live now.
             </p>
+            <div className="mt-5 max-w-md">
+              <BriefFormBrandSelect
+                brands={brands}
+                selectedBrandId={selectedBrand?.id ?? null}
+                onChange={setSelectedBrandId}
+                disabled={brandsLoading}
+              />
+            </div>
             {showSubmissions ? (
               <Link
                 href="/dashboard/brief-forms/submissions"

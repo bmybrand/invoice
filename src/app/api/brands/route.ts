@@ -12,6 +12,7 @@ export async function POST(request: Request) {
   const brandName = String(body?.brand_name ?? '').trim()
   const brandUrl = String(body?.brand_url ?? '').trim()
   const invoiceBaseUrl = String(body?.invoice_base_url ?? '').trim()
+  const briefFormsBaseUrl = String(body?.brief_forms_base_url ?? '').trim()
   const logoUrl = String(body?.logo_url ?? '').trim()
   const faviconUrl = String(body?.favicon_url ?? '').trim()
   const invoicePrimaryColor = String(body?.invoice_primary_color ?? '#ea580c').trim()
@@ -25,6 +26,10 @@ export async function POST(request: Request) {
   if (invoiceBaseUrl && !normalizedInvoiceBaseUrl) {
     return NextResponse.json({ error: 'Invoice URL must be a valid HTTP or HTTPS URL' }, { status: 400 })
   }
+  const normalizedBriefFormsBaseUrl = normalizeInvoiceBaseUrl(briefFormsBaseUrl)
+  if (briefFormsBaseUrl && !normalizedBriefFormsBaseUrl) {
+    return NextResponse.json({ error: 'Brief forms URL must be a valid HTTP or HTTPS URL' }, { status: 400 })
+  }
   if (!/^#[0-9a-f]{6}$/i.test(invoicePrimaryColor) || !/^#[0-9a-f]{6}$/i.test(invoiceSecondaryColor)) {
     return NextResponse.json({ error: 'Invoice colors must be six-digit hex colors' }, { status: 400 })
   }
@@ -35,13 +40,14 @@ export async function POST(request: Request) {
       brand_name: brandName,
       brand_url: brandUrl || null,
       invoice_base_url: normalizedInvoiceBaseUrl,
+      brief_forms_base_url: normalizedBriefFormsBaseUrl,
       invoice_primary_color: invoicePrimaryColor.toLowerCase(),
       invoice_secondary_color: invoiceSecondaryColor.toLowerCase(),
       logo_url: logoUrl || null,
       favicon_url: faviconUrl || null,
       isdeleted: false,
     })
-    .select('id, brand_name, brand_url, invoice_base_url, invoice_primary_color, invoice_secondary_color, logo_url, favicon_url, created_at')
+    .select('id, brand_name, brand_url, invoice_base_url, brief_forms_base_url, invoice_primary_color, invoice_secondary_color, logo_url, favicon_url, created_at')
     .single()
 
   if (error) {
