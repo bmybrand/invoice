@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, type CSSProperties, type ReactNode } from 'react'
 import { Plus_Jakarta_Sans } from 'next/font/google'
 import { useRouter, useSearchParams } from 'next/navigation'
+import JSZip from 'jszip'
 import { supabase } from '@/lib/supabase'
 import { useDashboardProfile } from '@/components/DashboardLayout'
 import { useClientDashboardData } from '@/context/ClientDashboardDataContext'
@@ -15,6 +16,25 @@ import { useBodyScrollLock } from '@/hooks/useBodyScrollLock'
 import { buildInvoicePublicUrl } from '@/lib/invoice-public-url'
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'] })
+const INVOICE_BULK_PRINT_ROOT_ID = 'invoice-page-bulk-print-root'
+
+function sanitizeFileName(name: string): string {
+  return name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '').replace(/\s+/g, ' ').trim()
+}
+
+function invoiceDateKey(value: string | null | undefined): string {
+  const raw = String(value ?? '').trim()
+  if (!raw) return ''
+  return raw.slice(0, 10)
+}
+
+function escapeCsvCell(value: unknown): string {
+  const text = String(value ?? '')
+  if (/[",\n\r]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`
+  }
+  return text
+}
 
 type EmployeeOption = { id: number; employee_name: string }
 type BrandOption = {
@@ -792,6 +812,7 @@ export default function Invoice() {
   const normalizedDepartment = (displayDepartment || '').trim().toLowerCase()
   const isUserRole = normalizedRole === 'user'
   const isSuperAdmin = normalizedRole === 'superadmin'
+  const isAdminOrSuperAdmin = normalizedRole === 'admin' || normalizedRole === 'superadmin'
   const isSalesAdmin = normalizedRole === 'salesadmin' || (normalizedRole === 'admin' && normalizedDepartment.includes('sales'))
   const isFinanceDepartment = normalizedDepartment.includes('finance')
   const clientData = useClientDashboardData()
@@ -805,6 +826,16 @@ export default function Invoice() {
   const [searchQuery, setSearchQuery] = useState(() => (searchParams.get('globalSearch') || '').trim())
   const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'partial' | 'unpaid'>('all')
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false)
+  const [fromDate, setFromDate] = useState('')
+  const [toDate, setToDate] = useState('')
+  const [showDownloadInvoicesModal, setShowDownloadInvoicesModal] = useState(false)
+  const [bulkDownloading, setBulkDownloading] = useState(false)
+  const [downloadProgress, setDownloadProgress] = useState(0)
+  const [downloadStatusMessage, setDownloadStatusMessage] = useState('')
+  const [bulkRenderPayload, setBulkRenderPayload] = useState<{
+    invoice: InvoiceRow
+    brandMeta: BrandOption | null
+  } | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [showAddModal, setShowAddModal] = useState(false)
   const [addClientId, setAddClientId] = useState<number | null>(null)
@@ -857,7 +888,9 @@ export default function Invoice() {
   const invoiceIdsRef = useRef<number[]>(scopedInvoiceCache?.map((invoice) => invoice.id) ?? [])
   const { token } = useSessionContext()
 
-  useBodyScrollLock(Boolean(showAddModal || editingInvoice || deletingInvoice || dueInvoiceModal))
+  useBodyScrollLock(
+    Boolean(showAddModal || editingInvoice || deletingInvoice || dueInvoiceModal || showDownloadInvoicesModal)
+  )
 
   async function resolveAccessToken() {
     const accessToken = token?.trim() || ''
@@ -1369,7 +1402,7 @@ export default function Invoice() {
       setCurrentPage(1)
     }, 0)
     return () => window.clearTimeout(timeoutId)
-  }, [searchQuery, statusFilter])
+  }, [searchQuery, statusFilter, fromDate, toDate])
 
   const filteredInvoices = (() => {
     let list = invoices
@@ -1395,6 +1428,18 @@ export default function Invoice() {
       list = list.filter((i) => getInvoiceDisplayStatus(i).toLowerCase() === 'partially paid')
     } else if (statusFilter === 'unpaid') {
       list = list.filter((i) => getInvoiceDisplayStatus(i).toLowerCase() !== 'paid' && getInvoiceDisplayStatus(i).toLowerCase() !== 'partially paid')
+    }
+    if (isAdminOrSuperAdmin && fromDate) {
+      list = list.filter((i) => {
+        const key = invoiceDateKey(i.invoice_date)
+        return key && key >= fromDate
+      })
+    }
+    if (isAdminOrSuperAdmin && toDate) {
+      list = list.filter((i) => {
+        const key = invoiceDateKey(i.invoice_date)
+        return key && key <= toDate
+      })
     }
     return list
   })()
@@ -2191,6 +2236,293 @@ export default function Invoice() {
     return brands.find((b) => b.brand_name === brandName) ?? null
   }
 
+  function triggerBrowserDownload(blob: Blob, filename: string) {
+    const objectUrl = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = objectUrl
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(objectUrl)
+  }
+
+  function buildExportFilename(extension: 'csv' | 'zip') {
+    const today = new Date().toISOString().slice(0, 10)
+    if (fromDate && toDate) return `invoices-${fromDate}-to-${toDate}.${extension}`
+    if (fromDate) return `invoices-from-${fromDate}.${extension}`
+    if (toDate) return `invoices-to-${toDate}.${extension}`
+    return `invoices-${today}.${extension}`
+  }
+
+  function handleExportCsv() {
+    if (!isAdminOrSuperAdmin || filteredInvoices.length === 0) return
+
+    const headers = [
+      'Invoice #',
+      'Date',
+      'Due',
+      'Creator',
+      'Client',
+      'Brand',
+      'Email',
+      'Phone',
+      'Amount',
+      'Paid',
+      'Status',
+      'Type',
+      'Currency',
+    ]
+
+    const rows = filteredInvoices.map((invoice) => [
+      formatInvoiceCode(invoice.id),
+      invoiceDateKey(invoice.invoice_date),
+      invoiceDateKey(invoice.due_date),
+      invoice.invoice_creator || '',
+      invoice.client_name || '',
+      invoice.brand_name || '',
+      invoice.email || '',
+      invoice.phone || '',
+      invoice.amount || '',
+      String(invoice.paid_amount ?? 0),
+      getInvoiceDisplayStatus(invoice),
+      invoice.invoice_type || 'Standard',
+      invoice.currency || 'USD',
+    ])
+
+    const csv = [headers, ...rows].map((row) => row.map(escapeCsvCell).join(',')).join('\n')
+    triggerBrowserDownload(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), buildExportFilename('csv'))
+  }
+
+  function getProgressMessage(progress: number) {
+    if (progress >= 100) return 'Done!'
+    if (progress >= 80) return 'Almost done, packaging files...'
+    if (progress >= 50) return 'Half way there, hang on.'
+    return 'We are downloading your files.'
+  }
+
+  function updateDownloadProgress(step: number, total: number) {
+    const safeTotal = Math.max(1, total)
+    const percent = Math.min(100, Math.max(1, Math.round((step / safeTotal) * 100)))
+    setDownloadProgress(percent)
+    setDownloadStatusMessage(getProgressMessage(percent))
+  }
+
+  async function renderRootAsPdfBlob(root: HTMLElement, fallbackFileName: string, headerLabel: string): Promise<Blob> {
+    const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+      import('html2canvas-pro'),
+      import('jspdf'),
+    ])
+
+    const imageMap = new Map<string, string>()
+    const imgs = root.querySelectorAll<HTMLImageElement>('img[src^="http"]')
+    await Promise.all(
+      Array.from(imgs).map(async (img) => {
+        const src = img.getAttribute('src') || ''
+        if (!src || src.startsWith(window.location.origin)) return
+        try {
+          const res = await fetch(`/api/proxy-image?url=${encodeURIComponent(src)}`)
+          if (res.ok) {
+            const { dataUrl } = await res.json()
+            if (dataUrl) imageMap.set(src, dataUrl)
+          }
+        } catch {
+          /* ignore */
+        }
+      })
+    )
+
+    const canvas = await html2canvas(root, {
+      scale: 2,
+      backgroundColor: '#ffffff',
+      useCORS: true,
+      windowWidth: root.scrollWidth,
+      onclone: (clonedDocument) => {
+        const clonedRoot = clonedDocument.getElementById(INVOICE_BULK_PRINT_ROOT_ID)
+        if (!clonedRoot) return
+
+        const a4MinHeight = Math.ceil((root.scrollWidth * 297) / 210)
+        const transparentPixel = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+        clonedRoot.querySelectorAll('img[src^="http"]').forEach((img) => {
+          const src = img.getAttribute('src') || ''
+          if (!src.startsWith('http')) return
+          const dataUrl = imageMap.get(src)
+          if (dataUrl) {
+            img.setAttribute('src', dataUrl)
+          } else if (!src.startsWith(window.location.origin)) {
+            img.setAttribute('src', transparentPixel)
+          }
+        })
+
+        const summaryGrid = clonedRoot.querySelector('.invoice-summary-grid')
+        const totalsBlock = clonedRoot.querySelector('.invoice-totals-block')
+        const sourceElements = [root, ...Array.from(root.querySelectorAll('*'))]
+        const clonedElements = [clonedRoot, ...Array.from(clonedRoot.querySelectorAll('*'))]
+
+        clonedElements.forEach((clonedEl, index) => {
+          const sourceEl = sourceElements[index]
+          if (!(clonedEl instanceof clonedDocument.defaultView!.HTMLElement) || !(sourceEl instanceof HTMLElement)) {
+            return
+          }
+
+          const computed = window.getComputedStyle(sourceEl)
+          const styleText =
+            computed.cssText ||
+            Array.from(computed)
+              .map((prop) => `${prop}: ${computed.getPropertyValue(prop)};`)
+              .join(' ')
+
+          clonedEl.setAttribute('style', styleText)
+          clonedEl.removeAttribute('class')
+        })
+
+        if (clonedRoot instanceof clonedDocument.defaultView!.HTMLElement) {
+          clonedRoot.style.boxShadow = 'none'
+          clonedRoot.style.border = 'none'
+          clonedRoot.style.borderWidth = '0'
+          clonedRoot.style.borderRadius = '0'
+          clonedRoot.style.margin = '0'
+          clonedRoot.style.width = `${root.scrollWidth}px`
+          clonedRoot.style.minHeight = `${Math.max(root.scrollHeight, a4MinHeight)}px`
+          clonedRoot.style.display = 'flex'
+          clonedRoot.style.flexDirection = 'column'
+        }
+
+        if (summaryGrid instanceof HTMLElement) {
+          summaryGrid.style.cssText =
+            (summaryGrid.style.cssText || '') +
+            '; display:grid !important; grid-template-columns:minmax(0,1fr) 320px !important; align-items:start !important; gap:32px !important; width:100% !important;'
+        }
+        if (totalsBlock instanceof HTMLElement) {
+          totalsBlock.style.cssText =
+            (totalsBlock.style.cssText || '') +
+            '; width:100% !important; max-width:320px !important; justify-self:end !important; margin-left:0 !important; margin-right:0 !important;'
+        }
+      },
+      ignoreElements: (element) =>
+        element.classList?.contains('no-print') || element.classList?.contains('print-hide-download'),
+    })
+
+    const pdf = new jsPDF('p', 'mm', 'a4')
+    const pageWidth = pdf.internal.pageSize.getWidth()
+    const pageHeight = pdf.internal.pageSize.getHeight()
+
+    const drawRepeatedHeader = () => {
+      const headerBrand = (headerLabel || 'bmy brand').trim() || 'bmy brand'
+      pdf.setFillColor(15, 23, 42)
+      pdf.rect(0, 0, pageWidth, 14, 'F')
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(11)
+      pdf.setTextColor(255, 255, 255)
+      pdf.text(headerBrand, 10, 9)
+      pdf.setTextColor(234, 88, 12)
+      pdf.text('Invoice', pageWidth - 10, 9, { align: 'right' })
+    }
+
+    const repeatHeaderHeight = 14
+    const repeatedPageTopPadding = 3
+    const repeatedPageTopInset = repeatHeaderHeight + repeatedPageTopPadding
+    const pxPerMm = canvas.width / pageWidth
+    const firstPageSliceHeightPx = Math.max(1, Math.floor(pageHeight * pxPerMm))
+    const repeatedPageSliceHeightPx = Math.max(1, Math.floor((pageHeight - repeatedPageTopInset) * pxPerMm))
+
+    const createSlice = (startY: number, maxHeightPx: number) => {
+      const remaining = Math.max(0, canvas.height - startY)
+      const sliceHeightPx = Math.min(maxHeightPx, remaining)
+      if (sliceHeightPx <= 0) return null
+
+      const sliceCanvas = document.createElement('canvas')
+      sliceCanvas.width = canvas.width
+      sliceCanvas.height = sliceHeightPx
+      const ctx = sliceCanvas.getContext('2d')
+      if (!ctx) return null
+
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height)
+      ctx.drawImage(canvas, 0, startY, canvas.width, sliceHeightPx, 0, 0, sliceCanvas.width, sliceCanvas.height)
+
+      return {
+        dataUrl: sliceCanvas.toDataURL('image/png'),
+        heightMm: sliceHeightPx / pxPerMm,
+        heightPx: sliceHeightPx,
+      }
+    }
+
+    const firstSlice = createSlice(0, firstPageSliceHeightPx)
+    if (!firstSlice) {
+      throw new Error(`Failed to render first PDF page for ${fallbackFileName}`)
+    }
+    pdf.addImage(firstSlice.dataUrl, 'PNG', 0, 0, pageWidth, firstSlice.heightMm)
+
+    let sourceOffsetPx = firstSlice.heightPx
+    while (sourceOffsetPx < canvas.height) {
+      pdf.addPage()
+      drawRepeatedHeader()
+      const pageSlice = createSlice(sourceOffsetPx, repeatedPageSliceHeightPx)
+      if (!pageSlice) break
+      pdf.addImage(pageSlice.dataUrl, 'PNG', 0, repeatedPageTopInset, pageWidth, pageSlice.heightMm)
+      sourceOffsetPx += pageSlice.heightPx
+    }
+
+    const out = pdf.output('blob')
+    if (!out) {
+      throw new Error(`Failed to create PDF blob for ${fallbackFileName}`)
+    }
+    return out
+  }
+
+  async function handleDownloadFilteredPdfs() {
+    if (!isAdminOrSuperAdmin || filteredInvoices.length === 0 || bulkDownloading) return
+
+    setBulkDownloading(true)
+    setDownloadProgress(1)
+    setDownloadStatusMessage('We are downloading your files.')
+
+    try {
+      const zip = new JSZip()
+      const totalSteps = Math.max(3, filteredInvoices.length + 2)
+      let completedSteps = 1
+      updateDownloadProgress(completedSteps, totalSteps)
+
+      for (const invoice of filteredInvoices) {
+        const payload = {
+          invoice,
+          brandMeta: getInvoiceBrandMeta(invoice.brand_name),
+        }
+        setBulkRenderPayload(payload)
+        await new Promise((resolve) => window.setTimeout(resolve, 120))
+
+        const root = document.getElementById(INVOICE_BULK_PRINT_ROOT_ID)
+        if (root) {
+          const brand = sanitizeFileName(invoice.brand_name || 'invoice') || 'invoice'
+          const pdfName = `${brand}-${formatInvoiceCode(invoice.id)}.pdf`
+          const pdfBlob = await renderRootAsPdfBlob(root, pdfName, invoice.brand_name || 'bmy brand')
+          zip.file(pdfName, pdfBlob)
+        }
+
+        completedSteps += 1
+        updateDownloadProgress(completedSteps, totalSteps)
+      }
+
+      const zipBlob = await zip.generateAsync({ type: 'blob' })
+      triggerBrowserDownload(zipBlob, buildExportFilename('zip'))
+      completedSteps += 1
+      updateDownloadProgress(completedSteps, totalSteps)
+      setDownloadProgress(100)
+      setDownloadStatusMessage('Done!')
+      await new Promise((resolve) => window.setTimeout(resolve, 500))
+    } catch (error) {
+      console.error('Invoice bulk download failed', error)
+      setActionMessage({ type: 'error', text: 'Failed to download invoice PDFs. Please try again.' })
+    } finally {
+      setBulkRenderPayload(null)
+      setBulkDownloading(false)
+      setShowDownloadInvoicesModal(false)
+      setDownloadProgress(0)
+      setDownloadStatusMessage('')
+    }
+  }
+
   function updateAddServiceLine(index: number, key: keyof ServiceLine, value: string | number) {
     setAddServices((prev) =>
       prev.map((line, i) =>
@@ -2267,58 +2599,101 @@ export default function Invoice() {
 
       {/* Filters */}
       <div className="w-full pb-6">
-        <div className="w-full p-4 sm:p-6 bg-slate-800/80 rounded-xl border border-slate-700 flex flex-col sm:flex-row gap-4">
-          <div className="flex-1 min-w-0">
-            <div className="h-12 w-full bg-slate-900/50 rounded-xl border border-slate-700 flex items-center gap-3 pl-4 overflow-hidden">
-              <SearchIcon className="h-4 w-4 text-slate-500 shrink-0" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search by invoice number, creator, client, email, service or status..."
-                className="flex-1 min-w-0 h-full bg-transparent text-slate-300 text-sm placeholder:text-slate-500 focus:outline-none"
-              />
+        <div className="w-full p-4 sm:p-6 bg-slate-800/80 rounded-xl border border-slate-700 flex flex-col gap-4">
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex-1 min-w-0">
+              <div className="h-12 w-full bg-slate-900/50 rounded-xl border border-slate-700 flex items-center gap-3 pl-4 overflow-hidden">
+                <SearchIcon className="h-4 w-4 text-slate-500 shrink-0" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search by invoice number, creator, client, email, service or status..."
+                  className="flex-1 min-w-0 h-full bg-transparent text-slate-300 text-sm placeholder:text-slate-500 focus:outline-none"
+                />
+              </div>
+            </div>
+            <div className="w-full sm:w-52 h-12 rounded-xl border border-slate-700 flex items-center relative">
+              <button
+                type="button"
+                onClick={() => setStatusDropdownOpen((open) => !open)}
+                className="w-full h-full px-4 bg-[#141e32] text-slate-300 text-sm font-medium focus:outline-none cursor-pointer flex justify-between items-center rounded-xl hover:bg-[#1a2842] transition text-left"
+                aria-haspopup="listbox"
+                aria-expanded={statusDropdownOpen}
+                aria-label="Filter by status"
+              >
+                <span>{statusFilterLabel}</span>
+                <ChevronDownIcon className={`h-4 w-3 text-slate-400 shrink-0 transition-transform ${statusDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {statusDropdownOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" aria-hidden onClick={() => setStatusDropdownOpen(false)} />
+                  <ul
+                    className="absolute left-0 right-0 top-full mt-1 z-20 py-1 rounded-xl border border-slate-700 bg-[#141e32] shadow-xl overflow-hidden"
+                    role="listbox"
+                  >
+                    {statusOptions.map((opt) => (
+                      <li key={opt.value}>
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={statusFilter === opt.value}
+                          onClick={() => {
+                            setStatusFilter(opt.value)
+                            setStatusDropdownOpen(false)
+                          }}
+                          className={`w-full px-4 py-2.5 text-left text-sm font-medium transition ${statusFilter === opt.value ? 'bg-orange-500/20 text-orange-400' : 'text-slate-300 hover:bg-slate-800/80'}`}
+                        >
+                          {opt.label}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
             </div>
           </div>
-          <div className="w-full sm:w-52 h-12 rounded-xl border border-slate-700 flex items-center relative">
-            <button
-              type="button"
-              onClick={() => setStatusDropdownOpen((open) => !open)}
-              className="w-full h-full px-4 bg-[#141e32] text-slate-300 text-sm font-medium focus:outline-none cursor-pointer flex justify-between items-center rounded-xl hover:bg-[#1a2842] transition text-left"
-              aria-haspopup="listbox"
-              aria-expanded={statusDropdownOpen}
-              aria-label="Filter by status"
-            >
-              <span>{statusFilterLabel}</span>
-              <ChevronDownIcon className={`h-4 w-3 text-slate-400 shrink-0 transition-transform ${statusDropdownOpen ? 'rotate-180' : ''}`} />
-            </button>
-            {statusDropdownOpen && (
-              <>
-                <div className="fixed inset-0 z-10" aria-hidden onClick={() => setStatusDropdownOpen(false)} />
-                <ul
-                  className="absolute left-0 right-0 top-full mt-1 z-20 py-1 rounded-xl border border-slate-700 bg-[#141e32] shadow-xl overflow-hidden"
-                  role="listbox"
+
+          {isAdminOrSuperAdmin && (
+            <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
+              <label className="flex min-w-40 flex-col gap-1.5">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">From</span>
+                <input
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                  className="h-12 rounded-xl border border-slate-700 bg-[#141e32] px-4 text-sm text-slate-300 focus:outline-none focus:ring-1 focus:ring-orange-500/50"
+                />
+              </label>
+              <label className="flex min-w-40 flex-col gap-1.5">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">To</span>
+                <input
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                  className="h-12 rounded-xl border border-slate-700 bg-[#141e32] px-4 text-sm text-slate-300 focus:outline-none focus:ring-1 focus:ring-orange-500/50"
+                />
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleExportCsv}
+                  disabled={filteredInvoices.length === 0}
+                  className="h-12 rounded-xl border border-slate-600 bg-slate-900/60 px-4 text-sm font-semibold text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {statusOptions.map((opt) => (
-                    <li key={opt.value}>
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={statusFilter === opt.value}
-                        onClick={() => {
-                          setStatusFilter(opt.value)
-                          setStatusDropdownOpen(false)
-                        }}
-                        className={`w-full px-4 py-2.5 text-left text-sm font-medium transition ${statusFilter === opt.value ? 'bg-orange-500/20 text-orange-400' : 'text-slate-300 hover:bg-slate-800/80'}`}
-                      >
-                        {opt.label}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </div>
+                  Export CSV
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDownloadInvoicesModal(true)}
+                  disabled={filteredInvoices.length === 0}
+                  className="h-12 rounded-xl bg-orange-500 px-4 text-sm font-semibold text-white shadow-[0px_4px_20px_0px_rgba(249,115,22,0.2)] transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Download PDFs
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -3617,6 +3992,122 @@ export default function Invoice() {
           </div>
         </div>
       )}
+
+      {showDownloadInvoicesModal ? (
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-black/60"
+            onClick={() => !bulkDownloading && setShowDownloadInvoicesModal(false)}
+          />
+          <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4">
+            <div className="max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl">
+              <div className="flex items-start justify-between border-b border-slate-700 px-5 py-4">
+                <div>
+                  <h2 className="text-lg font-bold text-white">Download Invoices</h2>
+                  <p className="mt-1 text-sm text-slate-400">
+                    Generate PDFs for invoices matching your current search, status, and date filters.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => !bulkDownloading && setShowDownloadInvoicesModal(false)}
+                  className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white"
+                  aria-label="Close download invoices modal"
+                >
+                  <CloseIcon />
+                </button>
+              </div>
+
+              <div className="px-5 py-4">
+                <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Filtered invoices</p>
+                  <p className="mt-2 text-2xl font-bold text-white">{filteredInvoices.length}</p>
+                  <p className="mt-1 text-sm text-slate-400">
+                    {fromDate || toDate
+                      ? `Date span${fromDate ? ` from ${fromDate}` : ''}${toDate ? ` to ${toDate}` : ''}`
+                      : 'All dates (no From/To set)'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="border-t border-slate-700 px-5 py-4">
+                {bulkDownloading ? (
+                  <div className="mb-3">
+                    <div className="h-5 w-full overflow-hidden rounded-full bg-slate-700/70">
+                      <div
+                        className="h-full rounded-full bg-orange-500 transition-all duration-300"
+                        style={{ width: `${downloadProgress}%` }}
+                      />
+                    </div>
+                    <p className="mt-2 text-sm text-slate-300">
+                      {downloadStatusMessage || 'We are downloading your files.'}
+                    </p>
+                  </div>
+                ) : null}
+
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm text-slate-400">
+                    {filteredInvoices.length} invoice{filteredInvoices.length === 1 ? '' : 's'} ready
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowDownloadInvoicesModal(false)}
+                      disabled={bulkDownloading}
+                      className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800 disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleDownloadFilteredPdfs()}
+                      disabled={filteredInvoices.length === 0 || bulkDownloading}
+                      className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {bulkDownloading ? 'Preparing ZIP...' : 'Download ZIP'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : null}
+
+      {bulkRenderPayload ? (
+        <div className="pointer-events-none fixed -left-2500 top-0 z-[-1] w-231">
+          <InvoiceDocument
+            invoice={bulkRenderPayload.invoice}
+            brandMeta={bulkRenderPayload.brandMeta}
+            canDownloadPdf
+            showPaidWatermark={
+              String(bulkRenderPayload.invoice.status || '').toLowerCase().includes('paid') ||
+              String(bulkRenderPayload.invoice.status || '').toLowerCase().includes('completed')
+            }
+            onDownload={() => {}}
+            onPrint={() => {}}
+            rootId={INVOICE_BULK_PRINT_ROOT_ID}
+            includeDownloadButton={false}
+            showStatusBadge
+            showPayableSummary={bulkRenderPayload.invoice.payable_amount != null}
+            payableAmount={(() => {
+              const subtotal = (bulkRenderPayload.invoice.service || []).reduce(
+                (sum, line) => sum + (Number(line.qty) || 0) * Number(String(line.price || '').replace(/[^0-9.-]/g, '')),
+                0
+              )
+              return Math.min(Number(bulkRenderPayload.invoice.payable_amount ?? 0), subtotal)
+            })()}
+            remainingAmount={(() => {
+              const subtotal = (bulkRenderPayload.invoice.service || []).reduce(
+                (sum, line) => sum + (Number(line.qty) || 0) * Number(String(line.price || '').replace(/[^0-9.-]/g, '')),
+                0
+              )
+              const payable = Math.min(Number(bulkRenderPayload.invoice.payable_amount ?? 0), subtotal)
+              return Math.max(subtotal - payable, 0)
+            })()}
+          />
+        </div>
+      ) : null}
 
     </div>
   )
