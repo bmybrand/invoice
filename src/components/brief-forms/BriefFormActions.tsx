@@ -56,7 +56,7 @@ export function BriefFormCopyButton({
 
 export function BriefFormCopySection({ formType }: { formType: BriefFormType }) {
   const [copyState, setCopyState] = useState<CopyState>('idle')
-  const { brands, selectedBrand, setSelectedBrandId, loading } = useBriefFormBrandContext()
+  const { brands, selectedBrand, setSelectedBrandId, loading, error } = useBriefFormBrandContext()
 
   async function handleCopyLink() {
     try {
@@ -84,6 +84,8 @@ export function BriefFormCopySection({ formType }: { formType: BriefFormType }) 
               selectedBrandId={selectedBrand?.id ?? null}
               onChange={setSelectedBrandId}
               disabled={loading}
+              loading={loading}
+              error={error}
             />
           </div>
         </div>

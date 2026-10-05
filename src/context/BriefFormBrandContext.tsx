@@ -9,6 +9,7 @@ type BriefFormBrandContextValue = {
   selectedBrand: BriefFormBrandOption | null
   setSelectedBrandId: (id: number) => void
   loading: boolean
+  error: string | null
 }
 
 const BriefFormBrandContext = createContext<BriefFormBrandContextValue | null>(null)
@@ -20,6 +21,6 @@ export function BriefFormBrandProvider({ children }: { children: ReactNode }) {
 
 export function useBriefFormBrandContext(): BriefFormBrandContextValue {
   const ctx = useContext(BriefFormBrandContext)
-  const fallback = useBriefFormBrands()
+  const fallback = useBriefFormBrands({ enabled: !ctx })
   return ctx ?? fallback
 }

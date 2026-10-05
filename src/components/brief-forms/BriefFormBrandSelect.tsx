@@ -8,6 +8,8 @@ export function BriefFormBrandSelect({
   selectedBrandId,
   onChange,
   disabled = false,
+  loading = false,
+  error = null,
   compact = false,
   className = '',
 }: {
@@ -15,20 +17,42 @@ export function BriefFormBrandSelect({
   selectedBrandId: number | null
   onChange: (brandId: number) => void
   disabled?: boolean
+  loading?: boolean
+  error?: string | null
   compact?: boolean
   className?: string
 }) {
-  if (brands.length <= 1) {
-    const only = brands[0]
-    if (!only) {
-      return null
-    }
-
+  if (loading) {
     return (
-      <p className={`text-xs text-slate-500 ${className}`}>
-        Public link domain:{' '}
-        <span className="font-semibold text-slate-300">{resolveBriefFormsOriginForBrand(only)}</span>
-      </p>
+      <div className={className}>
+        <p className={`mb-1.5 font-semibold uppercase tracking-wide text-slate-500 ${compact ? 'text-[10px]' : 'text-xs'}`}>
+          Send from brand
+        </p>
+        <div className={`animate-pulse rounded-xl border border-slate-700 bg-slate-900/80 ${compact ? 'h-9' : 'h-11'}`} />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className={`rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 ${className}`}>
+        <p className="text-xs font-semibold text-amber-200">Could not load brands for brief links</p>
+        <p className="mt-1 text-[11px] text-amber-100/80">{error}</p>
+        <p className="mt-1 text-[11px] text-amber-100/70">
+          Run the Supabase migration for <code className="font-mono">brief_forms_base_url</code>, then refresh.
+        </p>
+      </div>
+    )
+  }
+
+  if (brands.length === 0) {
+    return (
+      <div className={`rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2 ${className}`}>
+        <p className="text-xs font-semibold text-slate-300">No brands found</p>
+        <p className="mt-1 text-[11px] text-slate-500">
+          Add Texas Web Studio under Brands and set Brief forms URL to https://texaswebstudio.co
+        </p>
+      </div>
     )
   }
 
@@ -40,8 +64,8 @@ export function BriefFormBrandSelect({
       <select
         value={selectedBrandId ?? brands[0]?.id ?? ''}
         onChange={(event) => onChange(Number(event.target.value))}
-        disabled={disabled}
-        className={`w-full rounded-xl border border-slate-700 bg-slate-900 text-white outline-none focus:border-orange-500/60 disabled:opacity-60 ${
+        disabled={disabled || brands.length === 1}
+        className={`w-full rounded-xl border border-slate-700 bg-slate-900 text-white outline-none focus:border-orange-500/60 disabled:opacity-80 ${
           compact ? 'px-2.5 py-2 text-xs' : 'px-3 py-2.5 text-sm'
         }`}
       >
@@ -51,6 +75,15 @@ export function BriefFormBrandSelect({
           </option>
         ))}
       </select>
+      {brands.length === 1 ? (
+        <p className="mt-1.5 text-[11px] text-slate-500">
+          Only one brand is available. Add Texas Web Studio in Brands to choose that public domain.
+        </p>
+      ) : (
+        <p className="mt-1.5 text-[11px] text-slate-500">
+          Copied links use this brand&apos;s site (e.g. texaswebstudio.co).
+        </p>
+      )}
     </label>
   )
 }

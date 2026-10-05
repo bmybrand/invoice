@@ -85,7 +85,13 @@ function CopyIcon() {
 
 export default function BriefFormsPage() {
   const [copiedForm, setCopiedForm] = useState<string | null>(null)
-  const { brands, selectedBrand, setSelectedBrandId, loading: brandsLoading } = useBriefFormBrandContext()
+  const {
+    brands,
+    selectedBrand,
+    setSelectedBrandId,
+    loading: brandsLoading,
+    error: brandsError,
+  } = useBriefFormBrandContext()
   const { accountType, displayRole, displayDepartment, profileLoaded } = useDashboardProfile()
   const showSubmissions = profileLoaded &&
     canViewBriefFormSubmissions({
@@ -129,6 +135,8 @@ export default function BriefFormsPage() {
                 selectedBrandId={selectedBrand?.id ?? null}
                 onChange={setSelectedBrandId}
                 disabled={brandsLoading}
+                loading={brandsLoading}
+                error={brandsError}
               />
             </div>
             {showSubmissions ? (
