@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { BriefFormBrandSelect } from '@/components/brief-forms/BriefFormBrandSelect'
 import { useBriefFormBrandContext } from '@/context/BriefFormBrandContext'
+import { usePublicBriefFormBrand } from '@/context/PublicBriefFormBrandContext'
 import type { BriefFormType } from '@/lib/brief-form-types'
 import { buildBriefFormPublicUrlForBrand } from '@/lib/brief-form-brand-url'
 
@@ -78,7 +79,7 @@ export function BriefFormCopySection({ formType }: { formType: BriefFormType }) 
           <p className="mt-1 text-sm text-slate-500">
             Choose which brand site the client should use, then copy the public link and send it to them.
           </p>
-          <div className="mt-4 max-w-md">
+          <div className="mt-4 max-w-xl">
             <BriefFormBrandSelect
               brands={brands}
               selectedBrandId={selectedBrand?.id ?? null}
@@ -86,6 +87,7 @@ export function BriefFormCopySection({ formType }: { formType: BriefFormType }) 
               disabled={loading}
               loading={loading}
               error={error}
+              tone="light"
             />
           </div>
         </div>
@@ -116,6 +118,8 @@ export function BriefFormSubmitBar({
   submitLabel?: string
   children?: React.ReactNode
 }) {
+  const { accent } = usePublicBriefFormBrand()
+
   if (!canSubmit && !children) {
     return null
   }
@@ -130,7 +134,8 @@ export function BriefFormSubmitBar({
             <button
               type="submit"
               disabled={submitting}
-              className="inline-flex items-center justify-center self-start rounded-2xl bg-orange-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center justify-center self-start rounded-2xl px-6 py-3 text-sm font-bold text-white transition disabled:cursor-not-allowed disabled:opacity-60"
+              style={{ backgroundColor: accent }}
             >
               {submitting ? 'Submitting...' : submitLabel}
             </button>

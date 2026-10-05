@@ -1,11 +1,11 @@
 'use client'
 
-import Image from 'next/image'
 import Link from 'next/link'
 import type { BriefFormPrefill } from '@/lib/brief-form-prefill'
 import { canSubmitBriefForm } from '@/lib/brief-form-access'
 import { useBriefFormSubmit } from '@/lib/use-brief-form-submit'
 import { BriefFormCopyButton, BriefFormCopySection, BriefFormSubmitBar } from '@/components/brief-forms/BriefFormActions'
+import { BriefFormBrandBadge, BriefFormBrandFooter } from '@/components/brief-forms/BriefFormBrandChrome'
 
 type Option = {
   value: string
@@ -253,14 +253,7 @@ export default function SmmBriefForm({
       <div className={`relative px-6 py-8 sm:px-8 sm:py-10 ${publicView ? 'border-b border-slate-200 bg-white' : 'border-b border-slate-800/90'}`}>
         <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
           <div className="max-w-4xl">
-            <div className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-[0.22em] ${
-              publicView
-                ? 'border border-orange-200 bg-orange-50 text-orange-500'
-                : 'border border-orange-500/20 bg-orange-500/10 text-orange-300'
-            }`}>
-              <Image src="/bmybrand-B.svg" alt="" width={18} height={18} className="h-[18px] w-[18px] object-contain" />
-              BMYBrand Intake
-            </div>
+            <BriefFormBrandBadge publicView={publicView} />
             <h1 className={`mt-5 text-3xl font-black tracking-[-0.04em] sm:text-4xl ${publicView ? 'text-slate-950' : 'text-white'}`}>
               SMM Brief Questionnaire
             </h1>
@@ -479,7 +472,7 @@ export default function SmmBriefForm({
         />
 
         <footer className="pb-2 text-center text-xs text-slate-400">
-          Copyright 2026 BMYBrand. All Rights Reserved
+          <BriefFormBrandFooter />
           <span className="mx-2 text-slate-700">|</span>
           Privacy Policy
           <span className="mx-2 text-slate-700">|</span>

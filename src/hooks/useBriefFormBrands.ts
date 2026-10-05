@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { BriefFormBrandOption } from '@/lib/brief-form-brand-url'
 import { pickDefaultBriefFormBrand } from '@/lib/brief-form-brand-url'
+import {
+  canonicalizeBriefFormBrandSlug,
+  filterBriefFormCopyBrands,
+} from '@/lib/brief-form-public-brand'
 import { supabase } from '@/lib/supabase'
 
 type UseBriefFormBrandsResult = {
@@ -43,12 +47,33 @@ export function useBriefFormBrands(options?: { enabled?: boolean }): UseBriefFor
       return
     }
 
-    const rows = ((data ?? []) as BriefFormBrandOption[]).map((row) => ({
-      id: Number(row.id),
-      brand_name: row.brand_name || '',
-      brand_url: row.brand_url ?? null,
-      invoice_base_url: row.invoice_base_url ?? null,
-    }))
+    const rows = filterBriefFormCopyBrands(
+      ((data ?? []) as BriefFormBrandOption[]).map((row) => ({
+        id: Number(row.id),
+        brand_name: row.brand_name || '',
+        brand_url: row.brand_url ?? null,
+        invoice_base_url: row.invoice_base_url ?? null,
+      }))
+    )
+
+    const hasBmy = rows.some((row) => canonicalizeBriefFormBrandSlug(row.brand_name) === 'bmybrand')
+    const hasTexas = rows.some((row) => canonicalizeBriefFormBrandSlug(row.brand_name) === 'texaswebstudio')
+    if (!hasBmy) {
+      rows.unshift({
+        id: -1,
+        brand_name: 'BMYBrand',
+        brand_url: 'https://bmybrand.com',
+        invoice_base_url: 'https://bmybrand.com',
+      })
+    }
+    if (!hasTexas) {
+      rows.push({
+        id: -2,
+        brand_name: 'Texas Web Studio',
+        brand_url: 'https://texaswebstudio.co',
+        invoice_base_url: 'https://texaswebstudio.co',
+      })
+    }
 
     setBrands(rows)
     setSelectedBrandIdState((prev) => {

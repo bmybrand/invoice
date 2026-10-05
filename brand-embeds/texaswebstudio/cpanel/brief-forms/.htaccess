@@ -1,0 +1,13 @@
+# Route pretty URLs to index.php on cPanel (Apache)
+# Upload next to index.php in: public_html/brief-forms/
+
+Options -Indexes
+RewriteEngine On
+
+# Keep real files as-is
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# /brief-forms/graphic-design/  ->  index.php?form=graphic-design
+RewriteRule ^([a-z0-9\-]+)/?$ index.php?form=$1 [L,QSA]

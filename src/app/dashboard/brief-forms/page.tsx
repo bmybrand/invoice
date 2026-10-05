@@ -129,7 +129,7 @@ export default function BriefFormsPage() {
               Start the right intake flow for each service line. The SEO, Website, Logo Design, Graphic
               Design, Video Animation, and SMM questionnaires are live now.
             </p>
-            <div className="mt-5 max-w-md">
+            <div className="mt-5 max-w-xl">
               <BriefFormBrandSelect
                 brands={brands}
                 selectedBrandId={selectedBrand?.id ?? null}
