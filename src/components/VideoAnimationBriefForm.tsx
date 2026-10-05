@@ -40,7 +40,7 @@ function TextField({
         placeholder={placeholder}
         required={required}
         defaultValue={defaultValue}
-        className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/10"
+        className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 brief-form-control focus:outline-none"
       />
     </label>
   )
@@ -67,7 +67,7 @@ function TextAreaField({
         rows={rows}
         placeholder={placeholder}
         required={required}
-        className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/10"
+        className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 brief-form-control focus:outline-none"
       />
     </label>
   )

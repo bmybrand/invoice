@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useDashboardProfile } from '@/components/DashboardLayout'
 import { canViewBriefFormSubmissions } from '@/lib/brief-form-submissions-access'
 import { getBriefFormLabel } from '@/lib/brief-form-labels'
+import { getBriefFormSubmissionBrandName } from '@/lib/brief-form-submission-brand'
 import { formatBriefFormSubmittedAt } from '@/lib/brief-form-submission-format'
 import { BRIEF_FORM_TYPES, type BriefFormType } from '@/lib/brief-form-types'
 import type { BriefFormSubmissionRow } from '@/lib/cpanel-brief-forms-bridge'
@@ -163,6 +164,7 @@ export default function BriefFormSubmissions() {
                 <tr>
                   <th className="px-4 py-3">Submitted</th>
                   <th className="px-4 py-3">Form</th>
+                  <th className="px-4 py-3">Brand</th>
                   <th className="px-4 py-3">Email</th>
                   <th className="px-4 py-3">Source</th>
                   <th className="px-4 py-3 text-right">Actions</th>
@@ -173,6 +175,7 @@ export default function BriefFormSubmissions() {
                   <tr key={row.id} className="bg-slate-950/20 hover:bg-slate-900/50">
                     <td className="px-4 py-3 text-slate-300">{formatBriefFormSubmittedAt(row.createdAt)}</td>
                     <td className="px-4 py-3 font-semibold text-white">{getBriefFormLabel(row.formType)}</td>
+                    <td className="px-4 py-3 text-slate-300">{getBriefFormSubmissionBrandName(row)}</td>
                     <td className="px-4 py-3 text-slate-300">{row.submitterEmail || '—'}</td>
                     <td className="px-4 py-3 capitalize text-slate-400">{row.source || 'public'}</td>
                     <td className="px-4 py-3 text-right">

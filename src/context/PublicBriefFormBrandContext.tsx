@@ -104,7 +104,11 @@ export function PublicBriefFormBrandProvider({ children }: { children: ReactNode
 
   return (
     <PublicBriefFormBrandContext.Provider value={value}>
-      <div style={style} className="min-h-inherit" data-brief-brand={value.isTexas ? 'texaswebstudio' : 'bmybrand'}>
+      <div
+        style={style}
+        className="brief-form-brand-scope min-h-inherit"
+        data-brief-brand={value.isTexas ? 'texaswebstudio' : 'bmybrand'}
+      >
         {children}
       </div>
     </PublicBriefFormBrandContext.Provider>

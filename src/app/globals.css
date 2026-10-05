@@ -129,3 +129,28 @@ body {
   }
 }
 
+/* Public brief forms: radios/checkboxes/inputs follow active brand accent */
+.brief-form-brand-scope {
+  --brief-accent: #ea580c;
+}
+
+.brief-form-brand-scope input[type='radio'],
+.brief-form-brand-scope input[type='checkbox'] {
+  accent-color: var(--brief-accent);
+}
+
+.brief-form-brand-scope input.brief-form-control:focus,
+.brief-form-brand-scope textarea.brief-form-control:focus,
+.brief-form-brand-scope select.brief-form-control:focus {
+  border-color: var(--brief-accent) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brief-accent) 18%, transparent);
+  outline: none;
+}
+
+.brief-form-brand-scope label:has(input[type='radio']:checked),
+.brief-form-brand-scope label:has(input[type='checkbox']:checked) {
+  border-color: color-mix(in srgb, var(--brief-accent) 55%, #cbd5e1);
+  background-color: color-mix(in srgb, var(--brief-accent) 8%, white);
+}
+
+

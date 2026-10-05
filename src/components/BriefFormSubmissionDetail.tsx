@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useDashboardProfile } from '@/components/DashboardLayout'
 import { canViewBriefFormSubmissions } from '@/lib/brief-form-submissions-access'
 import { getBriefFormLabel } from '@/lib/brief-form-labels'
+import { getBriefFormSubmissionBrandName } from '@/lib/brief-form-submission-brand'
 import type { BriefFormPayloadValue } from '@/lib/brief-form-submission-format'
 import {
   formatBriefFormPayloadValue,
@@ -35,7 +36,9 @@ export default function BriefFormSubmissionDetail() {
     if (!submission?.payload) {
       return []
     }
-    return Object.entries(submission.payload).sort(([a], [b]) => a.localeCompare(b))
+    return Object.entries(submission.payload)
+      .filter(([key]) => key !== 'brand_slug' && key !== 'brand_name')
+      .sort(([a], [b]) => a.localeCompare(b))
   }, [submission?.payload])
 
   const findInList = useCallback(
@@ -202,7 +205,11 @@ export default function BriefFormSubmissionDetail() {
       </div>
 
       <div className="relative space-y-8 px-6 py-8 sm:px-8 sm:py-10">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 px-5 py-4">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Brand</p>
+            <p className="mt-2 text-sm text-white">{getBriefFormSubmissionBrandName(submission)}</p>
+          </div>
           <div className="rounded-2xl border border-slate-800 bg-slate-900/60 px-5 py-4">
             <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Email</p>
             <p className="mt-2 text-sm text-white">{submission.submitterEmail || '—'}</p>
@@ -211,7 +218,7 @@ export default function BriefFormSubmissionDetail() {
             <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Source</p>
             <p className="mt-2 text-sm capitalize text-white">{submission.source || 'public'}</p>
           </div>
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 px-5 py-4 sm:col-span-2 lg:col-span-1">
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 px-5 py-4">
             <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Form type</p>
             <p className="mt-2 text-sm text-white">{getBriefFormLabel(submission.formType)}</p>
           </div>

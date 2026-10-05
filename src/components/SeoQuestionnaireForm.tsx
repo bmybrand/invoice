@@ -107,7 +107,7 @@ function TextField({
         placeholder={placeholder}
         required={required}
         defaultValue={defaultValue}
-        className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/10"
+        className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 brief-form-control focus:outline-none"
       />
     </label>
   )
@@ -134,7 +134,7 @@ function TextAreaField({
         rows={rows}
         placeholder={placeholder}
         required={required}
-        className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/10"
+        className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 brief-form-control focus:outline-none"
       />
     </label>
   )
@@ -162,7 +162,7 @@ function SelectField({
       <select
         defaultValue={defaultValue || ''}
         required={required}
-        className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-500/10"
+        className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition brief-form-control focus:outline-none"
       >
         <option value="" disabled>
           {placeholder}
@@ -207,7 +207,7 @@ function ChoiceGroup({
               name={name}
               value={option.value}
               required={required && type === 'radio' ? option.value === options[0]?.value : false}
-              className="h-4 w-4 accent-orange-500"
+              className="h-4 w-4"
             />
             <span>{option.label}</span>
           </label>
@@ -421,7 +421,7 @@ export default function SeoQuestionnaireForm({
               <input
                 type="checkbox"
                 name="clientDeclaration"
-                className="mt-1 h-5 w-5 shrink-0 accent-orange-500"
+                className="mt-1 h-5 w-5 shrink-0"
               />
             </label>
           </div>

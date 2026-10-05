@@ -44,7 +44,7 @@ function TextField({
         placeholder={placeholder}
         required={required}
         defaultValue={defaultValue}
-        className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/10"
+        className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 brief-form-control focus:outline-none"
       />
     </label>
   )
@@ -71,7 +71,7 @@ function TextAreaField({
         rows={rows}
         placeholder={placeholder}
         required={required}
-        className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/10"
+        className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 brief-form-control focus:outline-none"
       />
     </label>
   )
@@ -112,7 +112,7 @@ function FileField({
         type="file"
         accept={accept}
         onChange={handleChange}
-        className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition file:mr-4 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-slate-700 hover:file:bg-slate-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/10"
+        className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition file:mr-4 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-slate-700 hover:file:bg-slate-200 brief-form-control focus:outline-none"
       />
       <span className="mt-2 block text-xs text-slate-500">Accepted image files up to 5 MB.</span>
       {error ? <span className="mt-2 block text-sm font-medium text-rose-600">{error}</span> : null}
@@ -192,7 +192,7 @@ function ExampleBlock({
             type="checkbox"
             checked={checked}
             onChange={(event) => onToggle(event.target.checked)}
-            className="mt-1 h-4 w-4 shrink-0 rounded-[2px] border border-slate-400 accent-orange-500"
+            className="mt-1 h-4 w-4 shrink-0 rounded-[2px] border border-slate-400"
           />
           <div>
             <h3 className="text-sm font-bold text-slate-800">{title}</h3>
