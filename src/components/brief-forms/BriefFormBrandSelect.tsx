@@ -36,11 +36,8 @@ export function BriefFormBrandSelect({
   if (error) {
     return (
       <div className={`rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 ${className}`}>
-        <p className="text-xs font-semibold text-amber-200">Could not load brands for brief links</p>
+        <p className="text-xs font-semibold text-amber-200">Could not load brands</p>
         <p className="mt-1 text-[11px] text-amber-100/80">{error}</p>
-        <p className="mt-1 text-[11px] text-amber-100/70">
-          Run the Supabase migration for <code className="font-mono">brief_forms_base_url</code>, then refresh.
-        </p>
       </div>
     )
   }
@@ -50,7 +47,7 @@ export function BriefFormBrandSelect({
       <div className={`rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2 ${className}`}>
         <p className="text-xs font-semibold text-slate-300">No brands found</p>
         <p className="mt-1 text-[11px] text-slate-500">
-          Add Texas Web Studio under Brands and set Brief forms URL to https://texaswebstudio.co
+          Add Texas Web Studio under Brands and set its Invoice URL to https://texaswebstudio.co
         </p>
       </div>
     )
@@ -75,15 +72,9 @@ export function BriefFormBrandSelect({
           </option>
         ))}
       </select>
-      {brands.length === 1 ? (
-        <p className="mt-1.5 text-[11px] text-slate-500">
-          Only one brand is available. Add Texas Web Studio in Brands to choose that public domain.
-        </p>
-      ) : (
-        <p className="mt-1.5 text-[11px] text-slate-500">
-          Copied links use this brand&apos;s site (e.g. texaswebstudio.co).
-        </p>
-      )}
+      <p className="mt-1.5 text-[11px] text-slate-500">
+        Uses the brand&apos;s Invoice URL (Vercel domain). Texas Web Studio → texaswebstudio.co
+      </p>
     </label>
   )
 }
